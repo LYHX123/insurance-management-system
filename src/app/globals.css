@@ -12,6 +12,21 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * Design tokens — single source of truth for spacing and radius, used by
+ * every shared component in src/components/ui. Change values here to
+ * re-tune the whole system instead of editing individual components.
+ */
+@theme {
+  --spacing-page: 1.5rem; /* 24px — page/main content padding */
+  --spacing-card: 1.5rem; /* 24px — card padding */
+  --spacing-section: 1.5rem; /* 24px — vertical gap between page sections */
+  --spacing-field: 1rem; /* 16px — gap between stacked form fields */
+
+  --radius-control: 0.375rem; /* buttons, inputs, selects, table container */
+  --radius-surface: 0.5rem; /* cards, modals */
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -22,5 +37,132 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* ---------------------------------------------------------------------
+ * Global UI design system
+ *
+ * Shared visual primitives for typography, buttons, form controls, cards,
+ * tables, badges. Prefer the typed wrappers in src/components/ui (Button,
+ * Input, Select, Card, Table, Badge, StatusBadge, Pagination, SearchBar,
+ * PageHeader, Modal, FormField) — they apply these classes for you. The
+ * classes are still exported at this layer so any future module inherits
+ * the same look even from plain markup.
+ *
+ * Branding: green (Tailwind `emerald`) is used throughout intentionally —
+ * do not introduce other accent colors for primary actions/brand states.
+ * ------------------------------------------------------------------- */
+@layer components {
+  /* Typography */
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-zinc-900;
+  }
+  .section-title {
+    @apply text-lg font-semibold text-zinc-800;
+  }
+  .table-title {
+    @apply text-sm font-semibold text-zinc-700;
+  }
+  .text-body {
+    @apply text-sm text-zinc-700;
+  }
+  .text-secondary {
+    @apply text-sm text-zinc-500;
+  }
+
+  /*
+   * Buttons — variants intentionally repeat the base layout utilities
+   * (rather than `@apply btn`) because Tailwind v4 only allows @apply to
+   * reference real utilities, not other hand-rolled component classes.
+   */
+  .btn {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-control px-4 text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-control px-4 text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-60 bg-emerald-700 text-white hover:bg-emerald-800;
+  }
+  .btn-secondary {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-control border border-zinc-300 bg-white px-4 text-sm font-medium whitespace-nowrap text-zinc-700 transition-colors hover:bg-zinc-50 disabled:pointer-events-none disabled:opacity-60;
+  }
+  .btn-destructive {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-control px-4 text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-60 bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-ghost {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-control px-4 text-sm font-medium whitespace-nowrap text-zinc-600 transition-colors hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-60;
+  }
+  .btn-icon {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-control text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-emerald-700 disabled:pointer-events-none disabled:opacity-30;
+  }
+
+  /* Form controls */
+  .input {
+    @apply h-9 w-full rounded-control border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400;
+  }
+  .select {
+    @apply h-9 w-full appearance-none rounded-control border border-zinc-300 bg-white px-3 pr-8 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400;
+  }
+  .textarea {
+    @apply w-full rounded-control border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400;
+  }
+  .form-label {
+    @apply text-sm font-medium text-zinc-700;
+  }
+  .form-error {
+    @apply text-sm text-red-600;
+  }
+  .form-stack {
+    @apply flex flex-col gap-field;
+  }
+  .form-grid {
+    @apply grid grid-cols-1 gap-field sm:grid-cols-2 sm:gap-x-4;
+  }
+
+  /* Surfaces */
+  .card {
+    @apply rounded-surface border border-zinc-200 bg-white p-card shadow-sm;
+  }
+
+  /* Badges / status labels */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-neutral {
+    @apply inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600;
+  }
+  .badge-brand {
+    @apply inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800;
+  }
+  .badge-success {
+    @apply inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800;
+  }
+  .badge-warning {
+    @apply inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800;
+  }
+  .badge-danger {
+    @apply inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700;
+  }
+  .badge-info {
+    @apply inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700;
+  }
+
+  /* Tables */
+  .table-wrap {
+    @apply w-full overflow-x-auto rounded-surface border border-zinc-200 bg-white shadow-sm;
+  }
+  .table-wrap.table-scroll {
+    @apply max-h-[70vh] overflow-y-auto;
+  }
+  .table {
+    @apply w-full min-w-[720px] border-collapse text-left text-sm;
+  }
+  .table thead th {
+    @apply sticky top-0 z-10 border-b border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-medium tracking-wide text-zinc-500 uppercase;
+  }
+  .table tbody tr {
+    @apply border-b border-zinc-100 transition-colors odd:bg-white even:bg-zinc-50/60 last:border-b-0 hover:bg-emerald-50/60;
+  }
+  .table tbody td {
+    @apply px-4 py-3 align-middle text-zinc-700;
+  }
 }

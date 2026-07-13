@@ -1,0 +1,130 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum Locale {
+  en
+  zh
+}
+
+model User {
+  id                String     @id @default(cuid())
+  username          String     @unique
+  fullName          String
+  passwordHash      String
+  role              String     @default("Staff")
+  phoneNumber       String?
+  permissions       String[]   @default([])
+  status            UserStatus @default(ACTIVE)
+  preferredLanguage Locale     @default(en)
+  createdAt         DateTime   @default(now())
+  lastLoginAt       DateTime?
+  updatedAt         DateTime   @updatedAt
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+}
+
+enum CustomerDocumentType {
+  REGISTRATION_CERTIFICATE
+  PIN_CERTIFICATE
+  CR12
+  OTHER
+}
+
+model Customer {
+  id                String         @id @default(cuid())
+  sequenceNumber    Int            @unique @default(autoincrement())
+  customerNumber    String         @unique
+  companyName       String         @unique
+  pinNumber         String         @unique
+  registeredAddress String?
+  mainContactPerson String?
+  mainPhoneNumber   String?
+  status            CustomerStatus @default(ACTIVE)
+
+  // Storage abstraction (reserved for future Dropbox sync)
+  storageFolderId     String?
+  storageFolderPath   String?
+  storageSyncStatus   String?   @default("pending")
+  storageLastSyncedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  CustomerProject[]
+  documents CustomerDocument[]
+
+  @@index([companyName])
+  @@index([status])
+}
+
+model CustomerProject {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  projectName   String
+  contactPerson String
+  phoneNumber   String
+  description   String?
+  status        ProjectStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents CustomerDocument[]
+
+  @@index([customerId])
+}
+
+model CustomerDocument {
+  id         String           @id @default(cuid())
+  customerId String
+  customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  documentType       CustomerDocumentType
+  customDocumentName String?
+  originalFileName   String
+  storedFileName     String
+  mimeType           String
+  fileSize           Int
+
+  // Storage abstraction (reserved for future Dropbox sync)
+  storageProvider String  @default("local")
+  storageKey      String
+  dropboxFileId   String?
+  dropboxPath     String?
+  syncStatus      String  @default("pending")
+  syncError       String?
+
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([projectId])
+}

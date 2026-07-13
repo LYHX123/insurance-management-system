@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:16
+    container_name: insurance-system-db
+    restart: unless-stopped
+    env_file:
+      - path: .env.production
+        required: false
+    environment:
+      # Dev-friendly fallbacks so `docker compose up -d db` keeps working
+      # unmodified for local development without a .env.production file.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-insurance_system_db}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - insurance_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  app:
+    build: .
+    container_name: insurance-system-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.production
+        required: false
+    environment:
+      # Fixed to match EXPOSE/healthcheck in the Dockerfile regardless of
+      # what PORT might be set to in .env.production.
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    profiles:
+      - production
+
+  # One-off tasks (migrations, seeding) that need the full Prisma CLI, which
+  # is intentionally not present in the slim `app` runtime image. Built from
+  # the same Dockerfile's `builder` stage, so it shares layer cache with the
+  # `app` build and always matches the schema/migrations actually deployed.
+  migrate:
+    build:
+      context: .
+      target: builder
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.production
+        required: false
+    command: ["npx", "prisma", "migrate", "deploy"]
+    profiles:
+      - production
+
+volumes:
+  insurance_db_data:

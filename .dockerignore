@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.production
+.env*.local
+npm-debug.log*
+
+# customer document uploads must never be baked into the image
+uploads
+
+# not needed inside the build context
+.dockerignore
+.gitignore
+DEPLOYMENT.md
+README.md
