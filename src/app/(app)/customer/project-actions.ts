@@ -100,6 +100,11 @@ export async function deleteProjectAction(id: string): Promise<ActionResult> {
   });
   if (!project) return { success: false, error: "PROJECT_NOT_FOUND" };
 
+  const quotationCount = await prisma.quotation.count({ where: { projectId: id } });
+  if (quotationCount > 0) {
+    return { success: false, error: "PROJECT_HAS_QUOTATIONS" };
+  }
+
   // The DB row (and its CustomerDocument children, via onDelete: Cascade) is
   // the source of truth; physical file cleanup is best-effort afterwards.
   await prisma.customerProject.delete({ where: { id } });

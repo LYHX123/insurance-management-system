@@ -193,12 +193,13 @@ export async function deleteCustomerAction(
   const session = await requireCustomerPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
-  const [projectCount, documentCount] = await Promise.all([
+  const [projectCount, documentCount, quotationCount] = await Promise.all([
     prisma.customerProject.count({ where: { customerId: id } }),
     prisma.customerDocument.count({ where: { customerId: id } }),
+    prisma.quotation.count({ where: { customerId: id } }),
   ]);
 
-  if (projectCount > 0 || documentCount > 0) {
+  if (projectCount > 0 || documentCount > 0 || quotationCount > 0) {
     await prisma.customer.update({ where: { id }, data: { status: "INACTIVE" } });
     revalidatePath("/customer");
     revalidatePath(`/customer/${id}`);

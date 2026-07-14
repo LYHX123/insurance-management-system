@@ -93,7 +93,12 @@ export function CustomerDetailView({
     setIsSubmitting(true);
     const result = await deleteProjectAction(modal.project.id);
     setIsSubmitting(false);
-    if (result.success) handleSuccess(t.customers.projectDeleteSuccess);
+    if (result.success) {
+      handleSuccess(t.customers.projectDeleteSuccess);
+    } else if (result.error === "PROJECT_HAS_QUOTATIONS") {
+      setModal(null);
+      setMessage(t.customers.projectHasQuotations);
+    }
   };
 
   const handleDeleteDocument = async () => {

@@ -73,8 +73,9 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects  CustomerProject[]
-  documents CustomerDocument[]
+  projects   CustomerProject[]
+  documents  CustomerDocument[]
+  quotations Quotation[]
 
   @@index([companyName])
   @@index([status])
@@ -94,7 +95,8 @@ model CustomerProject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents CustomerDocument[]
+  documents  CustomerDocument[]
+  quotations Quotation[]
 
   @@index([customerId])
 }
@@ -127,4 +129,144 @@ model CustomerDocument {
 
   @@index([customerId])
   @@index([projectId])
+}
+
+enum QuotationStatus {
+  DRAFT
+  ISSUED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum CalculationMethod {
+  PERCENTAGE
+  FIXED_PREMIUM
+  MANUAL_PREMIUM
+}
+
+// Master configuration for insurance types offered on quotations. Editing a
+// row here only affects future sections — existing QuotationInsuranceSection
+// rows keep their own snapshot of rates/clauses at the time they were added.
+model InsuranceType {
+  id          String  @id @default(cuid())
+  name        String
+  code        String  @unique
+  description String?
+
+  defaultPHCFRate  Decimal @default(0.25) @db.Decimal(10, 4)
+  defaultITLRate   Decimal @default(0.20) @db.Decimal(10, 4)
+  defaultStampDuty Decimal @default(40) @db.Decimal(12, 2)
+  applyPHCF        Boolean @default(true)
+  applyITL         Boolean @default(true)
+  applyStampDuty   Boolean @default(true)
+
+  defaultClauses    String?
+  defaultExclusions String?
+  defaultConditions String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections QuotationInsuranceSection[]
+
+  @@index([active])
+}
+
+// Atomic per-month counter backing the QT{YYYYMM}-{seq} quotation number
+// format. A single row per year-month, incremented via an INSERT ... ON
+// CONFLICT DO UPDATE so concurrent quotation creation can never collide.
+model QuotationNumberCounter {
+  yearMonth    String @id
+  lastSequence Int    @default(0)
+}
+
+model Quotation {
+  id              String           @id @default(cuid())
+  quotationNumber String           @unique
+  customerId      String
+  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  projectId       String?
+  project         CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  quotationDate DateTime        @default(now())
+  validUntil    DateTime?
+  currency      String          @default("KES")
+  status        QuotationStatus @default(DRAFT)
+  internalNotes String?
+
+  subtotalPremium Decimal @default(0) @db.Decimal(16, 2)
+  totalPHCF       Decimal @default(0) @db.Decimal(16, 2)
+  totalITL        Decimal @default(0) @db.Decimal(16, 2)
+  totalStampDuty  Decimal @default(0) @db.Decimal(16, 2)
+  grandTotal      Decimal @default(0) @db.Decimal(16, 2)
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections QuotationInsuranceSection[]
+
+  @@index([customerId])
+  @@index([projectId])
+  @@index([status])
+}
+
+model QuotationInsuranceSection {
+  id              String        @id @default(cuid())
+  quotationId     String
+  quotation       Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  insuranceTypeId String
+  insuranceType   InsuranceType @relation(fields: [insuranceTypeId], references: [id], onDelete: Restrict)
+
+  // Snapshots — set when the section is added and edited independently of
+  // the InsuranceType master record from then on.
+  insuranceTypeNameSnapshot String
+  description               String?
+  phcfRate                  Decimal @db.Decimal(10, 4)
+  itlRate                   Decimal @db.Decimal(10, 4)
+  stampDuty                 Decimal @db.Decimal(12, 2)
+  applyPHCF                 Boolean
+  applyITL                  Boolean
+  applyStampDuty            Boolean
+  clausesSnapshot           String?
+  exclusionsSnapshot        String?
+  conditionsSnapshot        String?
+
+  basePremium  Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount   Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount    Decimal @default(0) @db.Decimal(16, 2)
+  sectionTotal Decimal @default(0) @db.Decimal(16, 2)
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items QuotationCoverageItem[]
+
+  @@index([quotationId])
+  @@index([insuranceTypeId])
+}
+
+model QuotationCoverageItem {
+  id        String                    @id @default(cuid())
+  sectionId String
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  insuredContent    String
+  sumInsured        Decimal?          @db.Decimal(18, 2)
+  rate              Decimal?          @db.Decimal(10, 4)
+  calculationMethod CalculationMethod
+  premium           Decimal           @db.Decimal(16, 2)
+  notes             String?
+  sortOrder         Int               @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectionId])
 }
