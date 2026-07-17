@@ -1,13 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Pencil, Download } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Pencil, Download, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatMoney } from "@/components/ui/money-input";
+import { deleteQuotationAction } from "@/app/(app)/quotation/actions";
 import type { QuotationDetail, QuotationStatus } from "@/components/quotations/types";
 
 const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -21,6 +26,22 @@ const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "wa
 
 export function QuotationDetailView({ quotation }: { quotation: QuotationDetail }) {
   const { t, locale } = useLocale();
+  const router = useRouter();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    const result = await deleteQuotationAction(quotation.id);
+    setIsDeleting(false);
+    if (!result.success) {
+      setDeleteError(t.quotations.deleteQuotationFailed);
+      return;
+    }
+    router.push("/quotation");
+  };
 
   const statusLabel: Record<QuotationStatus, string> = {
     DRAFT: t.quotations.statusDraft,
@@ -42,11 +63,7 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
     dateStyle: "medium",
     timeStyle: "short",
   });
-  const money = (value: string) =>
-    Number(value).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+  const money = formatMoney;
 
   return (
     <div className="flex flex-col gap-section">
@@ -75,10 +92,27 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
                   {t.common.edit}
                 </Button>
               </Link>
+              <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+                <Trash2 size={16} />
+                {t.common.delete}
+              </Button>
             </>
           }
         />
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={t.quotations.confirmDeleteQuotation}
+          message={
+            deleteError ??
+            t.quotations.confirmDeleteQuotationMessage.replace("{number}", quotation.quotationNumber)
+          }
+          isSubmitting={isDeleting}
+          onConfirm={handleDelete}
+          onClose={() => setConfirmingDelete(false)}
+        />
+      )}
 
       <Card>
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">

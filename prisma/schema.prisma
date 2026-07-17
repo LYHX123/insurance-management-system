@@ -146,6 +146,48 @@ enum CalculationMethod {
   MANUAL_PREMIUM
 }
 
+// Discriminates which structured detail table (if any) a section carries.
+// GENERIC sections (the original line-item model) have no detail row and
+// keep working exactly as before — this field defaults to GENERIC so every
+// pre-Phase-1 section is unaffected. Adding a future insurance type only
+// means adding one more enum value plus one more *SectionDetail model; it
+// never requires touching the sections/kinds that already exist.
+enum QuotationSectionKind {
+  GENERIC
+  CAR_PACKAGE
+  WIBA
+  EMPLOYERS_LIABILITY
+  CPM_STANDALONE
+  PUBLIC_LIABILITY
+  FIRE_AND_PERILS
+  BURGLARY
+  GIT_SINGLE
+  GIT_ANNUAL
+  MARINE_COVER
+  MOTOR_COMP_PRIVATE
+  MOTOR_COMP_COMMERCIAL
+  MOTOR_TPO_PRIVATE
+  MOTOR_TPO_COMMERCIAL
+  GROUP_PERSONAL_ACCIDENT
+  GROUP_MEDICAL
+  TENDER_SECURITY
+  PERFORMANCE_BOND
+  ADVANCE_PAYMENT_GUARANTEE
+  CUSTOMS_BOND
+}
+
+// Fixed family categories for Group Medical — an enum (rather than free
+// text) so Phase 2B cannot introduce arbitrary category labels. "+" isn't a
+// valid Prisma enum identifier, so the DB label is set via @map.
+enum MedicalFamilyCategory {
+  M
+  M_PLUS_1 @map("M+1")
+  M_PLUS_2 @map("M+2")
+  M_PLUS_3 @map("M+3")
+  M_PLUS_4 @map("M+4")
+  M_PLUS_5 @map("M+5")
+}
+
 // Master configuration for insurance types offered on quotations. Editing a
 // row here only affects future sections — existing QuotationInsuranceSection
 // rows keep their own snapshot of rates/clauses at the time they were added.
@@ -222,6 +264,11 @@ model QuotationInsuranceSection {
   insuranceTypeId String
   insuranceType   InsuranceType @relation(fields: [insuranceTypeId], references: [id], onDelete: Restrict)
 
+  // Which structured *SectionDetail table (if any) this section carries.
+  // Defaults to GENERIC so every section created before Phase 1 keeps its
+  // original meaning untouched.
+  sectionKind QuotationSectionKind @default(GENERIC)
+
   // Snapshots — set when the section is added and edited independently of
   // the InsuranceType master record from then on.
   insuranceTypeNameSnapshot String
@@ -236,6 +283,10 @@ model QuotationInsuranceSection {
   exclusionsSnapshot        String?
   conditionsSnapshot        String?
 
+  // Roll-up totals — always populated here regardless of sectionKind, using
+  // the same shape the Excel export and quotation summary already read.
+  // Structured sections compute these from their own detail row; GENERIC
+  // sections compute them from the sum of their coverage items, as before.
   basePremium  Decimal @default(0) @db.Decimal(16, 2)
   phcfAmount   Decimal @default(0) @db.Decimal(16, 2)
   itlAmount    Decimal @default(0) @db.Decimal(16, 2)
@@ -246,10 +297,647 @@ model QuotationInsuranceSection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Generic line items. Still populated (as a human-readable, non-authoritative
+  // breakdown) for structured sections too, so the existing Excel export needs
+  // no changes to display a meaningful item table for any sectionKind.
   items QuotationCoverageItem[]
+
+  carDetail  CarSectionDetail?
+  wibaDetail WibaSectionDetail?
+  elDetail   ElSectionDetail?
+  cpmDetail  CpmSectionDetail?
+
+  // --- Phase 2A structured insurance-type detail relations -------------
+  publicLiabilityDetail PublicLiabilitySectionDetail?
+  fireDetail            FireSectionDetail?
+  burglaryDetail        BurglarySectionDetail?
+  gitSingleDetail       GitSingleSectionDetail?
+  gitAnnualDetail       GitAnnualSectionDetail?
+  marineDetail          MarineSectionDetail?
+
+  // --- Phase 2B structured insurance-type detail relations -------------
+  motorCompPrivateDetail       MotorCompPrivateSectionDetail?
+  motorCompCommercialDetail    MotorCompCommercialSectionDetail?
+  motorTpoPrivateDetail        MotorTpoPrivateSectionDetail?
+  motorTpoCommercialDetail     MotorTpoCommercialSectionDetail?
+  gpaDetail                    GpaSectionDetail?
+  medicalDetail                MedicalSectionDetail?
+  tenderSecurityDetail         TenderSecuritySectionDetail?
+  performanceBondDetail        PerformanceBondSectionDetail?
+  advancePaymentGuaranteeDetail AdvancePaymentGuaranteeSectionDetail?
+  customsBondDetail            CustomsBondSectionDetail?
 
   @@index([quotationId])
   @@index([insuranceTypeId])
+}
+
+// --- Phase 1 structured insurance-type detail tables --------------------
+// Each insurance type gets its own SectionDetail model, holding the
+// type-specific inputs and the computed sub-premium breakdown for that type.
+// A future insurance type (Fire, Marine, GPA, ...) is added the same way:
+// one new *SectionDetail model + one new QuotationSectionKind value, with no
+// changes required to the models below.
+
+model CarSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  // Common CAR details
+  projectName   String?
+  contractValue Decimal @db.Decimal(18, 2)
+  carRate       Decimal @db.Decimal(10, 4)
+
+  // Legacy contract date range — superseded by the month fields below for
+  // Phase 1 CAR quotations. Left nullable (rather than dropped) so rows
+  // written before this change keep their original dates untouched; any
+  // quotation that gets edited and re-saved after this change switches over
+  // to the month fields and these become null going forward.
+  contractPeriodFrom DateTime?
+  contractPeriodTo   DateTime?
+
+  // Construction / maintenance period, in whole months. Required for every
+  // CAR section created or re-saved from this point on.
+  constructionPeriodMonths Int?
+  maintenancePeriodMonths  Int?
+
+  // CPM inside CAR (optional — both blank means no CPM component)
+  cpmValue Decimal? @db.Decimal(18, 2)
+  cpmRate  Decimal? @db.Decimal(10, 4)
+
+  // TPL inside CAR
+  tplAnyOneClaim   Decimal? @db.Decimal(18, 2)
+  tplAnyOneEvent   Decimal? @db.Decimal(18, 2)
+  tplAnyOnePeriod  Decimal? @db.Decimal(18, 2)
+  tplRate          Decimal? @db.Decimal(10, 4)
+  tplComplimentary Boolean  @default(false)
+
+  // Optional PVT loading — amount is always a manual entry (no auto-calculated
+  // base is defined for this project), rate is captured for reference only.
+  pvtLoadingEnabled Boolean  @default(false)
+  pvtLoadingRate    Decimal? @db.Decimal(10, 4)
+  pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+
+  // Computed breakdown (snapshotted at save time)
+  carBasicPremium     Decimal @default(0) @db.Decimal(16, 2)
+  carCpmPremium       Decimal @default(0) @db.Decimal(16, 2)
+  carMainGrossPremium Decimal @default(0) @db.Decimal(16, 2)
+  carMainPhcf         Decimal @default(0) @db.Decimal(16, 2)
+  carMainItl          Decimal @default(0) @db.Decimal(16, 2)
+  carMainStampDuty    Decimal @default(0) @db.Decimal(16, 2)
+  carMainTotal        Decimal @default(0) @db.Decimal(16, 2)
+
+  tplGrossPremium Decimal @default(0) @db.Decimal(16, 2)
+  tplPhcf         Decimal @default(0) @db.Decimal(16, 2)
+  tplItl          Decimal @default(0) @db.Decimal(16, 2)
+  tplStampDuty    Decimal @default(0) @db.Decimal(16, 2)
+  tplTotalPremium Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WibaSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  wibaRate Decimal @db.Decimal(10, 4)
+
+  // Computed breakdown (snapshotted at save time)
+  totalEmployeeCount Int     @default(0)
+  totalAnnualWages   Decimal @default(0) @db.Decimal(18, 2)
+  grossPremium       Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount         Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount          Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount    Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium       Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payrollRows WibaPayrollRow[]
+}
+
+model WibaPayrollRow {
+  id           String            @id @default(cuid())
+  wibaDetailId String
+  wibaDetail   WibaSectionDetail @relation(fields: [wibaDetailId], references: [id], onDelete: Cascade)
+
+  occupation    String
+  employeeCount Int
+  annualWages   Decimal @db.Decimal(18, 2)
+  sortOrder     Int     @default(0)
+
+  @@index([wibaDetailId])
+}
+
+model ElSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  // Snapshot of the WIBA gross premium this EL was derived from at save
+  // time — el_gross_premium = linkedWibaGrossPremium x 25%.
+  linkedWibaGrossPremium Decimal @db.Decimal(16, 2)
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CpmSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  cpmRate Decimal @db.Decimal(10, 4)
+
+  // PVT loading — amount is always a manual entry, rate is reference only.
+  pvtLoadingEnabled Boolean  @default(false)
+  pvtLoadingRate    Decimal? @db.Decimal(10, 4)
+  pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+
+  // Computed breakdown (snapshotted at save time)
+  totalSumInsured Decimal @default(0) @db.Decimal(18, 2)
+  basicPremium    Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipmentRows CpmEquipmentRow[]
+}
+
+model CpmEquipmentRow {
+  id          String           @id @default(cuid())
+  cpmDetailId String
+  cpmDetail   CpmSectionDetail @relation(fields: [cpmDetailId], references: [id], onDelete: Cascade)
+
+  equipmentName String
+  quantity      Int
+  unitValue     Decimal @db.Decimal(18, 2)
+  totalValue    Decimal @db.Decimal(18, 2)
+  sortOrder     Int     @default(0)
+
+  @@index([cpmDetailId])
+}
+
+// --- Phase 2A structured insurance-type detail tables --------------------
+// Same pattern as the Phase 1 *SectionDetail models above: type-specific
+// inputs plus a snapshotted computed breakdown, one model per insurance
+// type, wired to QuotationInsuranceSection via a unique sectionId FK.
+
+model PublicLiabilitySectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  anyOnePersonLimit     Decimal? @db.Decimal(18, 2)
+  anyOneOccurrenceLimit Decimal? @db.Decimal(18, 2)
+  anyOneYearLimit       Decimal  @db.Decimal(18, 2)
+  rate                  Decimal  @db.Decimal(10, 4)
+
+  // Computed breakdown (snapshotted at save time)
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FireSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  propertyValue         Decimal @default(0) @db.Decimal(18, 2)
+  rawMaterialValue       Decimal @default(0) @db.Decimal(18, 2)
+  goodsInStockValue       Decimal @default(0) @db.Decimal(18, 2)
+  rate                   Decimal @db.Decimal(10, 4)
+  earthquakeLoadingRate   Decimal @default(0) @db.Decimal(10, 4)
+  floodLoadingRate        Decimal @default(0) @db.Decimal(10, 4)
+
+  pvtLoadingEnabled Boolean  @default(false)
+  pvtLoadingRate    Decimal? @db.Decimal(10, 4)
+  pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+
+  // Computed breakdown (snapshotted at save time)
+  totalSumInsured         Decimal @default(0) @db.Decimal(18, 2)
+  basicPremium            Decimal @default(0) @db.Decimal(16, 2)
+  earthquakeLoadingAmount Decimal @default(0) @db.Decimal(16, 2)
+  floodLoadingAmount      Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium            Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount              Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount               Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount         Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium            Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BurglarySectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  equipmentValue      Decimal @default(0) @db.Decimal(18, 2)
+  stockValue          Decimal @default(0) @db.Decimal(18, 2)
+  firstLossPercentage Decimal @db.Decimal(10, 4)
+  rate                Decimal @db.Decimal(10, 4)
+
+  // Computed breakdown (snapshotted at save time)
+  totalValue          Decimal @default(0) @db.Decimal(18, 2)
+  firstLossSumInsured Decimal @default(0) @db.Decimal(18, 2)
+  grossPremium        Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount          Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount           Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount     Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium        Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GitSingleSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  cargoDescription String
+  route            String?
+  sumInsured       Decimal @db.Decimal(18, 2)
+  rate             Decimal @db.Decimal(10, 4)
+
+  pvtLoadingEnabled Boolean  @default(false)
+  pvtLoadingRate    Decimal? @db.Decimal(10, 4)
+  pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+
+  // Computed breakdown (snapshotted at save time)
+  basicPremium    Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GitAnnualSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  cargoDescription String
+  singleLimit      Decimal @db.Decimal(18, 2)
+  yearLimit        Decimal @db.Decimal(18, 2)
+  singleLimitRate  Decimal @db.Decimal(10, 4)
+  yearLimitRate    Decimal @db.Decimal(10, 4)
+
+  pvtLoadingEnabled Boolean  @default(false)
+  pvtLoadingRate    Decimal? @db.Decimal(10, 4)
+  pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+
+  // Computed breakdown (snapshotted at save time) — singlePremium and
+  // yearPremium are calculated independently and summed, never derived from
+  // a combined limit.
+  singlePremium   Decimal @default(0) @db.Decimal(16, 2)
+  yearPremium     Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MarineSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  cargoDescription String?
+  origin           String?
+  destination      String?
+
+  // Snapshot of MARINE_STAMP_DUTY_RATE at save time — Marine is the only
+  // section kind whose stamp duty is a percentage of sum insured rather
+  // than the fixed KES 40 used everywhere else.
+  marineStampDutyRate Decimal @db.Decimal(10, 4)
+
+  // Computed breakdown (snapshotted at save time)
+  totalSumInsured       Decimal @default(0) @db.Decimal(18, 2)
+  grossPremium          Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount            Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount             Decimal @default(0) @db.Decimal(16, 2)
+  marineStampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium          Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipmentRows MarineShipmentRow[]
+}
+
+model MarineShipmentRow {
+  id             String              @id @default(cuid())
+  marineDetailId String
+  marineDetail   MarineSectionDetail @relation(fields: [marineDetailId], references: [id], onDelete: Cascade)
+
+  referenceNo String?
+  sumInsured  Decimal @db.Decimal(18, 2)
+  rate        Decimal @db.Decimal(10, 4)
+  linePremium Decimal @db.Decimal(16, 2)
+  sortOrder   Int     @default(0)
+
+  @@index([marineDetailId])
+}
+
+// --- Phase 2B structured insurance-type detail tables --------------------
+
+model MotorCompPrivateSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  plateNo         String
+  vehicleValue    Decimal  @db.Decimal(18, 2)
+  periodFrom      DateTime
+  periodTo        DateTime
+  excessProtector String?
+  pvt             String?
+  rate            Decimal  @db.Decimal(10, 4)
+
+  // Computed breakdown (snapshotted at save time)
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Same shape as Private Comprehensive — kept as a separate model/section
+// kind because the Excel template section and fixed clauses differ.
+model MotorCompCommercialSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  plateNo         String
+  vehicleValue    Decimal  @db.Decimal(18, 2)
+  periodFrom      DateTime
+  periodTo        DateTime
+  excessProtector String?
+  pvt             String?
+  rate            Decimal  @db.Decimal(10, 4)
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MotorTpoPrivateSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  plateNo     String
+  basePremium Decimal  @db.Decimal(16, 2)
+  periodFrom  DateTime
+  periodTo    DateTime
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// loadingCapacity (tonnage) is stored for reference only in Phase 2B — no
+// automatic tariff table yet; Base Premium is always entered manually.
+model MotorTpoCommercialSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  plateNo         String
+  loadingCapacity Decimal  @default(0) @db.Decimal(10, 2)
+  basePremium     Decimal  @db.Decimal(16, 2)
+  periodFrom      DateTime
+  periodTo        DateTime
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GpaSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  deathLimit   Decimal @default(0) @db.Decimal(18, 2)
+  ptdLimit     Decimal @default(0) @db.Decimal(18, 2)
+  ttdLimit     Decimal @default(0) @db.Decimal(18, 2)
+  medicalLimit Decimal @default(0) @db.Decimal(18, 2)
+  funeralLimit Decimal @default(0) @db.Decimal(18, 2)
+
+  deathRate   Decimal @default(0) @db.Decimal(10, 4)
+  ptdRate     Decimal @default(0) @db.Decimal(10, 4)
+  ttdRate     Decimal @default(0) @db.Decimal(10, 4)
+  medicalRate Decimal @default(0) @db.Decimal(10, 4)
+  funeralRate Decimal @default(0) @db.Decimal(10, 4)
+
+  numberOfPeople Int @default(0)
+
+  // Computed breakdown (snapshotted at save time)
+  deathPremium     Decimal @default(0) @db.Decimal(16, 2)
+  ptdPremium       Decimal @default(0) @db.Decimal(16, 2)
+  ttdPremium       Decimal @default(0) @db.Decimal(16, 2)
+  medicalPremium   Decimal @default(0) @db.Decimal(16, 2)
+  funeralPremium   Decimal @default(0) @db.Decimal(16, 2)
+  premiumPerPerson Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium     Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount       Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount        Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount  Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium     Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MedicalSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  inpatientLimit  Decimal @default(0) @db.Decimal(18, 2)
+  outpatientLimit Decimal @default(0) @db.Decimal(18, 2)
+
+  // Computed breakdown (snapshotted at save time). PHCF and ITL are always
+  // zero for Group Medical per the approved template — stored explicitly
+  // (rather than omitted) so the roll-up shape matches every other section.
+  employeeCount     Int     @default(0)
+  inpatientPremium  Decimal @default(0) @db.Decimal(16, 2)
+  outpatientPremium Decimal @default(0) @db.Decimal(16, 2)
+  subtotal          Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium      Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount        Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount         Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount   Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium      Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categoryRows MedicalFamilyCategoryRow[]
+}
+
+// Always exactly 6 rows (M, M+1..M+5), written/read in fixed sortOrder so
+// the category ordering survives save/edit/reload — Phase 2B never allows
+// arbitrary categories or a variable row count here (contrast with the
+// fully dynamic WIBA/CPM/Marine/CustomsBond row patterns).
+model MedicalFamilyCategoryRow {
+  id              String                @id @default(cuid())
+  medicalDetailId String
+  medicalDetail   MedicalSectionDetail  @relation(fields: [medicalDetailId], references: [id], onDelete: Cascade)
+
+  category         MedicalFamilyCategory
+  employeeCount    Int     @default(0)
+  inpatientRate    Decimal @default(0) @db.Decimal(10, 4)
+  outpatientRate   Decimal @default(0) @db.Decimal(10, 4)
+  inpatientAmount  Decimal @default(0) @db.Decimal(16, 2)
+  outpatientAmount Decimal @default(0) @db.Decimal(16, 2)
+  sortOrder        Int     @default(0)
+
+  @@index([medicalDetailId])
+}
+
+model TenderSecuritySectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  projectName String
+  bondValue   Decimal @db.Decimal(18, 2)
+  rate        Decimal @db.Decimal(10, 4)
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Same bondValue x rate formula as Tender Security, kept as its own model
+// (rather than a shared relation) so a quotation can hold Tender Security,
+// Performance Bond and APG at the same time with zero relation ambiguity —
+// the shared behavior lives in the calculateGuarantee() calculator instead.
+model PerformanceBondSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  projectName String
+  bondValue   Decimal @db.Decimal(18, 2)
+  rate        Decimal @db.Decimal(10, 4)
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AdvancePaymentGuaranteeSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  projectName String
+  bondValue   Decimal @db.Decimal(18, 2)
+  rate        Decimal @db.Decimal(10, 4)
+
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomsBondSectionDetail {
+  id        String                    @id @default(cuid())
+  sectionId String                    @unique
+  section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  grossPremium Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount   Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount    Decimal @default(0) @db.Decimal(16, 2)
+  // One flat KES 40 for the whole section, never per row.
+  stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
+  totalPremium    Decimal @default(0) @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itemRows CustomsBondItemRow[]
+}
+
+model CustomsBondItemRow {
+  id                  String                   @id @default(cuid())
+  customsBondDetailId String
+  customsBondDetail   CustomsBondSectionDetail @relation(fields: [customsBondDetailId], references: [id], onDelete: Cascade)
+
+  bondType  String
+  bondValue Decimal @db.Decimal(18, 2)
+  rate      Decimal @db.Decimal(10, 4)
+  premium   Decimal @db.Decimal(16, 2)
+  sortOrder Int     @default(0)
+
+  @@index([customsBondDetailId])
 }
 
 model QuotationCoverageItem {

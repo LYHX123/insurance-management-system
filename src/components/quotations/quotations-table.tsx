@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, Pencil, Settings, Plus } from "lucide-react";
+import { Eye, Pencil, Trash2, Settings, Plus } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,9 @@ import { Input } from "@/components/ui/input";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatMoney } from "@/components/ui/money-input";
+import { deleteQuotationAction } from "@/app/(app)/quotation/actions";
 import type { QuotationListRow, QuotationStatus } from "@/components/quotations/types";
 
 const STATUSES: QuotationStatus[] = [
@@ -34,10 +38,28 @@ const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "wa
 
 export function QuotationsTable({ quotations }: { quotations: QuotationListRow[] }) {
   const { t, locale } = useLocale();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | QuotationStatus>("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<QuotationListRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    const result = await deleteQuotationAction(deleteTarget.id);
+    setIsDeleting(false);
+    if (!result.success) {
+      setDeleteError(t.quotations.deleteQuotationFailed);
+      return;
+    }
+    setDeleteTarget(null);
+    router.refresh();
+  };
 
   const statusLabel: Record<QuotationStatus, string> = {
     DRAFT: t.quotations.statusDraft,
@@ -47,11 +69,6 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
     EXPIRED: t.quotations.statusExpired,
     CANCELLED: t.quotations.statusCancelled,
   };
-
-  const currencyFormatter = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
     dateStyle: "medium",
@@ -170,9 +187,9 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                     )}
                   </div>
                 </td>
-                <td className="text-zinc-500">{currencyFormatter.format(Number(q.subtotalPremium))}</td>
-                <td className="text-zinc-500">{currencyFormatter.format(Number(q.totalLevies))}</td>
-                <td className="font-medium text-zinc-800">{currencyFormatter.format(Number(q.grandTotal))}</td>
+                <td className="text-zinc-500">{formatMoney(q.subtotalPremium)}</td>
+                <td className="text-zinc-500">{formatMoney(q.totalLevies)}</td>
+                <td className="font-medium text-zinc-800">{formatMoney(q.grandTotal)}</td>
                 <td>
                   <Badge tone={STATUS_TONE[q.status]}>{statusLabel[q.status]}</Badge>
                 </td>
@@ -189,6 +206,16 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                         <Pencil size={16} />
                       </IconButton>
                     </Link>
+                    <IconButton
+                      tone="danger"
+                      title={t.common.delete}
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteTarget(q);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
                   </div>
                 </td>
               </tr>
@@ -196,6 +223,19 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
           </tbody>
         </Table>
       </TableWrap>
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t.quotations.confirmDeleteQuotation}
+          message={
+            deleteError ??
+            t.quotations.confirmDeleteQuotationMessage.replace("{number}", deleteTarget.quotationNumber)
+          }
+          isSubmitting={isDeleting}
+          onConfirm={handleDelete}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

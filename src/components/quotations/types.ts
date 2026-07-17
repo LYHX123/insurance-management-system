@@ -33,6 +33,201 @@ export type InsuranceTypeOption = {
 
 export type CalculationMethod = "PERCENTAGE" | "FIXED_PREMIUM" | "MANUAL_PREMIUM";
 
+export type QuotationSectionKind =
+  | "GENERIC"
+  | "CAR_PACKAGE"
+  | "WIBA"
+  | "EMPLOYERS_LIABILITY"
+  | "CPM_STANDALONE"
+  | "PUBLIC_LIABILITY"
+  | "FIRE_AND_PERILS"
+  | "BURGLARY"
+  | "GIT_SINGLE"
+  | "GIT_ANNUAL"
+  | "MARINE_COVER"
+  | "MOTOR_COMP_PRIVATE"
+  | "MOTOR_COMP_COMMERCIAL"
+  | "MOTOR_TPO_PRIVATE"
+  | "MOTOR_TPO_COMMERCIAL"
+  | "GROUP_PERSONAL_ACCIDENT"
+  | "GROUP_MEDICAL"
+  | "TENDER_SECURITY"
+  | "PERFORMANCE_BOND"
+  | "ADVANCE_PAYMENT_GUARANTEE"
+  | "CUSTOMS_BOND";
+
+export type MedicalFamilyCategory = "M" | "M_PLUS_1" | "M_PLUS_2" | "M_PLUS_3" | "M_PLUS_4" | "M_PLUS_5";
+
+export type CarSectionDetailRow = {
+  projectName: string | null;
+  contractValue: string;
+  carRate: string;
+  contractPeriodFrom: string | null;
+  contractPeriodTo: string | null;
+  constructionPeriodMonths: number | null;
+  maintenancePeriodMonths: number | null;
+  cpmValue: string | null;
+  cpmRate: string | null;
+  tplAnyOneClaim: string | null;
+  tplAnyOneEvent: string | null;
+  tplAnyOnePeriod: string | null;
+  tplRate: string | null;
+  tplComplimentary: boolean;
+  pvtLoadingEnabled: boolean;
+  pvtLoadingRate: string | null;
+  pvtLoadingAmount: string;
+};
+
+export type WibaPayrollRowData = {
+  occupation: string;
+  employeeCount: number;
+  annualWages: string;
+};
+
+export type WibaSectionDetailRow = {
+  wibaRate: string;
+  payrollRows: WibaPayrollRowData[];
+};
+
+export type CpmEquipmentRowData = {
+  equipmentName: string;
+  quantity: number;
+  unitValue: string;
+  totalValue: string;
+};
+
+export type CpmSectionDetailRow = {
+  cpmRate: string;
+  pvtLoadingEnabled: boolean;
+  pvtLoadingRate: string | null;
+  pvtLoadingAmount: string;
+  equipmentRows: CpmEquipmentRowData[];
+};
+
+export type PublicLiabilitySectionDetailRow = {
+  anyOnePersonLimit: string | null;
+  anyOneOccurrenceLimit: string | null;
+  anyOneYearLimit: string;
+  rate: string;
+};
+
+export type FireSectionDetailRow = {
+  propertyValue: string;
+  rawMaterialValue: string;
+  goodsInStockValue: string;
+  rate: string;
+  earthquakeLoadingRate: string;
+  floodLoadingRate: string;
+  pvtLoadingEnabled: boolean;
+  pvtLoadingRate: string | null;
+  pvtLoadingAmount: string;
+};
+
+export type BurglarySectionDetailRow = {
+  equipmentValue: string;
+  stockValue: string;
+  firstLossPercentage: string;
+  rate: string;
+};
+
+export type GitSingleSectionDetailRow = {
+  cargoDescription: string;
+  route: string | null;
+  sumInsured: string;
+  rate: string;
+  pvtLoadingEnabled: boolean;
+  pvtLoadingRate: string | null;
+  pvtLoadingAmount: string;
+};
+
+export type GitAnnualSectionDetailRow = {
+  cargoDescription: string;
+  singleLimit: string;
+  yearLimit: string;
+  singleLimitRate: string;
+  yearLimitRate: string;
+  pvtLoadingEnabled: boolean;
+  pvtLoadingRate: string | null;
+  pvtLoadingAmount: string;
+};
+
+export type MarineShipmentRowData = {
+  referenceNo: string | null;
+  sumInsured: string;
+  rate: string;
+  linePremium: string;
+};
+
+export type MarineSectionDetailRow = {
+  cargoDescription: string | null;
+  origin: string | null;
+  destination: string | null;
+  marineStampDutyRate: string;
+  shipmentRows: MarineShipmentRowData[];
+};
+
+export type MotorComprehensiveDetailRow = {
+  plateNo: string;
+  vehicleValue: string;
+  periodFrom: string;
+  periodTo: string;
+  excessProtector: string | null;
+  pvt: string | null;
+  rate: string;
+};
+
+export type MotorTpoDetailRow = {
+  plateNo: string;
+  loadingCapacity: string | null;
+  basePremium: string;
+  periodFrom: string;
+  periodTo: string;
+};
+
+export type GpaSectionDetailRow = {
+  deathLimit: string;
+  ptdLimit: string;
+  ttdLimit: string;
+  medicalLimit: string;
+  funeralLimit: string;
+  deathRate: string;
+  ptdRate: string;
+  ttdRate: string;
+  medicalRate: string;
+  funeralRate: string;
+  numberOfPeople: number;
+};
+
+export type MedicalFamilyCategoryRowData = {
+  category: MedicalFamilyCategory;
+  employeeCount: number;
+  inpatientRate: string;
+  outpatientRate: string;
+};
+
+export type MedicalSectionDetailRow = {
+  inpatientLimit: string;
+  outpatientLimit: string;
+  categoryRows: MedicalFamilyCategoryRowData[];
+};
+
+export type GuaranteeSectionDetailRow = {
+  projectName: string;
+  bondValue: string;
+  rate: string;
+};
+
+export type CustomsBondItemRowData = {
+  bondType: string;
+  bondValue: string;
+  rate: string;
+  premium: string;
+};
+
+export type CustomsBondSectionDetailRow = {
+  itemRows: CustomsBondItemRowData[];
+};
+
 export type QuotationStatus =
   | "DRAFT"
   | "ISSUED"
@@ -56,6 +251,7 @@ export type SectionRow = {
   id: string;
   insuranceTypeId: string;
   insuranceTypeNameSnapshot: string;
+  sectionKind: QuotationSectionKind;
   description: string | null;
   phcfRate: string;
   itlRate: string;
@@ -72,6 +268,25 @@ export type SectionRow = {
   conditionsSnapshot: string | null;
   sortOrder: number;
   items: CoverageItemRow[];
+  carDetail: CarSectionDetailRow | null;
+  wibaDetail: WibaSectionDetailRow | null;
+  cpmDetail: CpmSectionDetailRow | null;
+  publicLiabilityDetail: PublicLiabilitySectionDetailRow | null;
+  fireDetail: FireSectionDetailRow | null;
+  burglaryDetail: BurglarySectionDetailRow | null;
+  gitSingleDetail: GitSingleSectionDetailRow | null;
+  gitAnnualDetail: GitAnnualSectionDetailRow | null;
+  marineDetail: MarineSectionDetailRow | null;
+  motorCompPrivateDetail: MotorComprehensiveDetailRow | null;
+  motorCompCommercialDetail: MotorComprehensiveDetailRow | null;
+  motorTpoPrivateDetail: MotorTpoDetailRow | null;
+  motorTpoCommercialDetail: MotorTpoDetailRow | null;
+  gpaDetail: GpaSectionDetailRow | null;
+  medicalDetail: MedicalSectionDetailRow | null;
+  tenderSecurityDetail: GuaranteeSectionDetailRow | null;
+  performanceBondDetail: GuaranteeSectionDetailRow | null;
+  advancePaymentGuaranteeDetail: GuaranteeSectionDetailRow | null;
+  customsBondDetail: CustomsBondSectionDetailRow | null;
 };
 
 export type QuotationListRow = {
