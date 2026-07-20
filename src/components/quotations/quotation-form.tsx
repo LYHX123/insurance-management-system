@@ -167,6 +167,8 @@ const ERROR_KEY: Record<string, string> = {
   WIBA_ROW_OCCUPATION_REQUIRED: "wibaRowOccupationRequired",
   WIBA_ROW_EMPLOYEE_COUNT_INVALID: "invalidNonNegativeInteger",
   WIBA_ROW_WAGES_INVALID: "invalidNonNegativeNumber",
+  WIBA_ROW_BASIC_SALARY_INVALID: "invalidNonNegativeNumber",
+  WIBA_ROW_ALLOWANCE_INVALID: "invalidNonNegativeNumber",
   WIBA_RATE_INVALID: "invalidNonNegativeNumber",
   EL_REQUIRES_WIBA: "elRequiresWiba",
   CPM_AT_LEAST_ONE_ROW: "cpmAtLeastOneRow",
@@ -322,6 +324,8 @@ function hydrateWibaDraft(sections: SectionRow[]): WibaDraft {
             occupation: r.occupation,
             employeeCount: String(r.employeeCount),
             annualWages: r.annualWages,
+            basicMonthlySalary: r.basicMonthlySalary ?? "",
+            monthlyAllowance: r.monthlyAllowance ?? "",
           }))
         : [emptyWibaPayrollRow()],
   };
@@ -334,7 +338,6 @@ function hydrateCpmDraft(sections: SectionRow[]): CpmDraft {
     cpmRate: detail.cpmRate,
     pvtLoadingEnabled: detail.pvtLoadingEnabled,
     pvtLoadingRate: detail.pvtLoadingRate ?? "",
-    pvtLoadingAmount: detail.pvtLoadingAmount,
     equipmentRows:
       detail.equipmentRows.length > 0
         ? detail.equipmentRows.map((r) => ({
@@ -366,8 +369,8 @@ function hydrateFireDraft(sections: SectionRow[]): FireDraft {
     rawMaterialValue: detail.rawMaterialValue,
     goodsInStockValue: detail.goodsInStockValue,
     rate: detail.rate,
-    earthquakeLoadingRate: detail.earthquakeLoadingRate,
-    floodLoadingRate: detail.floodLoadingRate,
+    earthquakeLoadingEnabled: detail.earthquakeLoadingEnabled,
+    floodLoadingEnabled: detail.floodLoadingEnabled,
     pvtLoadingEnabled: detail.pvtLoadingEnabled,
     pvtLoadingRate: detail.pvtLoadingRate ?? "",
     pvtLoadingAmount: detail.pvtLoadingAmount,
@@ -1162,6 +1165,8 @@ export function QuotationForm({
             occupation: r.occupation,
             employeeCount: r.employeeCount || null,
             annualWages: r.annualWages || null,
+            basicMonthlySalary: r.basicMonthlySalary || null,
+            monthlyAllowance: r.monthlyAllowance || null,
           })),
         },
       });
@@ -1194,7 +1199,6 @@ export function QuotationForm({
           cpmRate: cpmDraft.cpmRate || null,
           pvtLoadingEnabled: cpmDraft.pvtLoadingEnabled,
           pvtLoadingRate: cpmDraft.pvtLoadingRate || null,
-          pvtLoadingAmount: cpmDraft.pvtLoadingAmount || null,
           equipmentRows: cpmDraft.equipmentRows.map((r) => ({
             equipmentName: r.equipmentName,
             quantity: r.quantity || null,
@@ -1238,8 +1242,8 @@ export function QuotationForm({
           rawMaterialValue: fireDraft.rawMaterialValue || null,
           goodsInStockValue: fireDraft.goodsInStockValue || null,
           rate: fireDraft.rate || null,
-          earthquakeLoadingRate: fireDraft.earthquakeLoadingRate || null,
-          floodLoadingRate: fireDraft.floodLoadingRate || null,
+          earthquakeLoadingEnabled: fireDraft.earthquakeLoadingEnabled,
+          floodLoadingEnabled: fireDraft.floodLoadingEnabled,
           pvtLoadingEnabled: fireDraft.pvtLoadingEnabled,
           pvtLoadingRate: fireDraft.pvtLoadingRate || null,
           pvtLoadingAmount: fireDraft.pvtLoadingAmount || null,

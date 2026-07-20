@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
@@ -92,10 +93,7 @@ export function CPMSection({
 
       <div className="form-grid mt-4">
         <FormField label={t.quotations.cpmRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.cpmRate}
             onChange={(e) => onChange({ cpmRate: e.target.value })}
             required
@@ -112,28 +110,21 @@ export function CPMSection({
         </FormField>
         {draft.pvtLoadingEnabled && (
           <>
+            <FormField label={t.quotations.pvtLoadingAmount}>
+              <Input type="text" value={formatMoney(totals.pvtLoadingAmount)} disabled />
+            </FormField>
             <FormField label={t.quotations.pvtLoadingRate}>
-              <Input
-                type="number"
-                step="0.0001"
-                min="0"
+              <RateInput
                 value={draft.pvtLoadingRate}
                 onChange={(e) => onChange({ pvtLoadingRate: e.target.value })}
               />
             </FormField>
-            <FormField label={t.quotations.pvtLoadingAmount}>
-              <MoneyInput
-                value={draft.pvtLoadingAmount}
-                onChange={(v) => onChange({ pvtLoadingAmount: v })}
-                required
-              />
+            <FormField label={t.quotations.pvtLoadingPremium}>
+              <Input type="text" value={formatMoney(totals.pvtLoadingPremium)} disabled />
             </FormField>
           </>
         )}
       </div>
-      {draft.pvtLoadingEnabled && (
-        <p className="mt-1 text-sm text-secondary">{t.quotations.pvtManualAmountNote}</p>
-      )}
 
       <div className="mt-4 grid grid-cols-2 gap-2 rounded-control bg-zinc-50 p-3 text-sm sm:grid-cols-4">
         <div>

@@ -99,6 +99,23 @@ body {
   .input {
     @apply h-9 w-full rounded-control border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400;
   }
+  /* Removes the browser up/down spinner arrows from every number input
+     project-wide (Rate, Employee Count, Quantity, Period, ...). Previously
+     scoped to only the .rate-input class (components/ui/rate-input.tsx),
+     which is why every other <input type="number"> — Employee Count,
+     Basic Monthly Salary, Quantity, Period, etc. — still showed native
+     spinners; this global selector covers all of them at once. Validation
+     (min/max/step/decimals/keyboard input) is untouched — only the visual
+     spinner is hidden. */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
   .select {
     @apply h-9 w-full appearance-none rounded-control border border-zinc-300 bg-white px-3 pr-8 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400;
   }

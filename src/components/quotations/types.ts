@@ -76,12 +76,15 @@ export type CarSectionDetailRow = {
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string | null;
   pvtLoadingAmount: string;
+  pvtLoadingPremium: string;
 };
 
 export type WibaPayrollRowData = {
   occupation: string;
   employeeCount: number;
   annualWages: string;
+  basicMonthlySalary: string | null;
+  monthlyAllowance: string | null;
 };
 
 export type WibaSectionDetailRow = {
@@ -101,6 +104,7 @@ export type CpmSectionDetailRow = {
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string | null;
   pvtLoadingAmount: string;
+  pvtLoadingPremium: string;
   equipmentRows: CpmEquipmentRowData[];
 };
 
@@ -118,9 +122,12 @@ export type FireSectionDetailRow = {
   rate: string;
   earthquakeLoadingRate: string;
   floodLoadingRate: string;
+  earthquakeLoadingEnabled: boolean;
+  floodLoadingEnabled: boolean;
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string | null;
   pvtLoadingAmount: string;
+  pvtLoadingPremium: string;
 };
 
 export type BurglarySectionDetailRow = {
@@ -138,6 +145,7 @@ export type GitSingleSectionDetailRow = {
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string | null;
   pvtLoadingAmount: string;
+  pvtLoadingPremium: string;
 };
 
 export type GitAnnualSectionDetailRow = {
@@ -149,6 +157,7 @@ export type GitAnnualSectionDetailRow = {
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string | null;
   pvtLoadingAmount: string;
+  pvtLoadingPremium: string;
 };
 
 export type MarineShipmentRowData = {

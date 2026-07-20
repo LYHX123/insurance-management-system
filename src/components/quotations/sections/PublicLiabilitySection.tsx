@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
-import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
 import { previewPublicLiability } from "@/lib/insuranceCalculations/clientPreview";
@@ -42,10 +42,7 @@ export function PublicLiabilitySection({
           />
         </FormField>
         <FormField label={t.quotations.plRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.rate}
             onChange={(e) => onChange({ rate: e.target.value })}
             required

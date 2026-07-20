@@ -149,6 +149,7 @@ export default async function EditQuotationPage({
             pvtLoadingEnabled: s.carDetail.pvtLoadingEnabled,
             pvtLoadingRate: s.carDetail.pvtLoadingRate?.toString() ?? null,
             pvtLoadingAmount: s.carDetail.pvtLoadingAmount.toString(),
+            pvtLoadingPremium: s.carDetail.pvtLoadingPremium.toString(),
           }
         : null,
       wibaDetail: s.wibaDetail
@@ -158,6 +159,8 @@ export default async function EditQuotationPage({
               occupation: r.occupation,
               employeeCount: r.employeeCount,
               annualWages: r.annualWages.toString(),
+              basicMonthlySalary: r.basicMonthlySalary?.toString() ?? null,
+              monthlyAllowance: r.monthlyAllowance?.toString() ?? null,
             })),
           }
         : null,
@@ -167,6 +170,7 @@ export default async function EditQuotationPage({
             pvtLoadingEnabled: s.cpmDetail.pvtLoadingEnabled,
             pvtLoadingRate: s.cpmDetail.pvtLoadingRate?.toString() ?? null,
             pvtLoadingAmount: s.cpmDetail.pvtLoadingAmount.toString(),
+            pvtLoadingPremium: s.cpmDetail.pvtLoadingPremium.toString(),
             equipmentRows: s.cpmDetail.equipmentRows.map((r) => ({
               equipmentName: r.equipmentName,
               quantity: r.quantity,
@@ -191,9 +195,12 @@ export default async function EditQuotationPage({
             rate: s.fireDetail.rate.toString(),
             earthquakeLoadingRate: s.fireDetail.earthquakeLoadingRate.toString(),
             floodLoadingRate: s.fireDetail.floodLoadingRate.toString(),
+            earthquakeLoadingEnabled: s.fireDetail.earthquakeLoadingEnabled,
+            floodLoadingEnabled: s.fireDetail.floodLoadingEnabled,
             pvtLoadingEnabled: s.fireDetail.pvtLoadingEnabled,
             pvtLoadingRate: s.fireDetail.pvtLoadingRate?.toString() ?? null,
             pvtLoadingAmount: s.fireDetail.pvtLoadingAmount.toString(),
+            pvtLoadingPremium: s.fireDetail.pvtLoadingPremium.toString(),
           }
         : null,
       burglaryDetail: s.burglaryDetail
@@ -213,6 +220,7 @@ export default async function EditQuotationPage({
             pvtLoadingEnabled: s.gitSingleDetail.pvtLoadingEnabled,
             pvtLoadingRate: s.gitSingleDetail.pvtLoadingRate?.toString() ?? null,
             pvtLoadingAmount: s.gitSingleDetail.pvtLoadingAmount.toString(),
+            pvtLoadingPremium: s.gitSingleDetail.pvtLoadingPremium.toString(),
           }
         : null,
       gitAnnualDetail: s.gitAnnualDetail
@@ -225,6 +233,7 @@ export default async function EditQuotationPage({
             pvtLoadingEnabled: s.gitAnnualDetail.pvtLoadingEnabled,
             pvtLoadingRate: s.gitAnnualDetail.pvtLoadingRate?.toString() ?? null,
             pvtLoadingAmount: s.gitAnnualDetail.pvtLoadingAmount.toString(),
+            pvtLoadingPremium: s.gitAnnualDetail.pvtLoadingPremium.toString(),
           }
         : null,
       marineDetail: s.marineDetail

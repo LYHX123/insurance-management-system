@@ -4,10 +4,13 @@ import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { Combobox } from "@/components/ui/combobox";
+import { RateInput } from "@/components/ui/rate-input";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
-import { previewWiba } from "@/lib/insuranceCalculations/clientPreview";
+import { previewWiba, resolveWibaRowAnnualWages } from "@/lib/insuranceCalculations/clientPreview";
+import { WIBA_OCCUPATIONS } from "@/lib/insuranceCalculations/wibaOccupations";
 import { emptyWibaPayrollRow, type WibaDraft } from "@/components/quotations/sectionDrafts";
 
 export function WIBASection({
@@ -33,10 +36,7 @@ export function WIBASection({
     <div>
       <div className="form-grid">
         <FormField label={t.quotations.wibaRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.wibaRate}
             onChange={(e) => onChange({ wibaRate: e.target.value })}
             required
@@ -58,43 +58,58 @@ export function WIBASection({
         </div>
 
         <div className="flex flex-col gap-3">
-          {draft.payrollRows.map((row) => (
-            <div key={row.key} className="rounded-control border border-zinc-100 bg-zinc-50/60 p-3">
-              <div className="form-grid">
-                <FormField label={t.quotations.occupation}>
-                  <Input
-                    value={row.occupation}
-                    onChange={(e) => updateRow(row.key, { occupation: e.target.value })}
-                  />
-                </FormField>
-                <FormField label={t.quotations.employeeCount}>
-                  <Input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={row.employeeCount}
-                    onChange={(e) => updateRow(row.key, { employeeCount: e.target.value })}
-                  />
-                </FormField>
-                <FormField label={t.quotations.annualWages}>
-                  <MoneyInput
-                    value={row.annualWages}
-                    onChange={(v) => updateRow(row.key, { annualWages: v })}
-                  />
-                </FormField>
+          {draft.payrollRows.map((row) => {
+            const rowAnnualSalary = resolveWibaRowAnnualWages(row);
+            return (
+              <div key={row.key} className="rounded-control border border-zinc-100 bg-zinc-50/60 p-3">
+                <div className="form-grid">
+                  <FormField label={t.quotations.occupation}>
+                    <Combobox
+                      value={row.occupation}
+                      onChange={(v) => updateRow(row.key, { occupation: v })}
+                      options={WIBA_OCCUPATIONS}
+                    />
+                  </FormField>
+                  <FormField label={t.quotations.employeeCount}>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={row.employeeCount}
+                      onChange={(e) => updateRow(row.key, { employeeCount: e.target.value })}
+                    />
+                  </FormField>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-field sm:grid-cols-3 sm:gap-x-4">
+                  <FormField label={t.quotations.basicMonthlySalary}>
+                    <MoneyInput
+                      value={row.basicMonthlySalary}
+                      onChange={(v) => updateRow(row.key, { basicMonthlySalary: v })}
+                    />
+                  </FormField>
+                  <FormField label={t.quotations.monthlyAllowance}>
+                    <MoneyInput
+                      value={row.monthlyAllowance}
+                      onChange={(v) => updateRow(row.key, { monthlyAllowance: v })}
+                    />
+                  </FormField>
+                  <FormField label={t.quotations.annualWages}>
+                    <Input readOnly disabled value={formatMoney(rowAnnualSalary)} />
+                  </FormField>
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn-icon text-red-500 hover:bg-red-50"
+                    onClick={() => removeRow(row.key)}
+                    disabled={draft.payrollRows.length <= 1}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  className="btn-icon text-red-500 hover:bg-red-50"
-                  onClick={() => removeRow(row.key)}
-                  disabled={draft.payrollRows.length <= 1}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

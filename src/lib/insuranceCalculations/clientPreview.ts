@@ -5,7 +5,16 @@
 // to the generic section model). The server re-derives and validates every
 // amount from scratch on submit; nothing computed here is trusted as-is.
 
-import { EL_PERCENT_OF_WIBA, ITL_RATE, MARINE_STAMP_DUTY_RATE, PHCF_RATE, STAMP_DUTY } from "./constants";
+import {
+  EL_PERCENT_OF_WIBA,
+  FIRE_EARTHQUAKE_LOADING_RATE,
+  FIRE_FLOOD_LOADING_RATE,
+  ITL_RATE,
+  MARINE_INCIDENTAL_LOADING_RATE,
+  MARINE_STAMP_DUTY_RATE,
+  PHCF_RATE,
+  STAMP_DUTY,
+} from "./constants";
 
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -17,6 +26,14 @@ function num(value: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function previewPvtLoading(enabled: boolean, amount: string, rate: string) {
+  if (!enabled) return { amount: 0, rate: 0, premium: 0 };
+  const a = round2(num(amount));
+  const r = num(rate);
+  const premium = round2((a * r) / 100);
+  return { amount: a, rate: r, premium };
+}
+
 export function previewCarPackage(input: {
   contractValue: string;
   carRate: string;
@@ -24,6 +41,7 @@ export function previewCarPackage(input: {
   cpmRate: string;
   pvtLoadingEnabled: boolean;
   pvtLoadingAmount: string;
+  pvtLoadingRate: string;
   tplComplimentary: boolean;
   tplAnyOnePeriod: string;
   tplRate: string;
@@ -33,9 +51,12 @@ export function previewCarPackage(input: {
     input.cpmValue !== "" && input.cpmRate !== ""
       ? round2((num(input.cpmValue) * num(input.cpmRate)) / 100)
       : 0;
-  const carPvtLoadingAmount = input.pvtLoadingEnabled ? round2(num(input.pvtLoadingAmount)) : 0;
+  const carPvt = previewPvtLoading(input.pvtLoadingEnabled, input.pvtLoadingAmount, input.pvtLoadingRate);
+  const carPvtLoadingAmount = carPvt.amount;
+  const carPvtLoadingRate = carPvt.rate;
+  const carPvtLoadingPremium = carPvt.premium;
 
-  const carMainGrossPremium = round2(carBasicPremium + carCpmPremium + carPvtLoadingAmount);
+  const carMainGrossPremium = round2(carBasicPremium + carCpmPremium + carPvtLoadingPremium);
   const carMainPhcf = round2((carMainGrossPremium * PHCF_RATE) / 100);
   const carMainItl = round2((carMainGrossPremium * ITL_RATE) / 100);
   const carMainStampDuty = STAMP_DUTY;
@@ -44,14 +65,16 @@ export function previewCarPackage(input: {
   let tplGrossPremium = 0;
   let tplPhcf = 0;
   let tplItl = 0;
-  let tplStampDuty = 0;
+  // TPL is part of the same CAR policy as Main CAR/CPM/PVT Loading — only one
+  // stamp duty is charged per policy, already counted in carMainStampDuty
+  // above, so TPL's own share stays 0 rather than adding a second KES 40.
+  const tplStampDuty = 0;
   let tplTotalPremium = 0;
 
   if (!input.tplComplimentary) {
     tplGrossPremium = round2((num(input.tplAnyOnePeriod) * num(input.tplRate)) / 100);
     tplPhcf = round2((tplGrossPremium * PHCF_RATE) / 100);
     tplItl = round2((tplGrossPremium * ITL_RATE) / 100);
-    tplStampDuty = STAMP_DUTY;
     tplTotalPremium = round2(tplGrossPremium + tplPhcf + tplItl + tplStampDuty);
   }
 
@@ -59,6 +82,8 @@ export function previewCarPackage(input: {
     carBasicPremium,
     carCpmPremium,
     carPvtLoadingAmount,
+    carPvtLoadingRate,
+    carPvtLoadingPremium,
     carMainGrossPremium,
     carMainPhcf,
     carMainItl,
@@ -77,12 +102,35 @@ export function previewCarPackage(input: {
   };
 }
 
+type WibaPayrollRowPreviewInput = {
+  employeeCount: string;
+  annualWages: string;
+  basicMonthlySalary?: string;
+  monthlyAllowance?: string;
+};
+
+// Number mirror of resolveWibaRowAnnualWages in insuranceCalculations/wiba.ts
+// — same fallback rule: a row with neither basicMonthlySalary nor
+// monthlyAllowance filled in keeps its existing (legacy or already-computed)
+// annualWages value untouched instead of resolving to 0.
+export function resolveWibaRowAnnualWages(row: WibaPayrollRowPreviewInput): number {
+  const hasSalaryInputs = !!row.basicMonthlySalary || !!row.monthlyAllowance;
+  if (!hasSalaryInputs) return num(row.annualWages);
+
+  const basic = num(row.basicMonthlySalary);
+  const allowance = num(row.monthlyAllowance);
+  const employeeCount = parseInt(row.employeeCount, 10) || 0;
+  return round2((basic + allowance) * employeeCount * 12);
+}
+
 export function previewWiba(input: {
-  payrollRows: { employeeCount: string; annualWages: string }[];
+  payrollRows: WibaPayrollRowPreviewInput[];
   wibaRate: string;
 }) {
   const totalEmployeeCount = input.payrollRows.reduce((sum, row) => sum + (parseInt(row.employeeCount, 10) || 0), 0);
-  const totalAnnualWages = round2(input.payrollRows.reduce((acc, row) => acc + num(row.annualWages), 0));
+  const totalAnnualWages = round2(
+    input.payrollRows.reduce((acc, row) => acc + resolveWibaRowAnnualWages(row), 0)
+  );
   const grossPremium = round2((totalAnnualWages * num(input.wibaRate)) / 100);
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
@@ -106,20 +154,33 @@ export function previewCpmStandalone(input: {
   equipmentRows: { quantity: string; unitValue: string }[];
   cpmRate: string;
   pvtLoadingEnabled: boolean;
-  pvtLoadingAmount: string;
+  pvtLoadingRate: string;
 }) {
   const totalSumInsured = round2(
     input.equipmentRows.reduce((acc, row) => acc + (parseInt(row.quantity, 10) || 0) * num(row.unitValue), 0)
   );
   const basicPremium = round2((totalSumInsured * num(input.cpmRate)) / 100);
-  const pvtLoadingAmount = input.pvtLoadingEnabled ? round2(num(input.pvtLoadingAmount)) : 0;
-  const grossPremium = round2(basicPremium + pvtLoadingAmount);
+  // PVT Loading Amount is not a manual input for CPM — it always equals
+  // this section's own CPM Base Premium.
+  const pvt = previewPvtLoading(input.pvtLoadingEnabled, String(basicPremium), input.pvtLoadingRate);
+  const grossPremium = round2(basicPremium + pvt.premium);
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
   const stampDutyAmount = STAMP_DUTY;
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + stampDutyAmount);
 
-  return { totalSumInsured, basicPremium, pvtLoadingAmount, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
+  return {
+    totalSumInsured,
+    basicPremium,
+    pvtLoadingAmount: pvt.amount,
+    pvtLoadingRate: pvt.rate,
+    pvtLoadingPremium: pvt.premium,
+    grossPremium,
+    phcfAmount,
+    itlAmount,
+    stampDutyAmount,
+    totalPremium,
+  };
 }
 
 export function previewPublicLiability(input: { anyOneYearLimit: string; rate: string }) {
@@ -137,20 +198,25 @@ export function previewFire(input: {
   rawMaterialValue: string;
   goodsInStockValue: string;
   rate: string;
-  earthquakeLoadingRate: string;
-  floodLoadingRate: string;
+  earthquakeLoadingEnabled: boolean;
+  floodLoadingEnabled: boolean;
   pvtLoadingEnabled: boolean;
   pvtLoadingAmount: string;
+  pvtLoadingRate: string;
 }) {
   const totalSumInsured = round2(
     num(input.propertyValue) + num(input.rawMaterialValue) + num(input.goodsInStockValue)
   );
   const basicPremium = round2((totalSumInsured * num(input.rate)) / 100);
-  const earthquakeLoadingAmount = round2((totalSumInsured * num(input.earthquakeLoadingRate)) / 100);
-  const floodLoadingAmount = round2((totalSumInsured * num(input.floodLoadingRate)) / 100);
-  const pvtLoadingAmount = input.pvtLoadingEnabled ? round2(num(input.pvtLoadingAmount)) : 0;
+  // Earthquake/Flood Loading are fixed business rates, not user input — see
+  // FIRE_EARTHQUAKE_LOADING_RATE/FIRE_FLOOD_LOADING_RATE's doc comment.
+  const earthquakeLoadingRate = input.earthquakeLoadingEnabled ? FIRE_EARTHQUAKE_LOADING_RATE : 0;
+  const floodLoadingRate = input.floodLoadingEnabled ? FIRE_FLOOD_LOADING_RATE : 0;
+  const earthquakeLoadingAmount = round2((totalSumInsured * earthquakeLoadingRate) / 100);
+  const floodLoadingAmount = round2((totalSumInsured * floodLoadingRate) / 100);
+  const pvt = previewPvtLoading(input.pvtLoadingEnabled, input.pvtLoadingAmount, input.pvtLoadingRate);
   const grossPremium = round2(
-    basicPremium + earthquakeLoadingAmount + floodLoadingAmount + pvtLoadingAmount
+    basicPremium + earthquakeLoadingAmount + floodLoadingAmount + pvt.premium
   );
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
@@ -160,9 +226,13 @@ export function previewFire(input: {
   return {
     totalSumInsured,
     basicPremium,
+    earthquakeLoadingRate,
     earthquakeLoadingAmount,
+    floodLoadingRate,
     floodLoadingAmount,
-    pvtLoadingAmount,
+    pvtLoadingAmount: pvt.amount,
+    pvtLoadingRate: pvt.rate,
+    pvtLoadingPremium: pvt.premium,
     grossPremium,
     phcfAmount,
     itlAmount,
@@ -193,16 +263,27 @@ export function previewGitSingle(input: {
   rate: string;
   pvtLoadingEnabled: boolean;
   pvtLoadingAmount: string;
+  pvtLoadingRate: string;
 }) {
   const basicPremium = round2((num(input.sumInsured) * num(input.rate)) / 100);
-  const pvtLoadingAmount = input.pvtLoadingEnabled ? round2(num(input.pvtLoadingAmount)) : 0;
-  const grossPremium = round2(basicPremium + pvtLoadingAmount);
+  const pvt = previewPvtLoading(input.pvtLoadingEnabled, input.pvtLoadingAmount, input.pvtLoadingRate);
+  const grossPremium = round2(basicPremium + pvt.premium);
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
   const stampDutyAmount = STAMP_DUTY;
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + stampDutyAmount);
 
-  return { basicPremium, pvtLoadingAmount, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
+  return {
+    basicPremium,
+    pvtLoadingAmount: pvt.amount,
+    pvtLoadingRate: pvt.rate,
+    pvtLoadingPremium: pvt.premium,
+    grossPremium,
+    phcfAmount,
+    itlAmount,
+    stampDutyAmount,
+    totalPremium,
+  };
 }
 
 export function previewGitAnnual(input: {
@@ -212,17 +293,29 @@ export function previewGitAnnual(input: {
   yearLimitRate: string;
   pvtLoadingEnabled: boolean;
   pvtLoadingAmount: string;
+  pvtLoadingRate: string;
 }) {
   const singlePremium = round2((num(input.singleLimit) * num(input.singleLimitRate)) / 100);
   const yearPremium = round2((num(input.yearLimit) * num(input.yearLimitRate)) / 100);
-  const pvtLoadingAmount = input.pvtLoadingEnabled ? round2(num(input.pvtLoadingAmount)) : 0;
-  const grossPremium = round2(singlePremium + yearPremium + pvtLoadingAmount);
+  const pvt = previewPvtLoading(input.pvtLoadingEnabled, input.pvtLoadingAmount, input.pvtLoadingRate);
+  const grossPremium = round2(singlePremium + yearPremium + pvt.premium);
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
   const stampDutyAmount = STAMP_DUTY;
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + stampDutyAmount);
 
-  return { singlePremium, yearPremium, pvtLoadingAmount, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
+  return {
+    singlePremium,
+    yearPremium,
+    pvtLoadingAmount: pvt.amount,
+    pvtLoadingRate: pvt.rate,
+    pvtLoadingPremium: pvt.premium,
+    grossPremium,
+    phcfAmount,
+    itlAmount,
+    stampDutyAmount,
+    totalPremium,
+  };
 }
 
 export function previewMotorComprehensive(input: { vehicleValue: string; rate: string }) {
@@ -336,22 +429,33 @@ export function previewCustomsBond(input: { rows: { bondValue: string; rate: str
   return { rows, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
 }
 
+// Incidental Loading is a fixed 10% of each shipment's raw Sum Insured;
+// Rate is then applied to Basic Sum Insured (Sum Insured x 1.1), not to the
+// raw Sum Insured — mirrors calculateMarine() in insuranceCalculations/marine.ts
+// (the backend authoritative version), see that file for the full rationale.
 export function previewMarine(input: { shipmentRows: { sumInsured: string; rate: string }[] }) {
-  const rows = input.shipmentRows.map((row) => ({
-    sumInsured: num(row.sumInsured),
-    rate: num(row.rate),
-    linePremium: round2((num(row.sumInsured) * num(row.rate)) / 100),
-  }));
+  const rows = input.shipmentRows.map((row) => {
+    const sumInsured = num(row.sumInsured);
+    const rate = num(row.rate);
+    const incidentalLoading = round2((sumInsured * MARINE_INCIDENTAL_LOADING_RATE) / 100);
+    const basicSumInsured = round2(sumInsured + incidentalLoading);
+    const linePremium = round2((basicSumInsured * rate) / 100);
+    return { sumInsured, rate, incidentalLoading, basicSumInsured, linePremium };
+  });
   const totalSumInsured = round2(rows.reduce((acc, row) => acc + row.sumInsured, 0));
+  const totalBasicSumInsured = round2(rows.reduce((acc, row) => acc + row.basicSumInsured, 0));
   const grossPremium = round2(rows.reduce((acc, row) => acc + row.linePremium, 0));
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
-  const marineStampDutyAmount = round2((totalSumInsured * MARINE_STAMP_DUTY_RATE) / 100);
+  // Stamp Duty's base is Total Basic Sum Insured (post-Incidental-Loading),
+  // not the raw totalSumInsured — mirrors calculateMarine()'s corrected rule.
+  const marineStampDutyAmount = round2((totalBasicSumInsured * MARINE_STAMP_DUTY_RATE) / 100);
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + marineStampDutyAmount);
 
   return {
     rows,
     totalSumInsured,
+    totalBasicSumInsured,
     grossPremium,
     phcfAmount,
     itlAmount,

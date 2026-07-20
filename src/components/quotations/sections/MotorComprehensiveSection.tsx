@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
 import { previewMotorComprehensive } from "@/lib/insuranceCalculations/clientPreview";
@@ -65,10 +66,7 @@ export function MotorComprehensiveSection({
           <Input list={datalistId} value={draft.pvt} onChange={(e) => onChange({ pvt: e.target.value })} />
         </FormField>
         <FormField label={t.quotations.motorRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.rate}
             onChange={(e) => onChange({ rate: e.target.value })}
             required

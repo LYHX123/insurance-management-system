@@ -372,11 +372,18 @@ model CarSectionDetail {
   tplRate          Decimal? @db.Decimal(10, 4)
   tplComplimentary Boolean  @default(false)
 
-  // Optional PVT loading — amount is always a manual entry (no auto-calculated
-  // base is defined for this project), rate is captured for reference only.
+  // Optional PVT loading — standardized "Amount x Rate = Premium" model
+  // (0.15 meaning 0.15%, same convention as every other rate here).
+  // pvtLoadingAmount is the calculation base, pvtLoadingRate is the
+  // percentage, pvtLoadingPremium is the snapshotted result — only the
+  // premium is ever added into gross premium. Quotations saved before this
+  // model existed stored pvtLoadingAmount as a manually-entered premium
+  // under the previous logic; those rows are never silently reinterpreted
+  // (see pvtLoading.ts / the Phase 3A-era migration backfill note).
   pvtLoadingEnabled Boolean  @default(false)
   pvtLoadingRate    Decimal? @db.Decimal(10, 4)
   pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+  pvtLoadingPremium Decimal  @default(0) @db.Decimal(16, 2)
 
   // Computed breakdown (snapshotted at save time)
   carBasicPremium     Decimal @default(0) @db.Decimal(16, 2)
@@ -426,8 +433,20 @@ model WibaPayrollRow {
 
   occupation    String
   employeeCount Int
+  // Snapshotted result — always populated. For rows created before the
+  // Basic Monthly Salary / Monthly Allowance fields existed (or edited
+  // without touching them), this keeps its original manually-entered value
+  // rather than being recomputed from nulls; see resolveWibaRowAnnualWages
+  // in insuranceCalculations/wiba.ts for the exact fallback rule.
   annualWages   Decimal @db.Decimal(18, 2)
   sortOrder     Int     @default(0)
+
+  // Optional inputs behind the Annual Salary formula
+  // (basicMonthlySalary + monthlyAllowance) * employeeCount * 12. Nullable
+  // because every row saved before this feature existed has neither — see
+  // annualWages' doc comment above for how those old rows keep working.
+  basicMonthlySalary Decimal? @db.Decimal(16, 2)
+  monthlyAllowance   Decimal? @db.Decimal(16, 2)
 
   @@index([wibaDetailId])
 }
@@ -458,10 +477,12 @@ model CpmSectionDetail {
 
   cpmRate Decimal @db.Decimal(10, 4)
 
-  // PVT loading — amount is always a manual entry, rate is reference only.
+  // PVT loading — standardized "Amount x Rate = Premium" model, see the
+  // matching comment on CarSectionDetail above.
   pvtLoadingEnabled Boolean  @default(false)
   pvtLoadingRate    Decimal? @db.Decimal(10, 4)
   pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+  pvtLoadingPremium Decimal  @default(0) @db.Decimal(16, 2)
 
   // Computed breakdown (snapshotted at save time)
   totalSumInsured Decimal @default(0) @db.Decimal(18, 2)
@@ -527,12 +548,24 @@ model FireSectionDetail {
   rawMaterialValue       Decimal @default(0) @db.Decimal(18, 2)
   goodsInStockValue       Decimal @default(0) @db.Decimal(18, 2)
   rate                   Decimal @db.Decimal(10, 4)
+  // Earthquake/Flood Loading are fixed business rates (see
+  // FIRE_EARTHQUAKE_LOADING_RATE/FIRE_FLOOD_LOADING_RATE in
+  // insuranceCalculations/constants.ts), no longer user-entered — the page
+  // only offers Yes/No now (earthquakeLoadingEnabled/floodLoadingEnabled).
+  // The *Rate columns are kept (not dropped) so pre-existing rows saved
+  // before this change keep their original values; new rows snapshot the
+  // fixed constant here when enabled, 0 when not.
   earthquakeLoadingRate   Decimal @default(0) @db.Decimal(10, 4)
   floodLoadingRate        Decimal @default(0) @db.Decimal(10, 4)
+  earthquakeLoadingEnabled Boolean @default(false)
+  floodLoadingEnabled      Boolean @default(false)
 
+  // PVT loading — standardized "Amount x Rate = Premium" model, see the
+  // matching comment on CarSectionDetail above.
   pvtLoadingEnabled Boolean  @default(false)
   pvtLoadingRate    Decimal? @db.Decimal(10, 4)
   pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+  pvtLoadingPremium Decimal  @default(0) @db.Decimal(16, 2)
 
   // Computed breakdown (snapshotted at save time)
   totalSumInsured         Decimal @default(0) @db.Decimal(18, 2)
@@ -582,9 +615,12 @@ model GitSingleSectionDetail {
   sumInsured       Decimal @db.Decimal(18, 2)
   rate             Decimal @db.Decimal(10, 4)
 
+  // PVT loading — standardized "Amount x Rate = Premium" model, see the
+  // matching comment on CarSectionDetail above.
   pvtLoadingEnabled Boolean  @default(false)
   pvtLoadingRate    Decimal? @db.Decimal(10, 4)
   pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+  pvtLoadingPremium Decimal  @default(0) @db.Decimal(16, 2)
 
   // Computed breakdown (snapshotted at save time)
   basicPremium    Decimal @default(0) @db.Decimal(16, 2)
@@ -609,9 +645,12 @@ model GitAnnualSectionDetail {
   singleLimitRate  Decimal @db.Decimal(10, 4)
   yearLimitRate    Decimal @db.Decimal(10, 4)
 
+  // PVT loading — standardized "Amount x Rate = Premium" model, see the
+  // matching comment on CarSectionDetail above.
   pvtLoadingEnabled Boolean  @default(false)
   pvtLoadingRate    Decimal? @db.Decimal(10, 4)
   pvtLoadingAmount  Decimal  @default(0) @db.Decimal(16, 2)
+  pvtLoadingPremium Decimal  @default(0) @db.Decimal(16, 2)
 
   // Computed breakdown (snapshotted at save time) — singlePremium and
   // yearPremium are calculated independently and summed, never derived from

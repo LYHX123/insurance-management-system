@@ -86,6 +86,12 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
                   {t.quotations.downloadExcel}
                 </Button>
               </a>
+              <a href={`/api/quotation/${quotation.id}/excel-template`}>
+                <Button variant="primary">
+                  <Download size={16} />
+                  {t.quotations.downloadExcelTemplate}
+                </Button>
+              </a>
               <Link href={`/quotation/${quotation.id}/edit`}>
                 <Button variant="secondary">
                   <Pencil size={16} />

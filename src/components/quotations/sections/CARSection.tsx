@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { Select } from "@/components/ui/select";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
@@ -35,10 +36,7 @@ export function CARSection({
           />
         </FormField>
         <FormField label={t.quotations.carRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.carRate}
             onChange={(e) => onChange({ carRate: e.target.value })}
             required
@@ -72,10 +70,7 @@ export function CARSection({
           <MoneyInput value={draft.cpmValue} onChange={(v) => onChange({ cpmValue: v })} />
         </FormField>
         <FormField label={t.quotations.cpmRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.cpmRate}
             onChange={(e) => onChange({ cpmRate: e.target.value })}
           />
@@ -113,10 +108,7 @@ export function CARSection({
           />
         </FormField>
         <FormField label={t.quotations.tplRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.tplComplimentary ? "" : draft.tplRate}
             onChange={(e) => onChange({ tplRate: e.target.value })}
             disabled={draft.tplComplimentary}
@@ -143,15 +135,6 @@ export function CARSection({
         </FormField>
         {draft.pvtLoadingEnabled && (
           <>
-            <FormField label={t.quotations.pvtLoadingRate}>
-              <Input
-                type="number"
-                step="0.0001"
-                min="0"
-                value={draft.pvtLoadingRate}
-                onChange={(e) => onChange({ pvtLoadingRate: e.target.value })}
-              />
-            </FormField>
             <FormField label={t.quotations.pvtLoadingAmount}>
               <MoneyInput
                 value={draft.pvtLoadingAmount}
@@ -159,12 +142,18 @@ export function CARSection({
                 required
               />
             </FormField>
+            <FormField label={t.quotations.pvtLoadingRate}>
+              <RateInput
+                value={draft.pvtLoadingRate}
+                onChange={(e) => onChange({ pvtLoadingRate: e.target.value })}
+              />
+            </FormField>
+            <FormField label={t.quotations.pvtLoadingPremium}>
+              <Input type="text" value={formatMoney(totals.carPvtLoadingPremium)} disabled />
+            </FormField>
           </>
         )}
       </div>
-      {draft.pvtLoadingEnabled && (
-        <p className="mt-1 text-sm text-secondary">{t.quotations.pvtManualAmountNote}</p>
-      )}
 
       <div className="mt-4 grid grid-cols-2 gap-2 rounded-control bg-zinc-50 p-3 text-sm sm:grid-cols-4">
         <div>

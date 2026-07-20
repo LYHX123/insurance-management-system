@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
@@ -40,10 +41,7 @@ export function GITSingleSection({
           <MoneyInput value={draft.sumInsured} onChange={(v) => onChange({ sumInsured: v })} required />
         </FormField>
         <FormField label={t.quotations.rate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.rate}
             onChange={(e) => onChange({ rate: e.target.value })}
             required
@@ -64,15 +62,6 @@ export function GITSingleSection({
         </FormField>
         {draft.pvtLoadingEnabled && (
           <>
-            <FormField label={t.quotations.pvtLoadingRate}>
-              <Input
-                type="number"
-                step="0.0001"
-                min="0"
-                value={draft.pvtLoadingRate}
-                onChange={(e) => onChange({ pvtLoadingRate: e.target.value })}
-              />
-            </FormField>
             <FormField label={t.quotations.pvtLoadingAmount}>
               <MoneyInput
                 value={draft.pvtLoadingAmount}
@@ -80,12 +69,18 @@ export function GITSingleSection({
                 required
               />
             </FormField>
+            <FormField label={t.quotations.pvtLoadingRate}>
+              <RateInput
+                value={draft.pvtLoadingRate}
+                onChange={(e) => onChange({ pvtLoadingRate: e.target.value })}
+              />
+            </FormField>
+            <FormField label={t.quotations.pvtLoadingPremium}>
+              <Input type="text" value={formatMoney(totals.pvtLoadingPremium)} disabled />
+            </FormField>
           </>
         )}
       </div>
-      {draft.pvtLoadingEnabled && (
-        <p className="mt-1 text-sm text-secondary">{t.quotations.pvtManualAmountNote}</p>
-      )}
 
       <div className="mt-4 grid grid-cols-2 gap-2 rounded-control bg-zinc-50 p-3 text-sm sm:grid-cols-4">
         <div>

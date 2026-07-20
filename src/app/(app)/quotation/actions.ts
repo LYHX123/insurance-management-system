@@ -9,6 +9,7 @@ import {
   calculateCoverageItemPremium,
   calculateQuotationTotals,
   calculateSectionTotals,
+  roundMoney,
   toDecimal,
   type QuotationTotals,
   type SectionTotals,
@@ -118,6 +119,8 @@ export type WibaSectionInput = {
       occupation: string;
       employeeCount: number | string | null;
       annualWages: number | string | null;
+      basicMonthlySalary?: number | string | null;
+      monthlyAllowance?: number | string | null;
     }[];
   };
 };
@@ -136,7 +139,6 @@ export type CpmStandaloneSectionInput = {
     cpmRate: number | string | null;
     pvtLoadingEnabled: boolean;
     pvtLoadingRate?: number | string | null;
-    pvtLoadingAmount?: number | string | null;
     equipmentRows: {
       equipmentName: string;
       quantity: number | string | null;
@@ -166,8 +168,8 @@ export type FireSectionInput = {
     rawMaterialValue?: number | string | null;
     goodsInStockValue?: number | string | null;
     rate: number | string | null;
-    earthquakeLoadingRate?: number | string | null;
-    floodLoadingRate?: number | string | null;
+    earthquakeLoadingEnabled: boolean;
+    floodLoadingEnabled: boolean;
     pvtLoadingEnabled: boolean;
     pvtLoadingRate?: number | string | null;
     pvtLoadingAmount?: number | string | null;
@@ -643,10 +645,10 @@ function buildCarMirrorItems(
   if (car.pvtLoadingEnabled) {
     items.push({
       insuredContent: "PVT Loading (Main CAR + CPM)",
-      sumInsured: null,
-      rate: isBlank(car.pvtLoadingRate) ? null : toDecimal(car.pvtLoadingRate),
-      calculationMethod: "MANUAL_PREMIUM",
-      premium: calc.carPvtLoadingAmount,
+      sumInsured: calc.carPvtLoadingAmount,
+      rate: calc.carPvtLoadingRate,
+      calculationMethod: "PERCENTAGE",
+      premium: calc.carPvtLoadingPremium,
       sortOrder: items.length,
     });
   }
@@ -753,6 +755,7 @@ function buildCarSection(
     cpmRate,
     pvtLoadingEnabled: car.pvtLoadingEnabled,
     pvtLoadingAmount,
+    pvtLoadingRate,
     tplComplimentary: car.tplComplimentary,
     tplAnyOnePeriod,
     tplRate,
@@ -795,6 +798,7 @@ function buildCarSection(
           pvtLoadingEnabled: car.pvtLoadingEnabled,
           pvtLoadingRate,
           pvtLoadingAmount,
+          pvtLoadingPremium: calc.carPvtLoadingPremium,
           carBasicPremium: calc.carBasicPremium,
           carCpmPremium: calc.carCpmPremium,
           carMainGrossPremium: calc.carMainGrossPremium,
@@ -817,25 +821,66 @@ function buildCarSection(
 // Validates and calculates the WIBA section ahead of the main per-section
 // loop, because Employer's Liability (processed later in the same loop)
 // needs the WIBA gross premium it derives from.
+type PreparedWibaRow = {
+  occupation: string;
+  employeeCount: number;
+  annualWages: Prisma.Decimal;
+  basicMonthlySalary: Prisma.Decimal | null;
+  monthlyAllowance: Prisma.Decimal | null;
+};
+
 function prepareWiba(
   wibaSection: WibaSectionInput | undefined
-): ValidationError | null | { rows: { occupation: string; employeeCount: number; annualWages: Prisma.Decimal }[]; wibaRate: Prisma.Decimal; calc: WibaResult } {
+): ValidationError | null | { rows: PreparedWibaRow[]; wibaRate: Prisma.Decimal; calc: WibaResult } {
   if (!wibaSection) return null;
 
   const rawRows = wibaSection.wiba.payrollRows.filter(
-    (r) => !(!r.occupation?.trim() && isBlank(r.employeeCount) && isBlank(r.annualWages))
+    (r) =>
+      !(
+        !r.occupation?.trim() &&
+        isBlank(r.employeeCount) &&
+        isBlank(r.annualWages) &&
+        isBlank(r.basicMonthlySalary) &&
+        isBlank(r.monthlyAllowance)
+      )
   );
   if (rawRows.length === 0) return { error: "WIBA_AT_LEAST_ONE_ROW" };
 
-  const rows: { occupation: string; employeeCount: number; annualWages: Prisma.Decimal }[] = [];
+  const rows: PreparedWibaRow[] = [];
   for (const row of rawRows) {
     const occupation = row.occupation?.trim();
     if (!occupation) return { error: "WIBA_ROW_OCCUPATION_REQUIRED" };
     const employeeCount = parseRequiredNonNegativeInt(row.employeeCount, "WIBA_ROW_EMPLOYEE_COUNT_INVALID");
     if (isErr(employeeCount)) return employeeCount;
-    const annualWages = parseRequiredNonNegative(row.annualWages, "WIBA_ROW_WAGES_INVALID");
-    if (isErr(annualWages)) return annualWages;
-    rows.push({ occupation, employeeCount, annualWages });
+
+    // A row with either salary input filled in uses the Basic Monthly
+    // Salary/Monthly Allowance formula (Basic Monthly Salary becomes
+    // required, Allowance defaults to 0 left blank). A row with neither —
+    // every pre-existing quotation, and any row nobody has touched yet —
+    // keeps using its own annualWages value exactly as before.
+    const hasSalaryInputs = !isBlank(row.basicMonthlySalary) || !isBlank(row.monthlyAllowance);
+
+    let annualWages: Prisma.Decimal;
+    let basicMonthlySalary: Prisma.Decimal | null = null;
+    let monthlyAllowance: Prisma.Decimal | null = null;
+
+    if (hasSalaryInputs) {
+      const basic = parseRequiredNonNegative(row.basicMonthlySalary, "WIBA_ROW_BASIC_SALARY_INVALID");
+      if (isErr(basic)) return basic;
+      const allowance = parseOptionalNonNegative(row.monthlyAllowance, "WIBA_ROW_ALLOWANCE_INVALID");
+      if (isErr(allowance)) return allowance;
+      basicMonthlySalary = basic;
+      monthlyAllowance = allowance;
+      annualWages = roundMoney(
+        basic.plus(allowance ?? toDecimal(0)).times(employeeCount).times(12)
+      );
+    } else {
+      const wages = parseRequiredNonNegative(row.annualWages, "WIBA_ROW_WAGES_INVALID");
+      if (isErr(wages)) return wages;
+      annualWages = wages;
+    }
+
+    rows.push({ occupation, employeeCount, annualWages, basicMonthlySalary, monthlyAllowance });
   }
 
   const wibaRate = parseRequiredNonNegative(wibaSection.wiba.wibaRate, "WIBA_RATE_INVALID");
@@ -848,7 +893,7 @@ function prepareWiba(
 function buildWibaSection(
   section: WibaSectionInput,
   insuranceType: InsuranceTypeModel,
-  prepared: { rows: { occupation: string; employeeCount: number; annualWages: Prisma.Decimal }[]; wibaRate: Prisma.Decimal; calc: WibaResult }
+  prepared: { rows: PreparedWibaRow[]; wibaRate: Prisma.Decimal; calc: WibaResult }
 ): SingleSectionResult {
   const totals: SectionTotals = {
     basePremium: prepared.calc.grossPremium,
@@ -858,15 +903,23 @@ function buildWibaSection(
     sectionTotal: prepared.calc.totalPremium,
   };
 
-  const items: Prisma.QuotationCoverageItemCreateWithoutSectionInput[] = prepared.rows.map((row, index) => ({
-    insuredContent: row.occupation,
-    sumInsured: row.annualWages,
-    rate: prepared.wibaRate,
-    calculationMethod: "PERCENTAGE",
-    premium: toDecimal(row.annualWages).times(prepared.wibaRate).dividedBy(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
-    notes: `${row.employeeCount} employee(s)`,
-    sortOrder: index,
-  }));
+  // resolvedAnnualWages (from calculateWiba, same order as prepared.rows) is
+  // the value actually summed into the section totals — using it here
+  // instead of row.annualWages keeps the coverage-item breakdown and the
+  // persisted payroll row in exact agreement with the numbers WIBA's own
+  // totals were computed from.
+  const items: Prisma.QuotationCoverageItemCreateWithoutSectionInput[] = prepared.rows.map((row, index) => {
+    const annualWages = prepared.calc.resolvedAnnualWages[index];
+    return {
+      insuredContent: row.occupation,
+      sumInsured: annualWages,
+      rate: prepared.wibaRate,
+      calculationMethod: "PERCENTAGE",
+      premium: annualWages.times(prepared.wibaRate).dividedBy(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
+      notes: `${row.employeeCount} employee(s)`,
+      sortOrder: index,
+    };
+  });
 
   return {
     sectionCreate: {
@@ -886,7 +939,9 @@ function buildWibaSection(
             create: prepared.rows.map((row, index) => ({
               occupation: row.occupation,
               employeeCount: row.employeeCount,
-              annualWages: row.annualWages,
+              annualWages: prepared.calc.resolvedAnnualWages[index],
+              basicMonthlySalary: row.basicMonthlySalary,
+              monthlyAllowance: row.monthlyAllowance,
               sortOrder: index,
             })),
           },
@@ -966,12 +1021,11 @@ function buildCpmSection(
   const cpmRate = parseRequiredNonNegative(cpm.cpmRate, "CPM_RATE_INVALID");
   if (isErr(cpmRate)) return cpmRate;
 
+  // PVT Loading Amount is never taken from the client — calculateCpmStandalone
+  // always derives it from this section's own CPM Base Premium, so a
+  // tampered or stale submitted amount can't affect what gets saved.
   let pvtLoadingRate: Prisma.Decimal | null = null;
-  let pvtLoadingAmount = toDecimal(0);
   if (cpm.pvtLoadingEnabled) {
-    const amt = parseRequiredNonNegative(cpm.pvtLoadingAmount, "CPM_PVT_AMOUNT_REQUIRED");
-    if (isErr(amt)) return amt;
-    pvtLoadingAmount = amt;
     const rate = parseOptionalNonNegative(cpm.pvtLoadingRate, "CPM_PVT_RATE_INVALID");
     if (isErr(rate)) return rate;
     pvtLoadingRate = rate;
@@ -981,7 +1035,7 @@ function buildCpmSection(
     equipmentRows: rows,
     cpmRate,
     pvtLoadingEnabled: cpm.pvtLoadingEnabled,
-    pvtLoadingAmount,
+    pvtLoadingRate,
   });
   const totals: SectionTotals = {
     basePremium: calc.grossPremium,
@@ -1006,10 +1060,10 @@ function buildCpmSection(
   if (cpm.pvtLoadingEnabled) {
     items.push({
       insuredContent: "PVT Loading",
-      sumInsured: null,
-      rate: pvtLoadingRate,
-      calculationMethod: "MANUAL_PREMIUM",
-      premium: calc.pvtLoadingAmount,
+      sumInsured: calc.pvtLoadingAmount,
+      rate: calc.pvtLoadingRate,
+      calculationMethod: "PERCENTAGE",
+      premium: calc.pvtLoadingPremium,
       sortOrder: items.length,
     });
   }
@@ -1023,7 +1077,8 @@ function buildCpmSection(
           cpmRate,
           pvtLoadingEnabled: cpm.pvtLoadingEnabled,
           pvtLoadingRate,
-          pvtLoadingAmount,
+          pvtLoadingAmount: calc.pvtLoadingAmount,
+          pvtLoadingPremium: calc.pvtLoadingPremium,
           totalSumInsured: calc.totalSumInsured,
           basicPremium: calc.basicPremium,
           grossPremium: calc.grossPremium,
@@ -1120,12 +1175,6 @@ function buildFireSection(
   const goodsInStockValue = goodsInStockValueParsed ?? toDecimal(0);
   const rate = parseRequiredNonNegative(fire.rate, "FIRE_RATE_INVALID");
   if (isErr(rate)) return rate;
-  const earthquakeLoadingRateParsed = parseOptionalNonNegative(fire.earthquakeLoadingRate, "FIRE_LOADING_RATE_INVALID");
-  if (isErr(earthquakeLoadingRateParsed)) return earthquakeLoadingRateParsed;
-  const earthquakeLoadingRate = earthquakeLoadingRateParsed ?? toDecimal(0);
-  const floodLoadingRateParsed = parseOptionalNonNegative(fire.floodLoadingRate, "FIRE_LOADING_RATE_INVALID");
-  if (isErr(floodLoadingRateParsed)) return floodLoadingRateParsed;
-  const floodLoadingRate = floodLoadingRateParsed ?? toDecimal(0);
 
   const pvt = parsePvtLoading(
     fire.pvtLoadingEnabled,
@@ -1136,15 +1185,19 @@ function buildFireSection(
   );
   if (isErr(pvt)) return pvt;
 
+  // Earthquake/Flood Loading are fixed business rates (calculateFire
+  // resolves them internally from constants), not something taken from the
+  // client — a submitted rate value, if any, is ignored.
   const calc = calculateFire({
     propertyValue,
     rawMaterialValue,
     goodsInStockValue,
     rate,
-    earthquakeLoadingRate,
-    floodLoadingRate,
+    earthquakeLoadingEnabled: fire.earthquakeLoadingEnabled,
+    floodLoadingEnabled: fire.floodLoadingEnabled,
     pvtLoadingEnabled: fire.pvtLoadingEnabled,
     pvtLoadingAmount: pvt.pvtLoadingAmount,
+    pvtLoadingRate: pvt.pvtLoadingRate,
   });
   const totals: SectionTotals = {
     basePremium: calc.grossPremium,
@@ -1164,21 +1217,21 @@ function buildFireSection(
       sortOrder: 0,
     },
   ];
-  if (!earthquakeLoadingRate.isZero()) {
+  if (fire.earthquakeLoadingEnabled) {
     items.push({
       insuredContent: "Earthquake Loading",
       sumInsured: calc.totalSumInsured,
-      rate: earthquakeLoadingRate,
+      rate: calc.earthquakeLoadingRate,
       calculationMethod: "PERCENTAGE",
       premium: calc.earthquakeLoadingAmount,
       sortOrder: items.length,
     });
   }
-  if (!floodLoadingRate.isZero()) {
+  if (fire.floodLoadingEnabled) {
     items.push({
       insuredContent: "Flood Loading",
       sumInsured: calc.totalSumInsured,
-      rate: floodLoadingRate,
+      rate: calc.floodLoadingRate,
       calculationMethod: "PERCENTAGE",
       premium: calc.floodLoadingAmount,
       sortOrder: items.length,
@@ -1187,10 +1240,10 @@ function buildFireSection(
   if (fire.pvtLoadingEnabled) {
     items.push({
       insuredContent: "PVT Loading",
-      sumInsured: null,
-      rate: pvt.pvtLoadingRate,
-      calculationMethod: "MANUAL_PREMIUM",
-      premium: calc.pvtLoadingAmount,
+      sumInsured: calc.pvtLoadingAmount,
+      rate: calc.pvtLoadingRate,
+      calculationMethod: "PERCENTAGE",
+      premium: calc.pvtLoadingPremium,
       sortOrder: items.length,
     });
   }
@@ -1205,11 +1258,14 @@ function buildFireSection(
           rawMaterialValue,
           goodsInStockValue,
           rate,
-          earthquakeLoadingRate,
-          floodLoadingRate,
+          earthquakeLoadingRate: calc.earthquakeLoadingRate,
+          floodLoadingRate: calc.floodLoadingRate,
+          earthquakeLoadingEnabled: fire.earthquakeLoadingEnabled,
+          floodLoadingEnabled: fire.floodLoadingEnabled,
           pvtLoadingEnabled: fire.pvtLoadingEnabled,
           pvtLoadingRate: pvt.pvtLoadingRate,
           pvtLoadingAmount: pvt.pvtLoadingAmount,
+          pvtLoadingPremium: calc.pvtLoadingPremium,
           totalSumInsured: calc.totalSumInsured,
           basicPremium: calc.basicPremium,
           earthquakeLoadingAmount: calc.earthquakeLoadingAmount,
@@ -1315,6 +1371,7 @@ function buildGitSingleSection(
     rate,
     pvtLoadingEnabled: git.pvtLoadingEnabled,
     pvtLoadingAmount: pvt.pvtLoadingAmount,
+    pvtLoadingRate: pvt.pvtLoadingRate,
   });
   const totals: SectionTotals = {
     basePremium: calc.grossPremium,
@@ -1337,10 +1394,10 @@ function buildGitSingleSection(
   if (git.pvtLoadingEnabled) {
     items.push({
       insuredContent: "PVT Loading",
-      sumInsured: null,
-      rate: pvt.pvtLoadingRate,
-      calculationMethod: "MANUAL_PREMIUM",
-      premium: calc.pvtLoadingAmount,
+      sumInsured: calc.pvtLoadingAmount,
+      rate: calc.pvtLoadingRate,
+      calculationMethod: "PERCENTAGE",
+      premium: calc.pvtLoadingPremium,
       sortOrder: items.length,
     });
   }
@@ -1358,6 +1415,7 @@ function buildGitSingleSection(
           pvtLoadingEnabled: git.pvtLoadingEnabled,
           pvtLoadingRate: pvt.pvtLoadingRate,
           pvtLoadingAmount: pvt.pvtLoadingAmount,
+          pvtLoadingPremium: calc.pvtLoadingPremium,
           basicPremium: calc.basicPremium,
           grossPremium: calc.grossPremium,
           phcfAmount: calc.phcfAmount,
@@ -1404,6 +1462,7 @@ function buildGitAnnualSection(
     yearLimitRate,
     pvtLoadingEnabled: git.pvtLoadingEnabled,
     pvtLoadingAmount: pvt.pvtLoadingAmount,
+    pvtLoadingRate: pvt.pvtLoadingRate,
   });
   const totals: SectionTotals = {
     basePremium: calc.grossPremium,
@@ -1434,10 +1493,10 @@ function buildGitAnnualSection(
   if (git.pvtLoadingEnabled) {
     items.push({
       insuredContent: "PVT Loading",
-      sumInsured: null,
-      rate: pvt.pvtLoadingRate,
-      calculationMethod: "MANUAL_PREMIUM",
-      premium: calc.pvtLoadingAmount,
+      sumInsured: calc.pvtLoadingAmount,
+      rate: calc.pvtLoadingRate,
+      calculationMethod: "PERCENTAGE",
+      premium: calc.pvtLoadingPremium,
       sortOrder: items.length,
     });
   }
@@ -1456,6 +1515,7 @@ function buildGitAnnualSection(
           pvtLoadingEnabled: git.pvtLoadingEnabled,
           pvtLoadingRate: pvt.pvtLoadingRate,
           pvtLoadingAmount: pvt.pvtLoadingAmount,
+          pvtLoadingPremium: calc.pvtLoadingPremium,
           singlePremium: calc.singlePremium,
           yearPremium: calc.yearPremium,
           grossPremium: calc.grossPremium,

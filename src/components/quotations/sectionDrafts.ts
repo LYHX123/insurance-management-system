@@ -45,6 +45,8 @@ export type WibaPayrollRowDraft = {
   occupation: string;
   employeeCount: string;
   annualWages: string;
+  basicMonthlySalary: string;
+  monthlyAllowance: string;
 };
 
 export type WibaDraft = {
@@ -53,7 +55,14 @@ export type WibaDraft = {
 };
 
 export function emptyWibaPayrollRow(): WibaPayrollRowDraft {
-  return { key: crypto.randomUUID(), occupation: "", employeeCount: "", annualWages: "" };
+  return {
+    key: crypto.randomUUID(),
+    occupation: "",
+    employeeCount: "",
+    annualWages: "",
+    basicMonthlySalary: "",
+    monthlyAllowance: "",
+  };
 }
 
 export function emptyWibaDraft(): WibaDraft {
@@ -71,7 +80,6 @@ export type CpmDraft = {
   cpmRate: string;
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string;
-  pvtLoadingAmount: string;
   equipmentRows: CpmEquipmentRowDraft[];
 };
 
@@ -80,7 +88,7 @@ export function emptyCpmEquipmentRow(): CpmEquipmentRowDraft {
 }
 
 export function emptyCpmDraft(): CpmDraft {
-  return { cpmRate: "", pvtLoadingEnabled: false, equipmentRows: [emptyCpmEquipmentRow()], pvtLoadingRate: "", pvtLoadingAmount: "" };
+  return { cpmRate: "", pvtLoadingEnabled: false, equipmentRows: [emptyCpmEquipmentRow()], pvtLoadingRate: "" };
 }
 
 export type PublicLiabilityDraft = {
@@ -99,8 +107,8 @@ export type FireDraft = {
   rawMaterialValue: string;
   goodsInStockValue: string;
   rate: string;
-  earthquakeLoadingRate: string;
-  floodLoadingRate: string;
+  earthquakeLoadingEnabled: boolean;
+  floodLoadingEnabled: boolean;
   pvtLoadingEnabled: boolean;
   pvtLoadingRate: string;
   pvtLoadingAmount: string;
@@ -112,8 +120,8 @@ export function emptyFireDraft(): FireDraft {
     rawMaterialValue: "",
     goodsInStockValue: "",
     rate: "",
-    earthquakeLoadingRate: "",
-    floodLoadingRate: "",
+    earthquakeLoadingEnabled: false,
+    floodLoadingEnabled: false,
     pvtLoadingEnabled: false,
     pvtLoadingRate: "",
     pvtLoadingAmount: "",

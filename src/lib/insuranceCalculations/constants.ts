@@ -18,3 +18,17 @@ export const EL_PERCENT_OF_WIBA = 25;
 // KES 40 STAMP_DUTY above — its stamp duty is a percentage of the total
 // sum insured instead (0.05 meaning 0.05%, same convention as PHCF_RATE).
 export const MARINE_STAMP_DUTY_RATE = 0.05;
+
+// Marine's Incidental Loading is a fixed 10% of each shipment's Original Sum
+// Insured (10 meaning 10%, same convention as every rate above), added on
+// top of Sum Insured to form the Basic Sum Insured that Rate is actually
+// applied to: Basic Sum Insured = Sum Insured x 1.1. See
+// insuranceCalculations/marine.ts for the single authoritative
+// implementation — never re-derive this elsewhere.
+export const MARINE_INCIDENTAL_LOADING_RATE = 10;
+
+// Fire & Perils' Earthquake/Flood Loading are fixed business rates, not
+// user-entered — the page only offers Yes/No, and when Yes, this is the
+// rate applied (0.025 meaning 0.025%, same convention as PHCF_RATE).
+export const FIRE_EARTHQUAKE_LOADING_RATE = 0.025;
+export const FIRE_FLOOD_LOADING_RATE = 0.01;

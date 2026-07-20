@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { percentOf, roundMoney, toDecimal, type DecimalInput } from "@/lib/money";
 import { ITL_RATE, PHCF_RATE, STAMP_DUTY } from "./constants";
+import { calculatePvtLoading } from "./pvtLoading";
 
 export type CarPackageInput = {
   contractValue: DecimalInput;
@@ -9,6 +10,7 @@ export type CarPackageInput = {
   cpmRate?: DecimalInput;
   pvtLoadingEnabled: boolean;
   pvtLoadingAmount?: DecimalInput;
+  pvtLoadingRate?: DecimalInput;
   tplComplimentary: boolean;
   tplAnyOnePeriod?: DecimalInput;
   tplRate?: DecimalInput;
@@ -18,6 +20,8 @@ export type CarPackageResult = {
   carBasicPremium: Prisma.Decimal;
   carCpmPremium: Prisma.Decimal;
   carPvtLoadingAmount: Prisma.Decimal;
+  carPvtLoadingRate: Prisma.Decimal;
+  carPvtLoadingPremium: Prisma.Decimal;
   carMainGrossPremium: Prisma.Decimal;
   carMainPhcf: Prisma.Decimal;
   carMainItl: Prisma.Decimal;
@@ -46,12 +50,14 @@ export function calculateCarPackage(input: CarPackageInput): CarPackageResult {
     input.cpmValue != null && input.cpmRate != null
       ? roundMoney(percentOf(input.cpmValue, input.cpmRate))
       : toDecimal(0);
-  const carPvtLoadingAmount = input.pvtLoadingEnabled
-    ? roundMoney(toDecimal(input.pvtLoadingAmount))
-    : toDecimal(0);
+  const carPvtLoading = calculatePvtLoading({
+    enabled: input.pvtLoadingEnabled,
+    amount: input.pvtLoadingAmount,
+    rate: input.pvtLoadingRate,
+  });
 
   const carMainGrossPremium = roundMoney(
-    carBasicPremium.plus(carCpmPremium).plus(carPvtLoadingAmount)
+    carBasicPremium.plus(carCpmPremium).plus(carPvtLoading.premium)
   );
   const carMainPhcf = roundMoney(percentOf(carMainGrossPremium, PHCF_RATE));
   const carMainItl = roundMoney(percentOf(carMainGrossPremium, ITL_RATE));
@@ -63,14 +69,16 @@ export function calculateCarPackage(input: CarPackageInput): CarPackageResult {
   let tplGrossPremium = toDecimal(0);
   let tplPhcf = toDecimal(0);
   let tplItl = toDecimal(0);
-  let tplStampDuty = toDecimal(0);
+  // TPL is part of the same CAR policy as Main CAR/CPM/PVT Loading — only one
+  // stamp duty is charged per policy, already counted in carMainStampDuty
+  // above, so TPL's own share stays 0 rather than adding a second KES 40.
+  const tplStampDuty = toDecimal(0);
   let tplTotalPremium = toDecimal(0);
 
   if (!input.tplComplimentary) {
     tplGrossPremium = roundMoney(percentOf(input.tplAnyOnePeriod, input.tplRate));
     tplPhcf = roundMoney(percentOf(tplGrossPremium, PHCF_RATE));
     tplItl = roundMoney(percentOf(tplGrossPremium, ITL_RATE));
-    tplStampDuty = toDecimal(STAMP_DUTY);
     tplTotalPremium = roundMoney(
       tplGrossPremium.plus(tplPhcf).plus(tplItl).plus(tplStampDuty)
     );
@@ -79,7 +87,9 @@ export function calculateCarPackage(input: CarPackageInput): CarPackageResult {
   return {
     carBasicPremium,
     carCpmPremium,
-    carPvtLoadingAmount,
+    carPvtLoadingAmount: carPvtLoading.amount,
+    carPvtLoadingRate: carPvtLoading.rate,
+    carPvtLoadingPremium: carPvtLoading.premium,
     carMainGrossPremium,
     carMainPhcf,
     carMainItl,

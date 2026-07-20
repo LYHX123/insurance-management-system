@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
-import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
 import { previewBurglary } from "@/lib/insuranceCalculations/clientPreview";
@@ -29,20 +29,14 @@ export function BurglarySection({
           <MoneyInput value={draft.stockValue} onChange={(v) => onChange({ stockValue: v })} />
         </FormField>
         <FormField label={t.quotations.firstLossPercentage}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.firstLossPercentage}
             onChange={(e) => onChange({ firstLossPercentage: e.target.value })}
             required
           />
         </FormField>
         <FormField label={t.quotations.burglaryRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.rate}
             onChange={(e) => onChange({ rate: e.target.value })}
             required

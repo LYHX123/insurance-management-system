@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
 import { previewGuarantee } from "@/lib/insuranceCalculations/clientPreview";
@@ -32,10 +33,7 @@ export function GuaranteeSection({
           <MoneyInput value={draft.bondValue} onChange={(v) => onChange({ bondValue: v })} required />
         </FormField>
         <FormField label={t.quotations.bondRate}>
-          <Input
-            type="number"
-            step="0.0001"
-            min="0"
+          <RateInput
             value={draft.rate}
             onChange={(e) => onChange({ rate: e.target.value })}
             required

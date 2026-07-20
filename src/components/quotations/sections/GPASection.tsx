@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
+import { RateInput } from "@/components/ui/rate-input";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
 import { previewGpa } from "@/lib/insuranceCalculations/clientPreview";
@@ -26,31 +27,31 @@ export function GPASection({
           <MoneyInput value={draft.deathLimit} onChange={(v) => onChange({ deathLimit: v })} />
         </FormField>
         <FormField label={t.quotations.deathRate}>
-          <Input type="number" step="0.0001" min="0" value={draft.deathRate} onChange={(e) => onChange({ deathRate: e.target.value })} />
+          <RateInput value={draft.deathRate} onChange={(e) => onChange({ deathRate: e.target.value })} />
         </FormField>
         <FormField label={t.quotations.ptdLimit}>
           <MoneyInput value={draft.ptdLimit} onChange={(v) => onChange({ ptdLimit: v })} />
         </FormField>
         <FormField label={t.quotations.ptdRate}>
-          <Input type="number" step="0.0001" min="0" value={draft.ptdRate} onChange={(e) => onChange({ ptdRate: e.target.value })} />
+          <RateInput value={draft.ptdRate} onChange={(e) => onChange({ ptdRate: e.target.value })} />
         </FormField>
         <FormField label={t.quotations.ttdLimit}>
           <MoneyInput value={draft.ttdLimit} onChange={(v) => onChange({ ttdLimit: v })} />
         </FormField>
         <FormField label={t.quotations.ttdRate}>
-          <Input type="number" step="0.0001" min="0" value={draft.ttdRate} onChange={(e) => onChange({ ttdRate: e.target.value })} />
+          <RateInput value={draft.ttdRate} onChange={(e) => onChange({ ttdRate: e.target.value })} />
         </FormField>
         <FormField label={t.quotations.gpaMedicalLimit}>
           <MoneyInput value={draft.medicalLimit} onChange={(v) => onChange({ medicalLimit: v })} />
         </FormField>
         <FormField label={t.quotations.gpaMedicalRate}>
-          <Input type="number" step="0.0001" min="0" value={draft.medicalRate} onChange={(e) => onChange({ medicalRate: e.target.value })} />
+          <RateInput value={draft.medicalRate} onChange={(e) => onChange({ medicalRate: e.target.value })} />
         </FormField>
         <FormField label={t.quotations.funeralLimit}>
           <MoneyInput value={draft.funeralLimit} onChange={(v) => onChange({ funeralLimit: v })} />
         </FormField>
         <FormField label={t.quotations.funeralRate}>
-          <Input type="number" step="0.0001" min="0" value={draft.funeralRate} onChange={(e) => onChange({ funeralRate: e.target.value })} />
+          <RateInput value={draft.funeralRate} onChange={(e) => onChange({ funeralRate: e.target.value })} />
         </FormField>
         <FormField label={t.quotations.numberOfPeople}>
           <Input
