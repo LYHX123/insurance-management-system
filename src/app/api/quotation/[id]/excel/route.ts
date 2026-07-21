@@ -7,14 +7,10 @@ import {
   exportQuotationExcel,
   type QuotationExportData,
 } from "@/lib/excel/quotation-export";
+import { buildRevisionExcelFilename } from "@/lib/quotationRevisions/excelFilename";
 
 function toNumber(value: { toNumber(): number } | null | undefined): number | null {
   return value ? value.toNumber() : null;
-}
-
-function quotationNumberToFilename(quotationNumber: string): string {
-  // "QT202607-001" -> "QT-202607-001.xlsx"
-  return `${quotationNumber.replace(/^QT/, "QT-")}.xlsx`;
 }
 
 export async function GET(
@@ -94,7 +90,12 @@ export async function GET(
     return NextResponse.json({ error: "EXPORT_FAILED" }, { status: 500 });
   }
 
-  const filename = quotationNumberToFilename(quotation.quotationNumber);
+  const filename = buildRevisionExcelFilename({
+    quotationNumber: quotation.quotationNumber,
+    revisionCode: quotation.revisionCode,
+    customerName: quotation.customer.companyName,
+    insuranceTypeNames: quotation.sections.map((s) => s.insuranceTypeNameSnapshot),
+  });
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

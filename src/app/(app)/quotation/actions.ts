@@ -2447,6 +2447,14 @@ export async function updateQuotationAction(
 
   const existing = await prisma.quotation.findUnique({ where: { id } });
   if (!existing) return { success: false, error: "QUOTATION_NOT_FOUND" };
+  // Phase 1 revision locking: a revision that has ever been issued is a
+  // historical record from here on. Pre-Phase-1 rows (revisionStatus still
+  // null, never backfilled — should not exist after the backfill script
+  // runs, but checked defensively) are treated as editable, matching their
+  // original behavior.
+  if (existing.revisionStatus && existing.revisionStatus !== "DRAFT") {
+    return { success: false, error: "REVISION_LOCKED" };
+  }
 
   const customerCheck = await validateCustomerAndProject(data.customerId, data.projectId);
   if ("error" in customerCheck) return { success: false, error: customerCheck.error };

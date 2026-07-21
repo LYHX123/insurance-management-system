@@ -73,9 +73,10 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects   CustomerProject[]
-  documents  CustomerDocument[]
-  quotations Quotation[]
+  projects       CustomerProject[]
+  documents      CustomerDocument[]
+  quotations     Quotation[]
+  quotationCases QuotationCase[]
 
   @@index([companyName])
   @@index([status])
@@ -95,8 +96,9 @@ model CustomerProject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents  CustomerDocument[]
-  quotations Quotation[]
+  documents      CustomerDocument[]
+  quotations     Quotation[]
+  quotationCases QuotationCase[]
 
   @@index([customerId])
 }
@@ -138,6 +140,32 @@ enum QuotationStatus {
   REJECTED
   EXPIRED
   CANCELLED
+}
+
+// --- Phase 1 quotation revision history -----------------------------------
+// Status of one specific Quotation row now that Quotation is a revision
+// record under a QuotationCase (see that model's doc comment). Independent
+// of the pre-existing QuotationStatus above, which is left untouched for
+// backward compatibility — nothing reads RevisionStatus except the new
+// revision-aware code paths added in this phase.
+enum RevisionStatus {
+  DRAFT
+  ISSUED
+  SUPERSEDED
+  ACCEPTED
+  CANCELLED
+}
+
+// Status of the permanent quotation case (the enquiry as a whole), tracked
+// independently of any one revision's RevisionStatus.
+enum QuotationCaseStatus {
+  DRAFT
+  IN_PROGRESS
+  QUOTED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CONVERTED_TO_POLICY
 }
 
 enum CalculationMethod {
@@ -226,9 +254,57 @@ model QuotationNumberCounter {
   lastSequence Int    @default(0)
 }
 
-model Quotation {
+// The permanent quotation enquiry — owns every historical revision. Created
+// once, its quotationNumber (the original QT{YYYYMM}-{seq}) never changes
+// and is never regenerated for a revision. currentRevisionId/
+// acceptedRevisionId are plain pointer columns (not Prisma @relation fields)
+// deliberately: they point at a Quotation row that already belongs to this
+// same case via Quotation.quotationCaseId, and adding a second, named
+// relation in the other direction would create a circular FK pair for no
+// real benefit here — this project's existing convention already stores
+// single user references (Quotation.createdBy) as plain, unenforced id
+// strings rather than relations, and this follows the same pattern.
+// Consistency ("does currentRevisionId actually belong to this case, and is
+// isCurrentRevision actually true on exactly that row") is guaranteed by
+// always updating both together inside the same transaction — see
+// src/lib/quotationRevisions/*.
+model QuotationCase {
   id              String           @id @default(cuid())
   quotationNumber String           @unique
+  customerId      String
+  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  projectId       String?
+  project         CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  title  String?
+  status QuotationCaseStatus @default(DRAFT)
+
+  currentRevisionId  String? @unique
+  acceptedRevisionId String? @unique
+
+  createdById String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  revisions Quotation[]
+
+  @@index([customerId])
+  @@index([projectId])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model Quotation {
+  id              String           @id @default(cuid())
+  // No longer globally unique as of Phase 1: every revision under the same
+  // QuotationCase intentionally shares its case's quotationNumber (R01,
+  // R02, R03... all display as QT202607-081-R0n). Uniqueness of the
+  // permanent case number now lives on QuotationCase.quotationNumber
+  // instead; per-case revision uniqueness is enforced by the
+  // (quotationCaseId, revisionNumber) unique constraint below. Indexed
+  // (not unique) since it is still a common lookup/display key.
+  quotationNumber String
   customerId      String
   customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
   projectId       String?
@@ -252,9 +328,43 @@ model Quotation {
 
   sections QuotationInsuranceSection[]
 
+  // --- Phase 1 revision fields ---------------------------------------
+  // All nullable: this is an additive migration on a table with existing
+  // rows, and the one-time backfill (see prisma/migrations/.../backfill)
+  // populates these for every pre-existing row rather than a schema-level
+  // default. New code must always set them; nothing currently reads them
+  // as required. See RevisionStatus's doc comment for why this is a
+  // separate field from the pre-existing `status` above.
+  quotationCaseId   String?
+  quotationCase     QuotationCase?  @relation(fields: [quotationCaseId], references: [id], onDelete: Cascade)
+  revisionNumber    Int?
+  // Denormalized "R01"/"R02".../"R99" display form of revisionNumber,
+  // stored (not computed on read) so every historical Excel filename and
+  // UI reference stays stable even if the padding convention ever changes.
+  revisionCode      String?
+  revisionStatus    RevisionStatus?
+  revisionReason    String?
+  isCurrentRevision Boolean         @default(false)
+
+  issuedAt           DateTime?
+  issuedById         String?
+  supersededAt       DateTime?
+  acceptedAt         DateTime?
+  acceptedById       String?
+  cancelledAt        DateTime?
+  cancelledById      String?
+  // Required by cancelRevisionAction's validation, not enforced at the DB
+  // level (nullable) so any pre-Phase-1 row is never in violation.
+  cancellationReason String?
+
+  @@unique([quotationCaseId, revisionNumber])
+  @@index([quotationNumber])
   @@index([customerId])
   @@index([projectId])
   @@index([status])
+  @@index([quotationCaseId])
+  @@index([isCurrentRevision])
+  @@index([revisionStatus])
 }
 
 model QuotationInsuranceSection {
@@ -316,16 +426,16 @@ model QuotationInsuranceSection {
   marineDetail          MarineSectionDetail?
 
   // --- Phase 2B structured insurance-type detail relations -------------
-  motorCompPrivateDetail       MotorCompPrivateSectionDetail?
-  motorCompCommercialDetail    MotorCompCommercialSectionDetail?
-  motorTpoPrivateDetail        MotorTpoPrivateSectionDetail?
-  motorTpoCommercialDetail     MotorTpoCommercialSectionDetail?
-  gpaDetail                    GpaSectionDetail?
-  medicalDetail                MedicalSectionDetail?
-  tenderSecurityDetail         TenderSecuritySectionDetail?
-  performanceBondDetail        PerformanceBondSectionDetail?
+  motorCompPrivateDetail        MotorCompPrivateSectionDetail?
+  motorCompCommercialDetail     MotorCompCommercialSectionDetail?
+  motorTpoPrivateDetail         MotorTpoPrivateSectionDetail?
+  motorTpoCommercialDetail      MotorTpoCommercialSectionDetail?
+  gpaDetail                     GpaSectionDetail?
+  medicalDetail                 MedicalSectionDetail?
+  tenderSecurityDetail          TenderSecuritySectionDetail?
+  performanceBondDetail         PerformanceBondSectionDetail?
   advancePaymentGuaranteeDetail AdvancePaymentGuaranteeSectionDetail?
-  customsBondDetail            CustomsBondSectionDetail?
+  customsBondDetail             CustomsBondSectionDetail?
 
   @@index([quotationId])
   @@index([insuranceTypeId])
@@ -544,10 +654,10 @@ model FireSectionDetail {
   sectionId String                    @unique
   section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
-  propertyValue         Decimal @default(0) @db.Decimal(18, 2)
-  rawMaterialValue       Decimal @default(0) @db.Decimal(18, 2)
-  goodsInStockValue       Decimal @default(0) @db.Decimal(18, 2)
-  rate                   Decimal @db.Decimal(10, 4)
+  propertyValue            Decimal @default(0) @db.Decimal(18, 2)
+  rawMaterialValue         Decimal @default(0) @db.Decimal(18, 2)
+  goodsInStockValue        Decimal @default(0) @db.Decimal(18, 2)
+  rate                     Decimal @db.Decimal(10, 4)
   // Earthquake/Flood Loading are fixed business rates (see
   // FIRE_EARTHQUAKE_LOADING_RATE/FIRE_FLOOD_LOADING_RATE in
   // insuranceCalculations/constants.ts), no longer user-entered — the page
@@ -555,8 +665,8 @@ model FireSectionDetail {
   // The *Rate columns are kept (not dropped) so pre-existing rows saved
   // before this change keep their original values; new rows snapshot the
   // fixed constant here when enabled, 0 when not.
-  earthquakeLoadingRate   Decimal @default(0) @db.Decimal(10, 4)
-  floodLoadingRate        Decimal @default(0) @db.Decimal(10, 4)
+  earthquakeLoadingRate    Decimal @default(0) @db.Decimal(10, 4)
+  floodLoadingRate         Decimal @default(0) @db.Decimal(10, 4)
   earthquakeLoadingEnabled Boolean @default(false)
   floodLoadingEnabled      Boolean @default(false)
 
@@ -871,17 +981,17 @@ model MedicalSectionDetail {
 // arbitrary categories or a variable row count here (contrast with the
 // fully dynamic WIBA/CPM/Marine/CustomsBond row patterns).
 model MedicalFamilyCategoryRow {
-  id              String                @id @default(cuid())
+  id              String               @id @default(cuid())
   medicalDetailId String
-  medicalDetail   MedicalSectionDetail  @relation(fields: [medicalDetailId], references: [id], onDelete: Cascade)
+  medicalDetail   MedicalSectionDetail @relation(fields: [medicalDetailId], references: [id], onDelete: Cascade)
 
   category         MedicalFamilyCategory
-  employeeCount    Int     @default(0)
-  inpatientRate    Decimal @default(0) @db.Decimal(10, 4)
-  outpatientRate   Decimal @default(0) @db.Decimal(10, 4)
-  inpatientAmount  Decimal @default(0) @db.Decimal(16, 2)
-  outpatientAmount Decimal @default(0) @db.Decimal(16, 2)
-  sortOrder        Int     @default(0)
+  employeeCount    Int                   @default(0)
+  inpatientRate    Decimal               @default(0) @db.Decimal(10, 4)
+  outpatientRate   Decimal               @default(0) @db.Decimal(10, 4)
+  inpatientAmount  Decimal               @default(0) @db.Decimal(16, 2)
+  outpatientAmount Decimal               @default(0) @db.Decimal(16, 2)
+  sortOrder        Int                   @default(0)
 
   @@index([medicalDetailId])
 }
@@ -952,9 +1062,9 @@ model CustomsBondSectionDetail {
   sectionId String                    @unique
   section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
-  grossPremium Decimal @default(0) @db.Decimal(16, 2)
-  phcfAmount   Decimal @default(0) @db.Decimal(16, 2)
-  itlAmount    Decimal @default(0) @db.Decimal(16, 2)
+  grossPremium    Decimal @default(0) @db.Decimal(16, 2)
+  phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
+  itlAmount       Decimal @default(0) @db.Decimal(16, 2)
   // One flat KES 40 for the whole section, never per row.
   stampDutyAmount Decimal @default(0) @db.Decimal(16, 2)
   totalPremium    Decimal @default(0) @db.Decimal(16, 2)

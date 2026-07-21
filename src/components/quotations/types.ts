@@ -245,6 +245,18 @@ export type QuotationStatus =
   | "EXPIRED"
   | "CANCELLED";
 
+// --- Phase 1 quotation revision history ---------------------------------
+export type RevisionStatus = "DRAFT" | "ISSUED" | "SUPERSEDED" | "ACCEPTED" | "CANCELLED";
+
+export type QuotationCaseStatus =
+  | "DRAFT"
+  | "IN_PROGRESS"
+  | "QUOTED"
+  | "ACCEPTED"
+  | "DECLINED"
+  | "EXPIRED"
+  | "CONVERTED_TO_POLICY";
+
 export type CoverageItemRow = {
   id: string;
   insuredContent: string;
@@ -298,19 +310,24 @@ export type SectionRow = {
   customsBondDetail: CustomsBondSectionDetailRow | null;
 };
 
+// One row per QuotationCase (never one row per revision) — the quotation
+// list groups every historical revision under its permanent case.
 export type QuotationListRow = {
-  id: string;
+  caseId: string;
   quotationNumber: string;
   customerId: string;
   customerName: string;
   projectId: string | null;
   projectName: string | null;
   insuranceTypeNames: string[];
+  revisionCode: string;
+  revisionStatus: RevisionStatus;
   subtotalPremium: string;
   totalLevies: string;
   grandTotal: string;
-  status: QuotationStatus;
+  caseStatus: QuotationCaseStatus;
   quotationDate: string;
+  updatedAt: string;
   createdByName: string;
 };
 
@@ -334,6 +351,16 @@ export type QuotationDetail = {
   createdByName: string;
   createdAt: string;
   updatedAt: string;
+  // Phase 1 revision fields — always populated for any Quotation created
+  // after the revision backfill ran (i.e. every row in practice). Optional
+  // in the type only so a not-yet-migrated row (should never occur) fails
+  // safe rather than crashing the page.
+  quotationCaseId?: string | null;
+  revisionCode?: string | null;
+  revisionNumber?: number | null;
+  revisionStatus?: RevisionStatus | null;
+  revisionReason?: string | null;
+  isCurrentRevision?: boolean;
   sections: SectionRow[];
 };
 

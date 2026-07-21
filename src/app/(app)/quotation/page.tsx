@@ -11,16 +11,29 @@ export default async function QuotationPage() {
     redirect("/access-denied");
   }
 
-  const quotations = await prisma.quotation.findMany({
-    orderBy: { createdAt: "desc" },
+  // One row per QuotationCase (the permanent enquiry), never one row per
+  // revision — see Phase 1 revision history. currentRevisionId is a plain
+  // pointer column (not a Prisma relation, see QuotationCase's schema doc
+  // comment), so the current revision's own display data is fetched
+  // separately and joined in application code below.
+  const cases = await prisma.quotationCase.findMany({
+    orderBy: { updatedAt: "desc" },
     include: {
       customer: { select: { companyName: true } },
       project: { select: { projectName: true } },
-      sections: { select: { insuranceTypeNameSnapshot: true } },
     },
   });
 
-  const creatorIds = Array.from(new Set(quotations.map((q) => q.createdBy)));
+  const currentRevisionIds = cases.map((c) => c.currentRevisionId).filter((id): id is string => !!id);
+  const currentRevisions = currentRevisionIds.length
+    ? await prisma.quotation.findMany({
+        where: { id: { in: currentRevisionIds } },
+        include: { sections: { select: { insuranceTypeNameSnapshot: true } } },
+      })
+    : [];
+  const revisionById = new Map(currentRevisions.map((r) => [r.id, r]));
+
+  const creatorIds = Array.from(new Set(cases.map((c) => c.createdById)));
   const creators = creatorIds.length
     ? await prisma.user.findMany({
         where: { id: { in: creatorIds } },
@@ -29,21 +42,30 @@ export default async function QuotationPage() {
     : [];
   const creatorNameById = new Map(creators.map((u) => [u.id, u.fullName || u.username]));
 
-  const rows = quotations.map((q) => ({
-    id: q.id,
-    quotationNumber: q.quotationNumber,
-    customerId: q.customerId,
-    customerName: q.customer.companyName,
-    projectId: q.projectId,
-    projectName: q.project?.projectName ?? null,
-    insuranceTypeNames: q.sections.map((s) => s.insuranceTypeNameSnapshot),
-    subtotalPremium: q.subtotalPremium.toString(),
-    totalLevies: toDecimal(q.totalPHCF).plus(toDecimal(q.totalITL)).plus(toDecimal(q.totalStampDuty)).toString(),
-    grandTotal: q.grandTotal.toString(),
-    status: q.status,
-    quotationDate: q.quotationDate.toISOString(),
-    createdByName: creatorNameById.get(q.createdBy) ?? "—",
-  }));
+  const rows = cases
+    .map((c) => {
+      const rev = c.currentRevisionId ? revisionById.get(c.currentRevisionId) : undefined;
+      if (!rev) return null; // case with no viable current revision (e.g. every revision cancelled)
+      return {
+        caseId: c.id,
+        quotationNumber: c.quotationNumber,
+        customerId: c.customerId,
+        customerName: c.customer.companyName,
+        projectId: c.projectId,
+        projectName: c.project?.projectName ?? null,
+        insuranceTypeNames: rev.sections.map((s) => s.insuranceTypeNameSnapshot),
+        revisionCode: rev.revisionCode ?? "R01",
+        revisionStatus: rev.revisionStatus ?? "DRAFT",
+        subtotalPremium: rev.subtotalPremium.toString(),
+        totalLevies: toDecimal(rev.totalPHCF).plus(toDecimal(rev.totalITL)).plus(toDecimal(rev.totalStampDuty)).toString(),
+        grandTotal: rev.grandTotal.toString(),
+        caseStatus: c.status,
+        quotationDate: rev.quotationDate.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+        createdByName: creatorNameById.get(c.createdById) ?? "—",
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   return <QuotationsTable quotations={rows} />;
 }

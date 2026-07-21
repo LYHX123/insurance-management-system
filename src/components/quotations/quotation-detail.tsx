@@ -3,17 +3,26 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Download, Trash2, GitBranch, Send, CheckCircle2, XCircle } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 import { TableWrap, Table } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
 import { deleteQuotationAction } from "@/app/(app)/quotation/actions";
-import type { QuotationDetail, QuotationStatus } from "@/components/quotations/types";
+import {
+  createRevisionAction,
+  issueRevisionAction,
+  acceptRevisionAction,
+  cancelRevisionAction,
+  deleteDraftRevisionAction,
+} from "@/app/(app)/quotation/revisionActions";
+import type { QuotationDetail, QuotationStatus, RevisionStatus } from "@/components/quotations/types";
 
 const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
   DRAFT: "neutral",
@@ -24,6 +33,51 @@ const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "wa
   CANCELLED: "danger",
 };
 
+const REVISION_TONE: Record<RevisionStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
+  DRAFT: "neutral",
+  ISSUED: "brand",
+  SUPERSEDED: "warning",
+  ACCEPTED: "success",
+  CANCELLED: "danger",
+};
+
+function ReasonModal({
+  title,
+  label,
+  confirmLabel,
+  isSubmitting,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  label: string;
+  confirmLabel: string;
+  isSubmitting: boolean;
+  error: string | null;
+  onConfirm: (reason: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useLocale();
+  const [reason, setReason] = useState("");
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <label className="mb-1 block text-sm font-medium text-zinc-700">{label}</label>
+      <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+          {t.common.cancel}
+        </Button>
+        <Button onClick={() => onConfirm(reason)} disabled={isSubmitting || !reason.trim()}>
+          {confirmLabel}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 export function QuotationDetailView({ quotation }: { quotation: QuotationDetail }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -31,16 +85,102 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [showCreateRevision, setShowCreateRevision] = useState(false);
+  const [showCancelRevision, setShowCancelRevision] = useState(false);
+  const [confirmingIssue, setConfirmingIssue] = useState(false);
+  const [confirmingAccept, setConfirmingAccept] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const revisionStatus = quotation.revisionStatus ?? null;
+  const isLocked = revisionStatus !== null && revisionStatus !== "DRAFT";
+  const hasRevisionInfo = !!quotation.quotationCaseId;
+
+  const revisionErrorLabel: Record<string, string> = {
+    DRAFT_ALREADY_EXISTS: t.quotations.draftAlreadyExists,
+    CASE_NOT_FOUND: t.quotations.caseNotFoundError,
+    REVISION_REASON_REQUIRED: t.quotations.revisionReasonRequiredError,
+    REVISION_CREATE_FAILED: t.quotations.revisionCreateFailed,
+    REVISION_NOT_FOUND: t.quotations.revisionNotFoundError,
+    REVISION_NOT_DRAFT: t.quotations.revisionNotDraftError,
+    AT_LEAST_ONE_SECTION: t.quotations.atLeastOneSection,
+    ISSUE_FAILED: t.quotations.issueFailedError,
+    REVISION_NOT_ISSUED: t.quotations.revisionNotIssuedError,
+    ANOTHER_REVISION_ALREADY_ACCEPTED: t.quotations.anotherRevisionAlreadyAcceptedError,
+    ACCEPT_FAILED: t.quotations.acceptFailedError,
+    REVISION_NOT_CANCELLABLE: t.quotations.revisionNotCancellableError,
+    CANCELLATION_REASON_REQUIRED: t.quotations.cancellationReasonRequiredError,
+    CANCEL_FAILED: t.quotations.cancelFailedError,
+    ONLY_DRAFT_DELETABLE: t.quotations.onlyDraftDeletableError,
+    DELETE_FAILED: t.quotations.deleteRevisionFailedError,
+    FORBIDDEN: t.quotations.genericError,
+  };
+
   const handleDelete = async () => {
     setIsDeleting(true);
     setDeleteError(null);
-    const result = await deleteQuotationAction(quotation.id);
+    const result = hasRevisionInfo
+      ? await deleteDraftRevisionAction(quotation.id)
+      : await deleteQuotationAction(quotation.id);
     setIsDeleting(false);
     if (!result.success) {
-      setDeleteError(t.quotations.deleteQuotationFailed);
+      setDeleteError(revisionErrorLabel[result.error] ?? t.quotations.deleteQuotationFailed);
       return;
     }
     router.push("/quotation");
+  };
+
+  const handleCreateRevision = async (reason: string) => {
+    if (!quotation.quotationCaseId) return;
+    setBusy(true);
+    setActionError(null);
+    const result = await createRevisionAction(quotation.quotationCaseId, quotation.id, reason);
+    setBusy(false);
+    if (!result.success) {
+      setActionError(revisionErrorLabel[result.error] ?? t.quotations.revisionCreateFailed);
+      return;
+    }
+    setShowCreateRevision(false);
+    router.push(`/quotation/${result.id}/edit`);
+  };
+
+  const handleIssue = async () => {
+    setBusy(true);
+    setActionError(null);
+    const result = await issueRevisionAction(quotation.id);
+    setBusy(false);
+    if (!result.success) {
+      setActionError(revisionErrorLabel[result.error] ?? t.quotations.issueFailedError);
+      return;
+    }
+    setConfirmingIssue(false);
+    router.refresh();
+  };
+
+  const handleAccept = async () => {
+    setBusy(true);
+    setActionError(null);
+    const result = await acceptRevisionAction(quotation.id);
+    setBusy(false);
+    if (!result.success) {
+      setActionError(revisionErrorLabel[result.error] ?? t.quotations.acceptFailedError);
+      return;
+    }
+    setConfirmingAccept(false);
+    router.refresh();
+  };
+
+  const handleCancel = async (reason: string) => {
+    setBusy(true);
+    setActionError(null);
+    const result = await cancelRevisionAction(quotation.id, reason);
+    setBusy(false);
+    if (!result.success) {
+      setActionError(revisionErrorLabel[result.error] ?? t.quotations.cancelFailedError);
+      return;
+    }
+    setShowCancelRevision(false);
+    router.refresh();
   };
 
   const statusLabel: Record<QuotationStatus, string> = {
@@ -50,6 +190,14 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
     REJECTED: t.quotations.statusRejected,
     EXPIRED: t.quotations.statusExpired,
     CANCELLED: t.quotations.statusCancelled,
+  };
+
+  const revisionStatusLabel: Record<RevisionStatus, string> = {
+    DRAFT: t.quotations.revisionStatusDraft,
+    ISSUED: t.quotations.revisionStatusIssued,
+    SUPERSEDED: t.quotations.revisionStatusSuperseded,
+    ACCEPTED: t.quotations.revisionStatusAccepted,
+    CANCELLED: t.quotations.revisionStatusCancelled,
   };
 
   const calculationMethodLabel: Record<string, string> = {
@@ -76,7 +224,15 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
           {t.quotations.backToList}
         </Link>
         <PageHeader
-          title={quotation.quotationNumber}
+          title={
+            <span className="inline-flex items-center gap-2">
+              {quotation.quotationNumber}
+              {quotation.revisionCode && (
+                <Badge tone="neutral">{quotation.revisionCode}</Badge>
+              )}
+              {revisionStatus && <Badge tone={REVISION_TONE[revisionStatus]}>{revisionStatusLabel[revisionStatus]}</Badge>}
+            </span>
+          }
           description={quotation.customerName}
           actions={
             <>
@@ -92,20 +248,64 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
                   {t.quotations.downloadExcelTemplate}
                 </Button>
               </a>
-              <Link href={`/quotation/${quotation.id}/edit`}>
-                <Button variant="secondary">
-                  <Pencil size={16} />
-                  {t.common.edit}
+
+              {!isLocked && (
+                <Link href={`/quotation/${quotation.id}/edit`}>
+                  <Button variant="secondary">
+                    <Pencil size={16} />
+                    {t.common.edit}
+                  </Button>
+                </Link>
+              )}
+
+              {hasRevisionInfo && (
+                <Button variant="secondary" onClick={() => setShowCreateRevision(true)}>
+                  <GitBranch size={16} />
+                  {isLocked ? t.quotations.createRevisionFromThisVersion : t.quotations.createRevision}
                 </Button>
-              </Link>
-              <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
-                <Trash2 size={16} />
-                {t.common.delete}
-              </Button>
+              )}
+
+              {revisionStatus === "DRAFT" && (
+                <Button variant="primary" onClick={() => setConfirmingIssue(true)}>
+                  <Send size={16} />
+                  {t.quotations.issueRevision}
+                </Button>
+              )}
+              {revisionStatus === "ISSUED" && (
+                <>
+                  <Button variant="primary" onClick={() => setConfirmingAccept(true)}>
+                    <CheckCircle2 size={16} />
+                    {t.quotations.markAccepted}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
+                    <XCircle size={16} />
+                    {t.quotations.cancelRevision}
+                  </Button>
+                </>
+              )}
+              {revisionStatus === "DRAFT" && (
+                <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
+                  <XCircle size={16} />
+                  {t.quotations.cancelRevision}
+                </Button>
+              )}
+
+              {(!hasRevisionInfo || revisionStatus === "DRAFT") && (
+                <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+                  <Trash2 size={16} />
+                  {t.common.delete}
+                </Button>
+              )}
             </>
           }
         />
       </div>
+
+      {isLocked && (
+        <div className="rounded-control border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          {t.quotations.revisionLocked}
+        </div>
+      )}
 
       {confirmingDelete && (
         <ConfirmDialog
@@ -117,6 +317,62 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
           isSubmitting={isDeleting}
           onConfirm={handleDelete}
           onClose={() => setConfirmingDelete(false)}
+        />
+      )}
+
+      {showCreateRevision && (
+        <ReasonModal
+          title={t.quotations.createRevisionModalTitle}
+          label={t.quotations.revisionReason}
+          confirmLabel={t.quotations.createRevisionConfirm}
+          isSubmitting={busy}
+          error={actionError}
+          onConfirm={handleCreateRevision}
+          onClose={() => {
+            setShowCreateRevision(false);
+            setActionError(null);
+          }}
+        />
+      )}
+
+      {showCancelRevision && (
+        <ReasonModal
+          title={t.quotations.cancelRevisionConfirmTitle}
+          label={t.quotations.cancellationReason}
+          confirmLabel={t.quotations.cancelRevision}
+          isSubmitting={busy}
+          error={actionError}
+          onConfirm={handleCancel}
+          onClose={() => {
+            setShowCancelRevision(false);
+            setActionError(null);
+          }}
+        />
+      )}
+
+      {confirmingIssue && (
+        <ConfirmDialog
+          title={t.quotations.issueRevisionConfirmTitle}
+          message={actionError ?? t.quotations.issueRevisionConfirmMessage}
+          isSubmitting={busy}
+          onConfirm={handleIssue}
+          onClose={() => {
+            setConfirmingIssue(false);
+            setActionError(null);
+          }}
+        />
+      )}
+
+      {confirmingAccept && (
+        <ConfirmDialog
+          title={t.quotations.acceptRevisionConfirmTitle}
+          message={actionError ?? t.quotations.acceptRevisionConfirmMessage}
+          isSubmitting={busy}
+          onConfirm={handleAccept}
+          onClose={() => {
+            setConfirmingAccept(false);
+            setActionError(null);
+          }}
         />
       )}
 
@@ -150,6 +406,12 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
             <dt className="text-secondary">{t.quotations.currency}</dt>
             <dd className="text-body">{quotation.currency}</dd>
           </div>
+          {quotation.revisionReason && (
+            <div>
+              <dt className="text-secondary">{t.quotations.revisionReason}</dt>
+              <dd className="text-body">{quotation.revisionReason}</dd>
+            </div>
+          )}
           {quotation.internalNotes && (
             <div className="sm:col-span-3">
               <dt className="text-secondary">{t.quotations.internalNotes}</dt>

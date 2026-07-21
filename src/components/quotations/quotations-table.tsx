@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, Pencil, Trash2, Settings, Plus } from "lucide-react";
+import { Eye, Settings, Plus } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -13,61 +12,44 @@ import { Input } from "@/components/ui/input";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
-import { deleteQuotationAction } from "@/app/(app)/quotation/actions";
-import type { QuotationListRow, QuotationStatus } from "@/components/quotations/types";
+import type { QuotationListRow, QuotationCaseStatus } from "@/components/quotations/types";
 
-const STATUSES: QuotationStatus[] = [
+const CASE_STATUSES: QuotationCaseStatus[] = [
   "DRAFT",
-  "ISSUED",
+  "IN_PROGRESS",
+  "QUOTED",
   "ACCEPTED",
-  "REJECTED",
+  "DECLINED",
   "EXPIRED",
-  "CANCELLED",
+  "CONVERTED_TO_POLICY",
 ];
 
-const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
+const CASE_STATUS_TONE: Record<QuotationCaseStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
   DRAFT: "neutral",
-  ISSUED: "brand",
+  IN_PROGRESS: "brand",
+  QUOTED: "brand",
   ACCEPTED: "success",
-  REJECTED: "danger",
+  DECLINED: "danger",
   EXPIRED: "warning",
-  CANCELLED: "danger",
+  CONVERTED_TO_POLICY: "success",
 };
 
 export function QuotationsTable({ quotations }: { quotations: QuotationListRow[] }) {
   const { t, locale } = useLocale();
-  const router = useRouter();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | QuotationStatus>("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | QuotationCaseStatus>("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<QuotationListRow | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    setDeleteError(null);
-    const result = await deleteQuotationAction(deleteTarget.id);
-    setIsDeleting(false);
-    if (!result.success) {
-      setDeleteError(t.quotations.deleteQuotationFailed);
-      return;
-    }
-    setDeleteTarget(null);
-    router.refresh();
-  };
-
-  const statusLabel: Record<QuotationStatus, string> = {
-    DRAFT: t.quotations.statusDraft,
-    ISSUED: t.quotations.statusIssued,
-    ACCEPTED: t.quotations.statusAccepted,
-    REJECTED: t.quotations.statusRejected,
-    EXPIRED: t.quotations.statusExpired,
-    CANCELLED: t.quotations.statusCancelled,
+  const caseStatusLabel: Record<QuotationCaseStatus, string> = {
+    DRAFT: t.quotations.caseStatusDraft,
+    IN_PROGRESS: t.quotations.caseStatusInProgress,
+    QUOTED: t.quotations.caseStatusQuoted,
+    ACCEPTED: t.quotations.caseStatusAccepted,
+    DECLINED: t.quotations.caseStatusDeclined,
+    EXPIRED: t.quotations.caseStatusExpired,
+    CONVERTED_TO_POLICY: t.quotations.caseStatusConvertedToPolicy,
   };
 
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
@@ -83,7 +65,7 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
         q.customerName.toLowerCase().includes(term) ||
         (q.projectName?.toLowerCase().includes(term) ?? false) ||
         q.insuranceTypeNames.some((name) => name.toLowerCase().includes(term));
-      const matchesStatus = statusFilter === "ALL" || q.status === statusFilter;
+      const matchesStatus = statusFilter === "ALL" || q.caseStatus === statusFilter;
       const quotationDate = q.quotationDate.slice(0, 10);
       const matchesFrom = !dateFrom || quotationDate >= dateFrom;
       const matchesTo = !dateTo || quotationDate <= dateTo;
@@ -126,9 +108,9 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
           className="w-auto max-w-[200px]"
         >
           <option value="ALL">{t.quotations.allStatuses}</option>
-          {STATUSES.map((s) => (
+          {CASE_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {statusLabel[s]}
+              {caseStatusLabel[s]}
             </option>
           ))}
         </Select>
@@ -149,27 +131,27 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
       </div>
 
       <TableWrap scroll>
-        <Table className="min-w-[1100px]">
+        <Table className="min-w-[1150px]">
           <thead>
             <tr>
               <th>{t.quotations.quotationNumber}</th>
               <th>{t.quotations.customer}</th>
               <th>{t.quotations.project}</th>
               <th>{t.quotations.insuranceTypesUsed}</th>
+              <th>{t.quotations.currentRevision}</th>
               <th>{t.quotations.premium}</th>
-              <th>{t.quotations.levies}</th>
               <th>{t.quotations.grandTotal}</th>
               <th>{t.common.status}</th>
-              <th>{t.quotations.quotationDate}</th>
+              <th>{t.quotations.updatedAt}</th>
               <th>{t.common.actions}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && <TableEmpty colSpan={10}>{t.quotations.noQuotations}</TableEmpty>}
             {filtered.map((q) => (
-              <tr key={q.id}>
+              <tr key={q.caseId}>
                 <td className="font-medium text-zinc-800">
-                  <Link href={`/quotation/${q.id}`} className="text-emerald-700 hover:underline">
+                  <Link href={`/quotation/case/${q.caseId}`} className="text-emerald-700 hover:underline">
                     {q.quotationNumber}
                   </Link>
                 </td>
@@ -187,35 +169,22 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                     )}
                   </div>
                 </td>
+                <td>
+                  <Badge tone="neutral">{q.revisionCode}</Badge>
+                </td>
                 <td className="text-zinc-500">{formatMoney(q.subtotalPremium)}</td>
-                <td className="text-zinc-500">{formatMoney(q.totalLevies)}</td>
                 <td className="font-medium text-zinc-800">{formatMoney(q.grandTotal)}</td>
                 <td>
-                  <Badge tone={STATUS_TONE[q.status]}>{statusLabel[q.status]}</Badge>
+                  <Badge tone={CASE_STATUS_TONE[q.caseStatus]}>{caseStatusLabel[q.caseStatus]}</Badge>
                 </td>
-                <td className="text-zinc-500">{dateFormatter.format(new Date(q.quotationDate))}</td>
+                <td className="text-zinc-500">{dateFormatter.format(new Date(q.updatedAt))}</td>
                 <td>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Link href={`/quotation/${q.id}`}>
+                    <Link href={`/quotation/case/${q.caseId}`}>
                       <IconButton title={t.quotations.view}>
                         <Eye size={16} />
                       </IconButton>
                     </Link>
-                    <Link href={`/quotation/${q.id}/edit`}>
-                      <IconButton title={t.common.edit}>
-                        <Pencil size={16} />
-                      </IconButton>
-                    </Link>
-                    <IconButton
-                      tone="danger"
-                      title={t.common.delete}
-                      onClick={() => {
-                        setDeleteError(null);
-                        setDeleteTarget(q);
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
                   </div>
                 </td>
               </tr>
@@ -223,19 +192,6 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
           </tbody>
         </Table>
       </TableWrap>
-
-      {deleteTarget && (
-        <ConfirmDialog
-          title={t.quotations.confirmDeleteQuotation}
-          message={
-            deleteError ??
-            t.quotations.confirmDeleteQuotationMessage.replace("{number}", deleteTarget.quotationNumber)
-          }
-          isSubmitting={isDeleting}
-          onConfirm={handleDelete}
-          onClose={() => setDeleteTarget(null)}
-        />
-      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   TemplateGenerationError,
   type QuotationForExport,
 } from "@/lib/quotationTemplateEngine";
+import { buildRevisionExcelFilename } from "@/lib/quotationRevisions/excelFilename";
 
 export async function GET(
   req: NextRequest,
@@ -64,7 +65,13 @@ export async function GET(
   }
 
   try {
-    const { buffer, filename } = await generateQuotationExcel(quotation);
+    const { buffer } = await generateQuotationExcel(quotation);
+    const filename = buildRevisionExcelFilename({
+      quotationNumber: quotation.quotationNumber,
+      revisionCode: quotation.revisionCode,
+      customerName: quotation.customer.companyName,
+      insuranceTypeNames: quotation.sections.map((s) => s.insuranceTypeNameSnapshot),
+    });
 
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
