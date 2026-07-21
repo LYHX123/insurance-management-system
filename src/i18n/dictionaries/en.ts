@@ -265,6 +265,9 @@ const en = {
     atLeastOneSection: "Please add at least one insurance type.",
     atLeastOneItem: "Please add at least one coverage item to each insurance type.",
     genericError: "Something went wrong. Please try again.",
+    insuranceTypeNotConfigured: "This insurance type is not set up yet. Please contact an administrator (Settings → Insurance Types).",
+    insuranceTypesNotInitializedTitle: "Insurance types are not initialized",
+    insuranceTypesNotInitializedMessage: "No insurance types were found. Run the insurance type initialization before creating quotations.",
     // Insurance type master configuration
     insuranceTypesTitle: "Insurance Types",
     manageInsuranceTypes: "Manage Insurance Types",

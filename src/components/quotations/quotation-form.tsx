@@ -145,7 +145,7 @@ const ERROR_KEY: Record<string, string> = {
   PROJECT_NOT_BELONG_TO_CUSTOMER: "projectNotBelongToCustomer",
   AT_LEAST_ONE_SECTION: "atLeastOneSection",
   AT_LEAST_ONE_ITEM: "atLeastOneItem",
-  INSURANCE_TYPE_NOT_FOUND: "genericError",
+  INSURANCE_TYPE_NOT_FOUND: "insuranceTypeNotConfigured",
   ITEM_CONTENT_REQUIRED: "requiredField",
   ITEM_SUM_INSURED_REQUIRED: "requiredField",
   ITEM_RATE_REQUIRED: "requiredField",
@@ -1122,7 +1122,7 @@ export function QuotationForm({
     if (carEnabled) {
       const carType = insuranceTypeByCode.get("CAR");
       if (!carType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1152,7 +1152,7 @@ export function QuotationForm({
     if (wibaEnabled) {
       const wibaType = insuranceTypeByCode.get("WIBA");
       if (!wibaType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1175,7 +1175,7 @@ export function QuotationForm({
     if (elEnabled) {
       const elType = insuranceTypeByCode.get("EL");
       if (!elType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1188,7 +1188,7 @@ export function QuotationForm({
     if (cpmEnabled) {
       const cpmType = insuranceTypeByCode.get("CPM");
       if (!cpmType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1211,7 +1211,7 @@ export function QuotationForm({
     if (plEnabled) {
       const plType = insuranceTypeByCode.get("PL");
       if (!plType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1230,7 +1230,7 @@ export function QuotationForm({
     if (fireEnabled) {
       const fireType = insuranceTypeByCode.get("FIRE");
       if (!fireType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1254,7 +1254,7 @@ export function QuotationForm({
     if (burglaryEnabled) {
       const burglaryType = insuranceTypeByCode.get("BURGLARY");
       if (!burglaryType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1273,7 +1273,7 @@ export function QuotationForm({
     if (gitSingleEnabled) {
       const gitSingleType = insuranceTypeByCode.get("GIT_SINGLE");
       if (!gitSingleType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1295,7 +1295,7 @@ export function QuotationForm({
     if (gitAnnualEnabled) {
       const gitAnnualType = insuranceTypeByCode.get("GIT_ANNUAL");
       if (!gitAnnualType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1318,7 +1318,7 @@ export function QuotationForm({
     if (marineEnabled) {
       const marineType = insuranceTypeByCode.get("MARINE");
       if (!marineType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1341,7 +1341,7 @@ export function QuotationForm({
     if (motorCompPrivateEnabled) {
       const motorType = insuranceTypeByCode.get("MOTOR_COMP_PRIVATE");
       if (!motorType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1363,7 +1363,7 @@ export function QuotationForm({
     if (motorCompCommercialEnabled) {
       const motorType = insuranceTypeByCode.get("MOTOR_COMP_COMMERCIAL");
       if (!motorType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1385,7 +1385,7 @@ export function QuotationForm({
     if (motorTpoPrivateEnabled) {
       const motorType = insuranceTypeByCode.get("MOTOR_TPO_PRIVATE");
       if (!motorType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1404,7 +1404,7 @@ export function QuotationForm({
     if (motorTpoCommercialEnabled) {
       const motorType = insuranceTypeByCode.get("MOTOR_TPO_COMMERCIAL");
       if (!motorType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1424,7 +1424,7 @@ export function QuotationForm({
     if (gpaEnabled) {
       const gpaType = insuranceTypeByCode.get("GPA");
       if (!gpaType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1450,7 +1450,7 @@ export function QuotationForm({
     if (medicalEnabled) {
       const medicalType = insuranceTypeByCode.get("MEDICAL");
       if (!medicalType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1473,7 +1473,7 @@ export function QuotationForm({
     if (tenderSecurityEnabled) {
       const tenderType = insuranceTypeByCode.get("TENDER_SECURITY");
       if (!tenderType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1491,7 +1491,7 @@ export function QuotationForm({
     if (performanceBondEnabled) {
       const pbType = insuranceTypeByCode.get("PERFORMANCE_BOND");
       if (!pbType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1509,7 +1509,7 @@ export function QuotationForm({
     if (apgEnabled) {
       const apgType = insuranceTypeByCode.get("APG");
       if (!apgType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1527,7 +1527,7 @@ export function QuotationForm({
     if (customsBondEnabled) {
       const customsBondType = insuranceTypeByCode.get("CUSTOMS_BOND");
       if (!customsBondType) {
-        setError(t.quotations.genericError);
+        setError(t.quotations.insuranceTypeNotConfigured);
         return;
       }
       structuredSections.push({
@@ -1623,6 +1623,13 @@ export function QuotationForm({
         title={isEdit ? t.quotations.editQuotationTitle : t.quotations.createQuotationTitle}
         description={isEdit ? quotation.quotationNumber : undefined}
       />
+
+      {insuranceTypes.length === 0 && (
+        <div className="rounded-control border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <p className="font-medium">{t.quotations.insuranceTypesNotInitializedTitle}</p>
+          <p>{t.quotations.insuranceTypesNotInitializedMessage}</p>
+        </div>
+      )}
 
       <Card>
         <h2 className="section-title mb-4">{t.quotations.quotationInformation}</h2>
