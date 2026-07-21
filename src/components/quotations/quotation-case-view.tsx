@@ -26,6 +26,7 @@ import {
   type RevisionCompareResult,
 } from "@/app/(app)/quotation/revisionActions";
 import type { QuotationDetail, QuotationCaseStatus, RevisionStatus } from "@/components/quotations/types";
+import { CASE_STATUS_TONE, REVISION_TONE } from "@/components/quotations/statusTones";
 
 type RevisionRow = {
   id: string;
@@ -39,24 +40,6 @@ type RevisionRow = {
   insuranceTypeNames: string[];
   subtotalPremium: string;
   grandTotal: string;
-};
-
-const CASE_STATUS_TONE: Record<QuotationCaseStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
-  DRAFT: "neutral",
-  IN_PROGRESS: "brand",
-  QUOTED: "brand",
-  ACCEPTED: "success",
-  DECLINED: "danger",
-  EXPIRED: "warning",
-  CONVERTED_TO_POLICY: "success",
-};
-
-const REVISION_TONE: Record<RevisionStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
-  DRAFT: "neutral",
-  ISSUED: "brand",
-  SUPERSEDED: "warning",
-  ACCEPTED: "success",
-  CANCELLED: "danger",
 };
 
 type Tab = "details" | "revisions" | "documents";
@@ -251,7 +234,7 @@ export function QuotationCaseView({
 
       {tab === "details" &&
         (currentDetail ? (
-          <QuotationDetailView quotation={currentDetail} />
+          <QuotationDetailView quotation={currentDetail} embedded caseStatus={quotationCase.status} />
         ) : (
           <Card>
             <p className="text-secondary">{t.quotations.revisionNotFoundError}</p>

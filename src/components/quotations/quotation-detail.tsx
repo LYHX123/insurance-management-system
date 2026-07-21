@@ -22,24 +22,8 @@ import {
   cancelRevisionAction,
   deleteDraftRevisionAction,
 } from "@/app/(app)/quotation/revisionActions";
-import type { QuotationDetail, QuotationStatus, RevisionStatus } from "@/components/quotations/types";
-
-const STATUS_TONE: Record<QuotationStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
-  DRAFT: "neutral",
-  ISSUED: "brand",
-  ACCEPTED: "success",
-  REJECTED: "danger",
-  EXPIRED: "warning",
-  CANCELLED: "danger",
-};
-
-const REVISION_TONE: Record<RevisionStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
-  DRAFT: "neutral",
-  ISSUED: "brand",
-  SUPERSEDED: "warning",
-  ACCEPTED: "success",
-  CANCELLED: "danger",
-};
+import type { QuotationDetail, RevisionStatus, QuotationCaseStatus } from "@/components/quotations/types";
+import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
 
 function ReasonModal({
   title,
@@ -78,7 +62,24 @@ function ReasonModal({
   );
 }
 
-export function QuotationDetailView({ quotation }: { quotation: QuotationDetail }) {
+export function QuotationDetailView({
+  quotation,
+  embedded = false,
+  caseStatus = null,
+}: {
+  quotation: QuotationDetail;
+  /** True when rendered inside the QuotationCase page's "Quotation Details"
+   * tab, which already renders its own back-link/title/customer-name
+   * header — suppresses this component's own copy of the same, showing
+   * only a compact revision badge + action row instead. Business logic
+   * (state, handlers, visibility rules) is identical either way; only the
+   * surrounding layout changes. */
+  embedded?: boolean;
+  /** The owning QuotationCase's own status, shown alongside (never instead
+   * of) this revision's own RevisionStatus — see statusTones.ts's doc
+   * comment on why these must never be conflated. */
+  caseStatus?: QuotationCaseStatus | null;
+}) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -183,21 +184,22 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
     router.refresh();
   };
 
-  const statusLabel: Record<QuotationStatus, string> = {
-    DRAFT: t.quotations.statusDraft,
-    ISSUED: t.quotations.statusIssued,
-    ACCEPTED: t.quotations.statusAccepted,
-    REJECTED: t.quotations.statusRejected,
-    EXPIRED: t.quotations.statusExpired,
-    CANCELLED: t.quotations.statusCancelled,
-  };
-
   const revisionStatusLabel: Record<RevisionStatus, string> = {
     DRAFT: t.quotations.revisionStatusDraft,
     ISSUED: t.quotations.revisionStatusIssued,
     SUPERSEDED: t.quotations.revisionStatusSuperseded,
     ACCEPTED: t.quotations.revisionStatusAccepted,
     CANCELLED: t.quotations.revisionStatusCancelled,
+  };
+
+  const caseStatusLabel: Record<QuotationCaseStatus, string> = {
+    DRAFT: t.quotations.caseStatusDraft,
+    IN_PROGRESS: t.quotations.caseStatusInProgress,
+    QUOTED: t.quotations.caseStatusQuoted,
+    ACCEPTED: t.quotations.caseStatusAccepted,
+    DECLINED: t.quotations.caseStatusDeclined,
+    EXPIRED: t.quotations.caseStatusExpired,
+    CONVERTED_TO_POLICY: t.quotations.caseStatusConvertedToPolicy,
   };
 
   const calculationMethodLabel: Record<string, string> = {
@@ -213,93 +215,102 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
   });
   const money = formatMoney;
 
+  // Single definition of every action button + its visibility rule, reused
+  // by both the standalone full header and the embedded compact header
+  // below — only the surrounding layout differs, never this logic.
+  //   DRAFT:      Edit, Download, Issue, Cancel, Delete (if eligible) — no Create Revision (you're already on the case's draft)
+  //   ISSUED:     Download, Create Revision, Mark Accepted, Cancel — no Edit, no Issue
+  //   SUPERSEDED: Download, Create Revision only
+  //   ACCEPTED:   Download, Create Revision only
+  //   CANCELLED:  Download, Create Revision only
+  const actionButtons = (
+    <>
+      <a href={`/api/quotation/${quotation.id}/excel-template`}>
+        <Button variant="primary">
+          <Download size={16} />
+          {t.quotations.downloadExcel}
+        </Button>
+      </a>
+
+      {!isLocked && (
+        <Link href={`/quotation/${quotation.id}/edit`}>
+          <Button variant="secondary">
+            <Pencil size={16} />
+            {t.common.edit}
+          </Button>
+        </Link>
+      )}
+
+      {hasRevisionInfo && isLocked && (
+        <Button variant="secondary" onClick={() => setShowCreateRevision(true)}>
+          <GitBranch size={16} />
+          {t.quotations.createRevisionFromThisVersion}
+        </Button>
+      )}
+
+      {revisionStatus === "DRAFT" && (
+        <Button variant="primary" onClick={() => setConfirmingIssue(true)}>
+          <Send size={16} />
+          {t.quotations.issueRevision}
+        </Button>
+      )}
+      {revisionStatus === "ISSUED" && (
+        <Button variant="primary" onClick={() => setConfirmingAccept(true)}>
+          <CheckCircle2 size={16} />
+          {t.quotations.markAccepted}
+        </Button>
+      )}
+      {(revisionStatus === "DRAFT" || revisionStatus === "ISSUED") && (
+        <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
+          <XCircle size={16} />
+          {t.quotations.cancelRevision}
+        </Button>
+      )}
+
+      {(!hasRevisionInfo || revisionStatus === "DRAFT") && (
+        <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+          <Trash2 size={16} />
+          {t.common.delete}
+        </Button>
+      )}
+    </>
+  );
+
+  const revisionBadges = (
+    <span className="inline-flex items-center gap-2">
+      {quotation.revisionCode && <Badge tone="neutral">{quotation.revisionCode}</Badge>}
+      {revisionStatus && <Badge tone={REVISION_TONE[revisionStatus]}>{revisionStatusLabel[revisionStatus]}</Badge>}
+    </span>
+  );
+
   return (
     <div className="flex flex-col gap-section">
-      <div>
-        <Link
-          href="/quotation"
-          className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline"
-        >
-          <ArrowLeft size={14} />
-          {t.quotations.backToList}
-        </Link>
-        <PageHeader
-          title={
-            <span className="inline-flex items-center gap-2">
-              {quotation.quotationNumber}
-              {quotation.revisionCode && (
-                <Badge tone="neutral">{quotation.revisionCode}</Badge>
-              )}
-              {revisionStatus && <Badge tone={REVISION_TONE[revisionStatus]}>{revisionStatusLabel[revisionStatus]}</Badge>}
-            </span>
-          }
-          description={quotation.customerName}
-          actions={
-            <>
-              <a href={`/api/quotation/${quotation.id}/excel`}>
-                <Button variant="secondary">
-                  <Download size={16} />
-                  {t.quotations.downloadExcel}
-                </Button>
-              </a>
-              <a href={`/api/quotation/${quotation.id}/excel-template`}>
-                <Button variant="primary">
-                  <Download size={16} />
-                  {t.quotations.downloadExcelTemplate}
-                </Button>
-              </a>
-
-              {!isLocked && (
-                <Link href={`/quotation/${quotation.id}/edit`}>
-                  <Button variant="secondary">
-                    <Pencil size={16} />
-                    {t.common.edit}
-                  </Button>
-                </Link>
-              )}
-
-              {hasRevisionInfo && (
-                <Button variant="secondary" onClick={() => setShowCreateRevision(true)}>
-                  <GitBranch size={16} />
-                  {isLocked ? t.quotations.createRevisionFromThisVersion : t.quotations.createRevision}
-                </Button>
-              )}
-
-              {revisionStatus === "DRAFT" && (
-                <Button variant="primary" onClick={() => setConfirmingIssue(true)}>
-                  <Send size={16} />
-                  {t.quotations.issueRevision}
-                </Button>
-              )}
-              {revisionStatus === "ISSUED" && (
-                <>
-                  <Button variant="primary" onClick={() => setConfirmingAccept(true)}>
-                    <CheckCircle2 size={16} />
-                    {t.quotations.markAccepted}
-                  </Button>
-                  <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
-                    <XCircle size={16} />
-                    {t.quotations.cancelRevision}
-                  </Button>
-                </>
-              )}
-              {revisionStatus === "DRAFT" && (
-                <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
-                  <XCircle size={16} />
-                  {t.quotations.cancelRevision}
-                </Button>
-              )}
-
-              {(!hasRevisionInfo || revisionStatus === "DRAFT") && (
-                <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
-                  <Trash2 size={16} />
-                  {t.common.delete}
-                </Button>
-              )}
-            </>
-          }
-        />
-      </div>
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {revisionBadges}
+          <div className="flex flex-wrap items-center gap-2">{actionButtons}</div>
+        </div>
+      ) : (
+        <div>
+          <Link
+            href="/quotation"
+            className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline"
+          >
+            <ArrowLeft size={14} />
+            {t.quotations.backToList}
+          </Link>
+          <PageHeader
+            title={
+              <span className="inline-flex items-center gap-2">
+                {quotation.quotationNumber}
+                {revisionBadges}
+              </span>
+            }
+            description={quotation.customerName}
+            actions={actionButtons}
+          />
+        </div>
+      )}
 
       {isLocked && (
         <div className="rounded-control border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -386,12 +397,22 @@ export function QuotationDetailView({ quotation }: { quotation: QuotationDetail 
             <dt className="text-secondary">{t.quotations.project}</dt>
             <dd className="text-body">{quotation.projectName || "—"}</dd>
           </div>
-          <div>
-            <dt className="text-secondary">{t.common.status}</dt>
-            <dd>
-              <Badge tone={STATUS_TONE[quotation.status]}>{statusLabel[quotation.status]}</Badge>
-            </dd>
-          </div>
+          {revisionStatus && (
+            <div>
+              <dt className="text-secondary">{t.quotations.revisionStatusLabel}</dt>
+              <dd>
+                <Badge tone={REVISION_TONE[revisionStatus]}>{revisionStatusLabel[revisionStatus]}</Badge>
+              </dd>
+            </div>
+          )}
+          {caseStatus && (
+            <div>
+              <dt className="text-secondary">{t.quotations.caseStatusLabel}</dt>
+              <dd>
+                <Badge tone={CASE_STATUS_TONE[caseStatus]}>{caseStatusLabel[caseStatus]}</Badge>
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-secondary">{t.quotations.quotationDate}</dt>
             <dd className="text-body">{dateFormatter.format(new Date(quotation.quotationDate))}</dd>

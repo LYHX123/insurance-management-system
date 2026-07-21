@@ -2409,7 +2409,24 @@ export async function createQuotationAction(
   try {
     const result = await prisma.$transaction(async (tx) => {
       const quotationNumber = await generateQuotationNumber(tx);
-      return tx.quotation.create({
+
+      // Every quotation is the R01 draft revision of a new case, matching
+      // the shape produced for existing quotations by
+      // scripts/backfill-quotation-revisions.ts (DRAFT status -> revision
+      // DRAFT, case DRAFT). Without this, quotations created after that
+      // backfill would have no QuotationCase and could never gain a
+      // revision history.
+      const quotationCase = await tx.quotationCase.create({
+        data: {
+          quotationNumber,
+          customerId: data.customerId,
+          projectId: data.projectId || null,
+          status: "DRAFT",
+          createdById: session.user.id,
+        },
+      });
+
+      const quotation = await tx.quotation.create({
         data: {
           quotationNumber,
           customerId: data.customerId,
@@ -2425,9 +2442,22 @@ export async function createQuotationAction(
           totalStampDuty: built.quotationTotals.totalStampDuty,
           grandTotal: built.quotationTotals.grandTotal,
           createdBy: session.user.id,
+          quotationCaseId: quotationCase.id,
+          revisionNumber: 1,
+          revisionCode: "R01",
+          revisionReason: "Initial quotation",
+          revisionStatus: "DRAFT",
+          isCurrentRevision: true,
           sections: { create: built.sectionCreates },
         },
       });
+
+      await tx.quotationCase.update({
+        where: { id: quotationCase.id },
+        data: { currentRevisionId: quotation.id },
+      });
+
+      return quotation;
     });
 
     revalidatePath("/quotation");

@@ -291,6 +291,8 @@ const en = {
     revisionsTab: "Revisions",
     underwritingDocumentsTab: "Underwriting Documents",
 
+    revisionStatusLabel: "Revision Status",
+    caseStatusLabel: "Case Status",
     revisionStatusDraft: "Draft",
     revisionStatusIssued: "Issued",
     revisionStatusSuperseded: "Superseded",

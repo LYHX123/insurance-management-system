@@ -293,6 +293,8 @@ const zh: Dictionary = {
     revisionsTab: "修订版本",
     underwritingDocumentsTab: "承保文件",
 
+    revisionStatusLabel: "修订版本状态",
+    caseStatusLabel: "案例状态",
     revisionStatusDraft: "草稿",
     revisionStatusIssued: "已签发",
     revisionStatusSuperseded: "已被替代",
