@@ -46,3 +46,6 @@ next-env.d.ts
 
 # customer document uploads (local storage provider)
 /uploads
+
+# quotation underwriting-document uploads (local storage provider)
+/quotation-documents

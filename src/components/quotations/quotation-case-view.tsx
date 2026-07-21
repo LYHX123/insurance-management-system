@@ -17,6 +17,7 @@ import { TableWrap, Table } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
 import { QuotationDetailView } from "@/components/quotations/quotation-detail";
+import { QuotationDocumentsTab } from "@/components/quotations/quotation-documents-tab";
 import {
   createRevisionAction,
   issueRevisionAction,
@@ -25,7 +26,7 @@ import {
   compareRevisionsAction,
   type RevisionCompareResult,
 } from "@/app/(app)/quotation/revisionActions";
-import type { QuotationDetail, QuotationCaseStatus, RevisionStatus } from "@/components/quotations/types";
+import type { QuotationDetail, QuotationCaseStatus, RevisionStatus, QuotationDocumentRow } from "@/components/quotations/types";
 import { CASE_STATUS_TONE, REVISION_TONE } from "@/components/quotations/statusTones";
 
 type RevisionRow = {
@@ -48,6 +49,7 @@ export function QuotationCaseView({
   quotationCase,
   revisions,
   currentDetail,
+  documents,
 }: {
   quotationCase: {
     id: string;
@@ -59,6 +61,7 @@ export function QuotationCaseView({
   };
   revisions: RevisionRow[];
   currentDetail: QuotationDetail | null;
+  documents: QuotationDocumentRow[];
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -345,12 +348,7 @@ export function QuotationCaseView({
         </div>
       )}
 
-      {tab === "documents" && (
-        <Card>
-          <h2 className="section-title mb-2">{t.quotations.underwritingDocuments}</h2>
-          <p className="text-secondary">{t.quotations.underwritingDocumentsPlaceholder}</p>
-        </Card>
-      )}
+      {tab === "documents" && <QuotationDocumentsTab quotationCaseId={quotationCase.id} documents={documents} />}
 
       {showCreateRevision && (
         <Modal

@@ -168,6 +168,48 @@ enum QuotationCaseStatus {
   CONVERTED_TO_POLICY
 }
 
+// Phase 2: underwriting document categories. Practical categories an
+// underwriter actually asks for, not a generic "attachment" bucket — OTHER
+// is the deliberate escape hatch (paired with QuotationDocument.customTypeName).
+enum QuotationDocumentType {
+  AWARD_LETTER
+  TENDER_DOCUMENT
+  BOQ
+  CONTRACT_DOCUMENT
+  EMPLOYEE_SCHEDULE
+  VEHICLE_SCHEDULE
+  EQUIPMENT_SCHEDULE
+  ASSET_SCHEDULE
+  STOCK_SCHEDULE
+  GOODS_SCHEDULE
+  MEDICAL_CENSUS
+  CLAIMS_HISTORY
+  PREVIOUS_POLICY
+  INSURER_QUOTATION
+  PIN_CERTIFICATE
+  REGISTRATION_CERTIFICATE
+  CR12
+  ID_DOCUMENT
+  APPLICATION_FORM
+  OTHER
+}
+
+// Every Phase 2 document uses LOCAL. DROPBOX is reserved for Phase 3 and
+// must not be selectable or written by any code path yet.
+enum DocumentStorageProvider {
+  LOCAL
+  DROPBOX
+}
+
+// Every Phase 2 (LOCAL) document uses NOT_APPLICABLE — sync only has
+// meaning once a Dropbox provider exists in Phase 3.
+enum DocumentSyncStatus {
+  NOT_APPLICABLE
+  PENDING
+  SYNCED
+  FAILED
+}
+
 enum CalculationMethod {
   PERCENTAGE
   FIXED_PREMIUM
@@ -288,11 +330,62 @@ model QuotationCase {
   updatedAt   DateTime @updatedAt
 
   revisions Quotation[]
+  documents QuotationDocument[]
 
   @@index([customerId])
   @@index([projectId])
   @@index([status])
   @@index([updatedAt])
+}
+
+// Phase 2: one shared underwriting-document library per QuotationCase —
+// deliberately NOT linked to an individual Quotation (revision) row, since
+// supporting documents (award letters, schedules, previous policies, ...)
+// stay relevant across every revision of the same case. Soft-deleted
+// (deletedAt/deletedById) rather than hard-deleted so the physical file and
+// audit trail survive a mistaken delete; see deleteDocumentAction's doc
+// comment for the recovery procedure. storageProvider/dropboxPath/
+// dropboxFileId/syncStatus/syncError are reserved for Phase 3 — every
+// Phase 2 row is storageProvider=LOCAL, syncStatus=NOT_APPLICABLE, and
+// nothing in this phase reads or writes the Dropbox fields.
+model QuotationDocument {
+  id              String        @id @default(cuid())
+  quotationCaseId String
+  quotationCase   QuotationCase @relation(fields: [quotationCaseId], references: [id], onDelete: Cascade)
+
+  documentType   QuotationDocumentType
+  customTypeName String?
+
+  originalFileName String
+  storedFileName   String
+  mimeType         String
+  fileExtension    String?
+  fileSize         Int
+
+  description  String?
+  documentDate DateTime?
+
+  storageProvider DocumentStorageProvider @default(LOCAL)
+  storagePath     String
+  checksum        String?
+
+  dropboxPath   String?
+  dropboxFileId String?
+  syncStatus    DocumentSyncStatus @default(NOT_APPLICABLE)
+  syncError     String?
+
+  uploadedById String
+  uploadedAt   DateTime  @default(now())
+  updatedById  String?
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+
+  @@index([quotationCaseId])
+  @@index([documentType])
+  @@index([uploadedAt])
+  @@index([deletedAt])
+  @@index([syncStatus])
 }
 
 model Quotation {

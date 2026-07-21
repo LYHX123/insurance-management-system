@@ -37,10 +37,16 @@ services:
       # Fixed to match EXPOSE/healthcheck in the Dockerfile regardless of
       # what PORT might be set to in .env.production.
       PORT: "3000"
+      QUOTATION_DOCUMENT_STORAGE_ROOT: /app-data/quotation-documents
     ports:
       - "127.0.0.1:3001:3000"
     volumes:
       - ./uploads:/app/uploads
+      # Phase 2 underwriting documents — a separate named volume (not the
+      # customer-document bind mount above) so it survives independently of
+      # the host checkout and app-container rebuilds. See Dockerfile for the
+      # matching /app-data/quotation-documents directory + ownership setup.
+      - quotation_documents_data:/app-data/quotation-documents
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -70,3 +76,4 @@ services:
 
 volumes:
   insurance_db_data:
+  quotation_documents_data:

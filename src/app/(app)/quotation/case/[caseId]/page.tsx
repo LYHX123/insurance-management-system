@@ -55,6 +55,37 @@ export default async function QuotationCasePage({
   const currentRevisionId = quotationCase.currentRevisionId ?? revisions[0]?.id ?? null;
   const currentDetail = currentRevisionId ? await getQuotationDetailData(currentRevisionId) : null;
 
+  // Shared by every revision of this case — see QuotationDocument's schema
+  // doc comment. Never filtered/joined by revision.
+  const documents = await prisma.quotationDocument.findMany({
+    where: { quotationCaseId: caseId, deletedAt: null },
+    orderBy: { uploadedAt: "desc" },
+  });
+  const documentUserIds = Array.from(
+    new Set(documents.flatMap((d) => [d.uploadedById, d.updatedById]).filter((id): id is string => !!id))
+  );
+  const documentUsers = documentUserIds.length
+    ? await prisma.user.findMany({ where: { id: { in: documentUserIds } }, select: { id: true, fullName: true, username: true } })
+    : [];
+  const documentUserNameById = new Map(documentUsers.map((u) => [u.id, u.fullName || u.username]));
+
+  const documentRows = documents.map((d) => ({
+    id: d.id,
+    documentType: d.documentType,
+    customTypeName: d.customTypeName,
+    originalFileName: d.originalFileName,
+    mimeType: d.mimeType,
+    fileExtension: d.fileExtension,
+    fileSize: d.fileSize,
+    description: d.description,
+    documentDate: d.documentDate ? d.documentDate.toISOString() : null,
+    syncStatus: d.syncStatus,
+    uploadedByName: documentUserNameById.get(d.uploadedById) ?? "—",
+    uploadedAt: d.uploadedAt.toISOString(),
+    updatedByName: d.updatedById ? documentUserNameById.get(d.updatedById) ?? "—" : null,
+    updatedAt: d.updatedAt.toISOString(),
+  }));
+
   return (
     <QuotationCaseView
       quotationCase={{
@@ -67,6 +98,7 @@ export default async function QuotationCasePage({
       }}
       revisions={revisionRows}
       currentDetail={currentDetail}
+      documents={documentRows}
     />
   );
 }

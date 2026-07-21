@@ -42,6 +42,19 @@ export default async function QuotationPage() {
     : [];
   const creatorNameById = new Map(creators.map((u) => [u.id, u.fullName || u.username]));
 
+  // One extra grouped query for the list's "Documents: N" indicator — active
+  // (non-deleted) documents only. No pagination exists on this page yet, so
+  // this stays a single flat query, not a per-row N+1.
+  const caseIds = cases.map((c) => c.id);
+  const documentCounts = caseIds.length
+    ? await prisma.quotationDocument.groupBy({
+        by: ["quotationCaseId"],
+        where: { quotationCaseId: { in: caseIds }, deletedAt: null },
+        _count: { id: true },
+      })
+    : [];
+  const documentCountByCaseId = new Map(documentCounts.map((d) => [d.quotationCaseId, d._count.id]));
+
   const rows = cases
     .map((c) => {
       const rev = c.currentRevisionId ? revisionById.get(c.currentRevisionId) : undefined;
@@ -63,6 +76,7 @@ export default async function QuotationPage() {
         quotationDate: rev.quotationDate.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
         createdByName: creatorNameById.get(c.createdById) ?? "—",
+        documentCount: documentCountByCaseId.get(c.id) ?? 0,
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);

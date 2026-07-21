@@ -329,6 +329,7 @@ export type QuotationListRow = {
   quotationDate: string;
   updatedAt: string;
   createdByName: string;
+  documentCount: number;
 };
 
 export type QuotationDetail = {
@@ -362,6 +363,50 @@ export type QuotationDetail = {
   revisionReason?: string | null;
   isCurrentRevision?: boolean;
   sections: SectionRow[];
+};
+
+// --- Phase 2 underwriting documents ---------------------------------------
+export type QuotationDocumentType =
+  | "AWARD_LETTER"
+  | "TENDER_DOCUMENT"
+  | "BOQ"
+  | "CONTRACT_DOCUMENT"
+  | "EMPLOYEE_SCHEDULE"
+  | "VEHICLE_SCHEDULE"
+  | "EQUIPMENT_SCHEDULE"
+  | "ASSET_SCHEDULE"
+  | "STOCK_SCHEDULE"
+  | "GOODS_SCHEDULE"
+  | "MEDICAL_CENSUS"
+  | "CLAIMS_HISTORY"
+  | "PREVIOUS_POLICY"
+  | "INSURER_QUOTATION"
+  | "PIN_CERTIFICATE"
+  | "REGISTRATION_CERTIFICATE"
+  | "CR12"
+  | "ID_DOCUMENT"
+  | "APPLICATION_FORM"
+  | "OTHER";
+
+export type DocumentSyncStatus = "NOT_APPLICABLE" | "PENDING" | "SYNCED" | "FAILED";
+
+// Shared by every revision of the case (see QuotationCase.documents) — never
+// linked to an individual Quotation row.
+export type QuotationDocumentRow = {
+  id: string;
+  documentType: QuotationDocumentType;
+  customTypeName: string | null;
+  originalFileName: string;
+  mimeType: string;
+  fileExtension: string | null;
+  fileSize: number;
+  description: string | null;
+  documentDate: string | null;
+  syncStatus: DocumentSyncStatus;
+  uploadedByName: string;
+  uploadedAt: string;
+  updatedByName: string | null;
+  updatedAt: string;
 };
 
 export type CustomerOption = {

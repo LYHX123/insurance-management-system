@@ -26,6 +26,13 @@ COPY --from=builder /app/prisma ./prisma
 
 RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 
+# Phase 2 underwriting documents — outside /app (the source tree) on
+# purpose, per the storage design in src/lib/quotationDocuments/storage.ts.
+# The named volume mounted here in docker-compose.yml (quotation_documents_data)
+# takes over this directory at container start; this mkdir/chown only
+# matters for the mount point's initial ownership.
+RUN mkdir -p /app-data/quotation-documents && chown -R nextjs:nodejs /app-data/quotation-documents
+
 USER nextjs
 
 EXPOSE 3000

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Eye, Settings, Plus } from "lucide-react";
+import { Eye, Settings, Plus, Paperclip } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -154,6 +154,12 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                   <Link href={`/quotation/case/${q.caseId}`} className="text-emerald-700 hover:underline">
                     {q.quotationNumber}
                   </Link>
+                  {q.documentCount > 0 && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-zinc-400" title={t.quotations.totalDocuments}>
+                      <Paperclip size={11} />
+                      {q.documentCount}
+                    </span>
+                  )}
                 </td>
                 <td>{q.customerName}</td>
                 <td className="text-zinc-500">{q.projectName || "—"}</td>
