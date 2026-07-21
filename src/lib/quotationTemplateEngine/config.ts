@@ -75,9 +75,9 @@ function sv(
   cell: string,
   kind: StaticVariable["kind"],
   required = false,
-  unit?: { prefix?: string; suffix?: string; numFmt?: string }
+  unit?: { prefix?: string; suffix?: string }
 ): StaticVariable {
-  return { name, cell, kind, required, unitPrefix: unit?.prefix, unitSuffix: unit?.suffix, numFmt: unit?.numFmt };
+  return { name, cell, kind, required, unitPrefix: unit?.prefix, unitSuffix: unit?.suffix };
 }
 
 const CAR_PACKAGE: SectionConfig = {
@@ -185,14 +185,17 @@ const CPM_STANDALONE: SectionConfig = {
     // below it, no special-casing needed.
     //
     // C86/C88's template cells were never %-formatted (unlike every other
-    // rate cell in the workbook), which is why 0.75 rendered as the raw
-    // fraction "0.0075" instead of "0.75%" — numFmt forces the correct
-    // percentage display without touching any other section's rate cells.
+    // rate cell in the workbook), which used to make 0.75 render as the raw
+    // fraction "0.0075" instead of "0.75%". Fixed at the template level
+    // (numFmt "0.###%" like every other rate cell) as part of the rate-
+    // format standardization; replaceVariables.ts also now forces
+    // EXCEL_RATE_NUM_FMT unconditionally on every "rate" write, so no
+    // per-field override is needed here anymore.
     sv("cpm_sum_insured", "B86", "money", true),
-    sv("cpm_rate", "C86", "rate", true, { numFmt: "0.##%" }),
+    sv("cpm_rate", "C86", "rate", true),
     sv("cpm_basic_premium", "D86", "money", true),
     sv("cpm_pvt_loading_amount", "B88", "money"),
-    sv("cpm_pvt_loading_rate", "C88", "rate", false, { numFmt: "0.##%" }),
+    sv("cpm_pvt_loading_rate", "C88", "rate"),
     sv("cpm_pvt_loading_premium", "D88", "money"),
     sv("cpm_gross_premium", "D97", "money", true),
     sv("cpm_phcf", "D98", "money", true),
@@ -411,11 +414,12 @@ const MARINE_COVER: SectionConfig = {
       { column: "B", name: "marine_sum_insured", kind: "money", rowOffset: 0 },
       { column: "B", name: "marine_incidental_loading", kind: "money", rowOffset: 1 },
       { column: "B", name: "marine_basic_sum_insured", kind: "money", rowOffset: 2 },
-      // Template cell C222 is "0.0000%" (4 decimals), which would print
-      // "0.2500%" instead of the required "0.25%" — forced to "0.##%" the
-      // same way CPM_STANDALONE's cpm_rate/cpm_pvt_loading_rate already do
-      // (see that section's note above) — Marine-only, no other section affected.
-      { column: "C", name: "marine_rate", kind: "rate", rowOffset: 2, numFmt: "0.##%" },
+      // Template cell C222 was "0.0000%" (4 decimals), which used to print
+      // "0.2500%" instead of the required "0.25%" — fixed at the template
+      // level (numFmt "0.###%") as part of the rate-format standardization;
+      // fillDynamicRows.ts also forces EXCEL_RATE_NUM_FMT unconditionally on
+      // every "rate" column, so no per-field override is needed here anymore.
+      { column: "C", name: "marine_rate", kind: "rate", rowOffset: 2 },
       { column: "D", name: "marine_line_premium", kind: "money", rowOffset: 2 },
     ],
     blockLabels: [

@@ -24,6 +24,7 @@ import type { MappedSection, PlaceholderValues } from "./mapQuotationData";
 import type { SectionConfig, SectionLayout, StaticVariable } from "./types";
 import { resolveFinalCell } from "./removeUnusedSections";
 import { boldFont, setBoldCellValue } from "./boldFont";
+import { EXCEL_RATE_NUM_FMT } from "./numberFormats";
 
 const PLACEHOLDER_REGEX = /\{\{[^}]*\}\}/g;
 
@@ -136,7 +137,9 @@ export function replaceVariables(
         case "rate":
           // App convention: 0.25 means 0.25%. The template cell is
           // %-formatted, which needs the raw fraction to display correctly.
-          if (variable.numFmt) cell.numFmt = variable.numFmt;
+          // numFmt is always forced here rather than trusting whatever the
+          // template cell already has — see numberFormats.ts.
+          cell.numFmt = EXCEL_RATE_NUM_FMT;
           setBoldCellValue(cell, (typeof value === "number" ? value : Number(value) || 0) / 100);
           break;
         case "text":

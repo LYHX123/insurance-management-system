@@ -59,18 +59,6 @@ export type StaticVariable = {
    */
   unitPrefix?: string;
   unitSuffix?: string;
-  /**
-   * Explicit Excel number format to force onto this cell before writing a
-   * "rate" value, e.g. "0.##%" — only set when the template cell's own
-   * number format cannot be trusted to already be a percentage format (see
-   * CPM_STANDALONE's cpm_rate/cpm_pvt_loading_rate in config.ts, whose
-   * cells were plain/unformatted, causing 0.75 to render as the raw
-   * fraction "0.0075" instead of "0.75%"). Leave unset for every other rate
-   * variable — those template cells are already %-formatted correctly, and
-   * forcing a format here would override the template author's own choice
-   * (e.g. CAR's "0.000%" pattern) for no reason.
-   */
-  numFmt?: string;
 };
 
 export type DynamicRowColumn = {
@@ -84,15 +72,6 @@ export type DynamicRowColumn = {
    * omitted, which is every section's actual behavior today.
    */
   rowOffset?: number;
-  /**
-   * Explicit Excel number format to force onto this cell before writing —
-   * same purpose/caveats as StaticVariable.numFmt (see its doc comment).
-   * Leave unset unless the template cell's own number format cannot be
-   * trusted (e.g. Marine's marine_rate needs "0.##%" — its template cell is
-   * "0.0000%", which would print trailing zeros like "0.2500%" instead of
-   * "0.25%").
-   */
-  numFmt?: string;
 };
 
 export type DynamicRowConfig = {

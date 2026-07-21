@@ -527,7 +527,12 @@ function mapCustomsBond(section: Section): MappedSection | null {
     dynamicRows: d.itemRows.map((row) => ({
       custom_bond_type: row.bondType,
       custom_bond_value: num(row.bondValue),
-      custom_bond_rate: num(row.rate),
+      // App convention: 1.5 means 1.5%, but the dynamic-row write path
+      // (fillDynamicRows.ts) does not apply the /100 "rate" conversion that
+      // replaceVariables.ts does for static variables — divided here so the
+      // %-formatted cell displays 1.5%, not 150% (same pattern as Marine's
+      // marine_rate above).
+      custom_bond_rate: num(row.rate) / 100,
       custom_bond_premium: num(row.premium),
     })),
   };

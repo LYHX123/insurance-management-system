@@ -10,6 +10,7 @@ import type { MappedSection, PlaceholderValues } from "./mapQuotationData";
 import type { SectionConfig, SectionLayout } from "./types";
 import { resolveFinalRow } from "./removeUnusedSections";
 import { setBoldCellValue } from "./boldFont";
+import { EXCEL_RATE_NUM_FMT } from "./numberFormats";
 
 function copyRowFormatting(worksheet: ExcelJS.Worksheet, sourceRowNumber: number, targetRowNumber: number) {
   if (sourceRowNumber === targetRowNumber) return;
@@ -74,7 +75,10 @@ export function fillDynamicRows(
     for (const col of section.dynamicRow.columns) {
       const targetRow = worksheet.getRow(blockStart + (col.rowOffset ?? 0));
       const cell = targetRow.getCell(col.column);
-      if (col.numFmt) cell.numFmt = col.numFmt;
+      // Forced unconditionally, same as replaceVariables.ts's static "rate"
+      // case — never trust copyRowFormatting's copied-from-template numFmt
+      // alone. See numberFormats.ts.
+      if (col.kind === "rate") cell.numFmt = EXCEL_RATE_NUM_FMT;
       writeCellValue(cell, rows[i][col.name]);
       touchedRows.add(blockStart + (col.rowOffset ?? 0));
     }
