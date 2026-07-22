@@ -88,7 +88,7 @@ import {
   previewCustomsBond,
   round2,
 } from "@/lib/insuranceCalculations/clientPreview";
-import { createQuotationAction, updateQuotationAction } from "@/app/(app)/quotation/actions";
+import { startFirstQuotationAction, updateQuotationAction } from "@/app/(app)/quotation/actions";
 import type { SectionInput } from "@/app/(app)/quotation/actions";
 import type {
   CustomerOption,
@@ -553,17 +553,27 @@ export function QuotationForm({
   customers,
   insuranceTypes,
   quotation,
+  startFirstQuotationFor,
 }: {
   customers: CustomerOption[];
   insuranceTypes: InsuranceTypeOption[];
   quotation: QuotationFormData | null;
+  /**
+   * Phase 2B "Start First Quotation": creates R01 for a case that already
+   * exists (customer/project already fixed by the case, so those fields are
+   * locked here rather than re-collected). Mutually exclusive with
+   * `quotation` — either editing an existing revision, or creating the
+   * first one for this case, never both.
+   */
+  startFirstQuotationFor?: { quotationCaseId: string; customerId: string; projectId: string | null } | null;
 }) {
   const { t } = useLocale();
   const router = useRouter();
   const isEdit = !!quotation;
+  const isStartingFirstQuotation = !isEdit && !!startFirstQuotationFor;
 
-  const [customerId, setCustomerId] = useState(quotation?.customerId ?? "");
-  const [projectId, setProjectId] = useState(quotation?.projectId ?? "");
+  const [customerId, setCustomerId] = useState(quotation?.customerId ?? startFirstQuotationFor?.customerId ?? "");
+  const [projectId, setProjectId] = useState(quotation?.projectId ?? startFirstQuotationFor?.projectId ?? "");
   const [quotationDate, setQuotationDate] = useState(
     quotation?.quotationDate ?? new Date().toISOString().slice(0, 10)
   );
@@ -1591,14 +1601,19 @@ export function QuotationForm({
       return;
     }
 
-    const result = await createQuotationAction(payload);
-    setIsSubmitting(false);
-    if (!result.success) {
-      const key = ERROR_KEY[result.error] ?? "genericError";
-      setError(t.quotations[key as keyof typeof t.quotations]);
+    if (isStartingFirstQuotation) {
+      const result = await startFirstQuotationAction(startFirstQuotationFor.quotationCaseId, payload);
+      setIsSubmitting(false);
+      if (!result.success) {
+        const key = ERROR_KEY[result.error] ?? "genericError";
+        setError(t.quotations[key as keyof typeof t.quotations]);
+        return;
+      }
+      router.push(`/quotation/case/${startFirstQuotationFor.quotationCaseId}`);
       return;
     }
-    router.push(`/quotation/${result.id}`);
+
+    setIsSubmitting(false);
   };
 
   const confirmDelete = () => {
@@ -1620,7 +1635,7 @@ export function QuotationForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-section">
       <PageHeader
-        title={isEdit ? t.quotations.editQuotationTitle : t.quotations.createQuotationTitle}
+        title={isEdit ? t.quotations.editQuotationTitle : t.quotations.startFirstQuotationTitle}
         description={isEdit ? quotation.quotationNumber : undefined}
       />
 
@@ -1635,7 +1650,12 @@ export function QuotationForm({
         <h2 className="section-title mb-4">{t.quotations.quotationInformation}</h2>
         <div className="form-grid">
           <FormField label={t.quotations.customer}>
-            <Select value={customerId} onChange={(e) => handleCustomerChange(e.target.value)} required>
+            <Select
+              value={customerId}
+              onChange={(e) => handleCustomerChange(e.target.value)}
+              required
+              disabled={isStartingFirstQuotation}
+            >
               <option value="">{t.quotations.selectCustomer}</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -1645,7 +1665,11 @@ export function QuotationForm({
             </Select>
           </FormField>
           <FormField label={t.quotations.project}>
-            <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={!customerId}>
+            <Select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              disabled={!customerId || isStartingFirstQuotation}
+            >
               <option value="">{t.quotations.noProject}</option>
               {availableProjects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -2154,7 +2178,15 @@ export function QuotationForm({
         <Button
           type="button"
           variant="secondary"
-          onClick={() => router.push(isEdit ? `/quotation/${quotation.id}` : "/quotation")}
+          onClick={() =>
+            router.push(
+              isEdit
+                ? `/quotation/${quotation.id}`
+                : isStartingFirstQuotation
+                  ? `/quotation/case/${startFirstQuotationFor.quotationCaseId}`
+                  : "/quotation"
+            )
+          }
           disabled={isSubmitting}
         >
           {t.common.cancel}

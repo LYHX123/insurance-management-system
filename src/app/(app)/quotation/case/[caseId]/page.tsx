@@ -2,7 +2,6 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasModuleAccess } from "@/lib/permissions";
-import { getQuotationDetailData } from "@/lib/quotationRevisions/getQuotationDetail";
 import { QuotationCaseView } from "@/components/quotations/quotation-case-view";
 
 export default async function QuotationCasePage({
@@ -53,7 +52,18 @@ export default async function QuotationCasePage({
   }));
 
   const currentRevisionId = quotationCase.currentRevisionId ?? revisions[0]?.id ?? null;
-  const currentDetail = currentRevisionId ? await getQuotationDetailData(currentRevisionId) : null;
+  const currentRevisionRow = revisions.find((r) => r.id === currentRevisionId) ?? null;
+
+  // Insurance types shown on Overview: once a revision exists its actual
+  // sections are authoritative; before that, insurance types simply haven't
+  // been chosen yet (they're now selected in the quotation editor itself,
+  // via "Start First Quotation" — see createQuotationCaseAction). The
+  // case-level intendedInsuranceTypeIds field predates this change and is
+  // kept only for backward compatibility with pre-existing cases; it is
+  // never read here.
+  const overviewInsuranceTypeNames = currentRevisionRow
+    ? currentRevisionRow.sections.map((s) => s.insuranceTypeNameSnapshot)
+    : [];
 
   // Shared by every revision of this case — see QuotationDocument's schema
   // doc comment. Never filtered/joined by revision.
@@ -95,9 +105,12 @@ export default async function QuotationCasePage({
         projectName: quotationCase.project?.projectName ?? null,
         status: quotationCase.status,
         currentRevisionId,
+        currentRevisionCode: currentRevisionRow?.revisionCode ?? null,
+        insuranceTypeNames: overviewInsuranceTypeNames,
+        enquiryDate: quotationCase.enquiryDate ? quotationCase.enquiryDate.toISOString() : null,
+        createdAt: quotationCase.createdAt.toISOString(),
       }}
       revisions={revisionRows}
-      currentDetail={currentDetail}
       documents={documentRows}
     />
   );

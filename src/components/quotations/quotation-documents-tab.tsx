@@ -39,6 +39,7 @@ const DOCUMENT_TYPE_ORDER: QuotationDocumentType[] = [
   "CR12",
   "ID_DOCUMENT",
   "APPLICATION_FORM",
+  "FINANCIAL_STATEMENTS",
   "OTHER",
 ];
 
@@ -100,6 +101,7 @@ export function QuotationDocumentsTab({
     CR12: t.quotations.docTypeCr12,
     ID_DOCUMENT: t.quotations.docTypeIdDocument,
     APPLICATION_FORM: t.quotations.docTypeApplicationForm,
+    FINANCIAL_STATEMENTS: t.quotations.docTypeFinancialStatements,
     OTHER: t.quotations.docTypeOther,
   };
 

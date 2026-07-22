@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Eye, GitBranch, GitCompare, Send, CheckCircle2, XCircle } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { TableWrap, Table } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
-import { QuotationDetailView } from "@/components/quotations/quotation-detail";
 import { QuotationDocumentsTab } from "@/components/quotations/quotation-documents-tab";
+import { QuotationCaseOverviewTab } from "@/components/quotations/quotation-case-overview-tab";
 import {
   createRevisionAction,
   issueRevisionAction,
@@ -26,7 +25,7 @@ import {
   compareRevisionsAction,
   type RevisionCompareResult,
 } from "@/app/(app)/quotation/revisionActions";
-import type { QuotationDetail, QuotationCaseStatus, RevisionStatus, QuotationDocumentRow } from "@/components/quotations/types";
+import type { QuotationCaseStatus, RevisionStatus, QuotationDocumentRow } from "@/components/quotations/types";
 import { CASE_STATUS_TONE, REVISION_TONE } from "@/components/quotations/statusTones";
 
 type RevisionRow = {
@@ -43,12 +42,11 @@ type RevisionRow = {
   grandTotal: string;
 };
 
-type Tab = "details" | "revisions" | "documents";
+type Tab = "overview" | "documents" | "revisions";
 
 export function QuotationCaseView({
   quotationCase,
   revisions,
-  currentDetail,
   documents,
 }: {
   quotationCase: {
@@ -58,14 +56,17 @@ export function QuotationCaseView({
     projectName: string | null;
     status: QuotationCaseStatus;
     currentRevisionId: string | null;
+    currentRevisionCode: string | null;
+    insuranceTypeNames: string[];
+    enquiryDate: string | null;
+    createdAt: string;
   };
   revisions: RevisionRow[];
-  currentDetail: QuotationDetail | null;
   documents: QuotationDocumentRow[];
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("details");
+  const [tab, setTab] = useState<Tab>("overview");
 
   const [showCreateRevision, setShowCreateRevision] = useState(false);
   const [copyFromId, setCopyFromId] = useState(quotationCase.currentRevisionId ?? revisions[0]?.id ?? "");
@@ -230,19 +231,25 @@ export function QuotationCaseView({
       </div>
 
       <div className="flex gap-6 border-b border-zinc-200">
-        {tabButton("details", t.quotations.quotationDetailsTab)}
-        {tabButton("revisions", t.quotations.revisionsTab)}
+        {tabButton("overview", t.quotations.overviewTab)}
         {tabButton("documents", t.quotations.underwritingDocumentsTab)}
+        {tabButton("revisions", t.quotations.revisionsTab)}
       </div>
 
-      {tab === "details" &&
-        (currentDetail ? (
-          <QuotationDetailView quotation={currentDetail} embedded caseStatus={quotationCase.status} />
-        ) : (
-          <Card>
-            <p className="text-secondary">{t.quotations.revisionNotFoundError}</p>
-          </Card>
-        ))}
+      {tab === "overview" && (
+        <QuotationCaseOverviewTab
+          quotationCaseId={quotationCase.id}
+          quotationNumber={quotationCase.quotationNumber}
+          customerName={quotationCase.customerName}
+          projectName={quotationCase.projectName}
+          insuranceTypeNames={quotationCase.insuranceTypeNames}
+          enquiryDate={quotationCase.enquiryDate}
+          createdAt={quotationCase.createdAt}
+          caseStatus={quotationCase.status}
+          caseStatusLabel={caseStatusLabel[quotationCase.status]}
+          currentRevisionCode={quotationCase.currentRevisionCode}
+        />
+      )}
 
       {tab === "revisions" && (
         <div className="flex flex-col gap-4">
@@ -251,7 +258,7 @@ export function QuotationCaseView({
               <GitCompare size={16} />
               {t.quotations.compareRevisions}
             </Button>
-            <Button onClick={() => setShowCreateRevision(true)}>
+            <Button onClick={() => setShowCreateRevision(true)} disabled={revisions.length === 0} title={revisions.length === 0 ? t.quotations.startFirstQuotationHint : undefined}>
               <GitBranch size={16} />
               {t.quotations.createRevision}
             </Button>
@@ -259,6 +266,13 @@ export function QuotationCaseView({
 
           {rowError && <div className="rounded-control border border-red-200 bg-red-50 p-3 text-sm text-red-700">{rowError}</div>}
 
+          {revisions.length === 0 && (
+            <div className="rounded-control border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+              {t.quotations.noRevisionsYet}
+            </div>
+          )}
+
+          {revisions.length > 0 && (
           <TableWrap scroll>
             <Table className="min-w-[1200px]">
               <thead>
@@ -345,6 +359,7 @@ export function QuotationCaseView({
               </tbody>
             </Table>
           </TableWrap>
+          )}
         </div>
       )}
 

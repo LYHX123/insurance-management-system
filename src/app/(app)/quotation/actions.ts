@@ -2394,11 +2394,76 @@ async function validateCustomerAndProject(
   return { ok: true };
 }
 
-export async function createQuotationAction(
+// --- Phase 2B: quotation case workflow -------------------------------------
+// "New Quotation" no longer creates a case + R01 in one shot (that's what
+// createQuotationAction used to do, before Phase 2B — see git history).
+// Real brokerage workflow collects underwriting documents against a bare
+// case BEFORE any quotation revision exists, so case creation and R01
+// creation are now two separate, independently-timed actions:
+//   createQuotationCaseAction   — the case only, no Quotation row at all.
+//   startFirstQuotationAction   — creates R01 for an EXISTING case (the
+//                                 "Start First Quotation" button, shown only
+//                                 while the case has no revision yet).
+// Insurance types are no longer collected at case-creation time — they are
+// selected later, in the full quotation editor, when "Start First Quotation"
+// creates R01 (see startFirstQuotationAction below). intendedInsuranceTypeIds
+// and internalNote remain on the QuotationCase model for backward
+// compatibility with cases created before this change, but new cases never
+// write them (intendedInsuranceTypeIds is stored empty, internalNote null).
+export type CreateQuotationCaseInput = {
+  customerId: string;
+  projectId?: string | null;
+  enquiryDate: string;
+};
+
+export async function createQuotationCaseAction(
+  data: CreateQuotationCaseInput
+): Promise<ActionResult<{ id: string; quotationNumber: string }>> {
+  const session = await requireQuotationPermission();
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
+  const customerCheck = await validateCustomerAndProject(data.customerId, data.projectId);
+  if ("error" in customerCheck) return { success: false, error: customerCheck.error };
+
+  if (!data.enquiryDate) {
+    return { success: false, error: "ENQUIRY_DATE_REQUIRED" };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const quotationNumber = await generateQuotationNumber(tx);
+      return tx.quotationCase.create({
+        data: {
+          quotationNumber,
+          customerId: data.customerId,
+          projectId: data.projectId || null,
+          intendedInsuranceTypeIds: [],
+          enquiryDate: new Date(data.enquiryDate),
+          internalNote: null,
+          status: "DRAFT",
+          createdById: session.user.id,
+        },
+      });
+    });
+
+    revalidatePath("/quotation");
+    return { success: true, id: result.id, quotationNumber: result.quotationNumber };
+  } catch (err) {
+    console.error("Failed to create quotation case:", err);
+    return { success: false, error: "CREATE_FAILED" };
+  }
+}
+
+export async function startFirstQuotationAction(
+  quotationCaseId: string,
   data: QuotationInput
 ): Promise<ActionResult<{ id: string; quotationNumber: string }>> {
   const session = await requireQuotationPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
+
+  const quotationCase = await prisma.quotationCase.findUnique({ where: { id: quotationCaseId } });
+  if (!quotationCase) return { success: false, error: "CASE_NOT_FOUND" };
+  if (quotationCase.currentRevisionId) return { success: false, error: "REVISION_ALREADY_EXISTS" };
 
   const customerCheck = await validateCustomerAndProject(data.customerId, data.projectId);
   if ("error" in customerCheck) return { success: false, error: customerCheck.error };
@@ -2408,27 +2473,14 @@ export async function createQuotationAction(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const quotationNumber = await generateQuotationNumber(tx);
-
-      // Every quotation is the R01 draft revision of a new case, matching
-      // the shape produced for existing quotations by
-      // scripts/backfill-quotation-revisions.ts (DRAFT status -> revision
-      // DRAFT, case DRAFT). Without this, quotations created after that
-      // backfill would have no QuotationCase and could never gain a
-      // revision history.
-      const quotationCase = await tx.quotationCase.create({
-        data: {
-          quotationNumber,
-          customerId: data.customerId,
-          projectId: data.projectId || null,
-          status: "DRAFT",
-          createdById: session.user.id,
-        },
-      });
+      // Re-check inside the transaction: safe if two "Start First
+      // Quotation" submissions raced each other.
+      const fresh = await tx.quotationCase.findUniqueOrThrow({ where: { id: quotationCaseId } });
+      if (fresh.currentRevisionId) throw new Error("REVISION_ALREADY_EXISTS");
 
       const quotation = await tx.quotation.create({
         data: {
-          quotationNumber,
+          quotationNumber: fresh.quotationNumber,
           customerId: data.customerId,
           projectId: data.projectId || null,
           quotationDate: data.quotationDate ? new Date(data.quotationDate) : new Date(),
@@ -2442,7 +2494,7 @@ export async function createQuotationAction(
           totalStampDuty: built.quotationTotals.totalStampDuty,
           grandTotal: built.quotationTotals.grandTotal,
           createdBy: session.user.id,
-          quotationCaseId: quotationCase.id,
+          quotationCaseId,
           revisionNumber: 1,
           revisionCode: "R01",
           revisionReason: "Initial quotation",
@@ -2453,17 +2505,21 @@ export async function createQuotationAction(
       });
 
       await tx.quotationCase.update({
-        where: { id: quotationCase.id },
-        data: { currentRevisionId: quotation.id },
+        where: { id: quotationCaseId },
+        data: { currentRevisionId: quotation.id, status: "IN_PROGRESS", updatedById: session.user.id },
       });
 
       return quotation;
     });
 
     revalidatePath("/quotation");
+    revalidatePath(`/quotation/case/${quotationCaseId}`);
     return { success: true, id: result.id, quotationNumber: result.quotationNumber };
   } catch (err) {
-    console.error("Failed to create quotation:", err);
+    if (err instanceof Error && err.message === "REVISION_ALREADY_EXISTS") {
+      return { success: false, error: "REVISION_ALREADY_EXISTS" };
+    }
+    console.error("Failed to start first quotation:", err);
     return { success: false, error: "CREATE_FAILED" };
   }
 }

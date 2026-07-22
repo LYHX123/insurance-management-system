@@ -158,6 +158,14 @@ enum RevisionStatus {
 
 // Status of the permanent quotation case (the enquiry as a whole), tracked
 // independently of any one revision's RevisionStatus.
+//
+// Phase 2B case lifecycle (display labels, not new enum values):
+//   DRAFT       -> "Preparing Documents" (case created, no revision yet)
+//   IN_PROGRESS -> "Quotation In Progress" (R01 exists, still DRAFT)
+//   QUOTED / ACCEPTED / DECLINED / CONVERTED_TO_POLICY -> unchanged
+// IN_PROGRESS existed in this enum since Phase 1 but was never actually set
+// by any code path — Phase 2B is the first thing that sets it, when
+// startFirstQuotationAction creates R01.
 enum QuotationCaseStatus {
   DRAFT
   IN_PROGRESS
@@ -191,6 +199,7 @@ enum QuotationDocumentType {
   CR12
   ID_DOCUMENT
   APPLICATION_FORM
+  FINANCIAL_STATEMENTS
   OTHER
 }
 
@@ -318,8 +327,15 @@ model QuotationCase {
   projectId       String?
   project         CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
-  title  String?
-  status QuotationCaseStatus @default(DRAFT)
+  // Phase 2B: case-level fields that exist before any revision does — an
+  // enquiry can sit in "Preparing Documents" for a while with no Quotation
+  // row at all. internalNote replaces the old, always-unused `title` field
+  // (never read anywhere in the app) rather than adding a second, redundant
+  // free-text column.
+  internalNote             String?
+  enquiryDate              DateTime?
+  intendedInsuranceTypeIds String[]            @default([])
+  status                   QuotationCaseStatus @default(DRAFT)
 
   currentRevisionId  String? @unique
   acceptedRevisionId String? @unique

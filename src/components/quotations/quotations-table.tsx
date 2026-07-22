@@ -66,9 +66,13 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
         (q.projectName?.toLowerCase().includes(term) ?? false) ||
         q.insuranceTypeNames.some((name) => name.toLowerCase().includes(term));
       const matchesStatus = statusFilter === "ALL" || q.caseStatus === statusFilter;
-      const quotationDate = q.quotationDate.slice(0, 10);
-      const matchesFrom = !dateFrom || quotationDate >= dateFrom;
-      const matchesTo = !dateTo || quotationDate <= dateTo;
+      // Before R01 exists there's no quotationDate yet — fall back to
+      // enquiryDate so a case in "Preparing Documents" can still be found
+      // by the date filter instead of silently disappearing from every
+      // range.
+      const referenceDate = (q.quotationDate ?? q.enquiryDate)?.slice(0, 10);
+      const matchesFrom = !dateFrom || (!!referenceDate && referenceDate >= dateFrom);
+      const matchesTo = !dateTo || (!!referenceDate && referenceDate <= dateTo);
       return matchesTerm && matchesStatus && matchesFrom && matchesTo;
     });
   }, [quotations, search, statusFilter, dateFrom, dateTo]);
@@ -164,22 +168,24 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                 <td>{q.customerName}</td>
                 <td className="text-zinc-500">{q.projectName || "—"}</td>
                 <td>
-                  <div className="flex flex-wrap gap-1">
-                    {q.insuranceTypeNames.slice(0, 2).map((name, idx) => (
-                      <Badge key={`${name}-${idx}`} tone="brand">
-                        {name}
-                      </Badge>
-                    ))}
-                    {q.insuranceTypeNames.length > 2 && (
-                      <Badge tone="neutral">+{q.insuranceTypeNames.length - 2}</Badge>
-                    )}
-                  </div>
+                  {q.revisionCode ? (
+                    <div className="flex flex-wrap gap-1">
+                      {q.insuranceTypeNames.slice(0, 2).map((name, idx) => (
+                        <Badge key={`${name}-${idx}`} tone="brand">
+                          {name}
+                        </Badge>
+                      ))}
+                      {q.insuranceTypeNames.length > 2 && (
+                        <Badge tone="neutral">+{q.insuranceTypeNames.length - 2}</Badge>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-zinc-400">{t.quotations.notYetSelected}</span>
+                  )}
                 </td>
-                <td>
-                  <Badge tone="neutral">{q.revisionCode}</Badge>
-                </td>
-                <td className="text-zinc-500">{formatMoney(q.subtotalPremium)}</td>
-                <td className="font-medium text-zinc-800">{formatMoney(q.grandTotal)}</td>
+                <td>{q.revisionCode ? <Badge tone="neutral">{q.revisionCode}</Badge> : <span className="text-zinc-400">—</span>}</td>
+                <td className="text-zinc-500">{q.subtotalPremium !== null ? formatMoney(q.subtotalPremium) : "—"}</td>
+                <td className="font-medium text-zinc-800">{q.grandTotal !== null ? formatMoney(q.grandTotal) : "—"}</td>
                 <td>
                   <Badge tone={CASE_STATUS_TONE[q.caseStatus]}>{caseStatusLabel[q.caseStatus]}</Badge>
                 </td>

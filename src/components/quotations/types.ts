@@ -320,13 +320,16 @@ export type QuotationListRow = {
   projectId: string | null;
   projectName: string | null;
   insuranceTypeNames: string[];
-  revisionCode: string;
-  revisionStatus: RevisionStatus;
-  subtotalPremium: string;
-  totalLevies: string;
-  grandTotal: string;
+  // Phase 2B: a case can exist ("Preparing Documents") before any revision
+  // does — these are all null until "Start First Quotation" creates R01.
+  revisionCode: string | null;
+  revisionStatus: RevisionStatus | null;
+  subtotalPremium: string | null;
+  totalLevies: string | null;
+  grandTotal: string | null;
   caseStatus: QuotationCaseStatus;
-  quotationDate: string;
+  quotationDate: string | null;
+  enquiryDate: string | null;
   updatedAt: string;
   createdByName: string;
   documentCount: number;
@@ -386,6 +389,7 @@ export type QuotationDocumentType =
   | "CR12"
   | "ID_DOCUMENT"
   | "APPLICATION_FORM"
+  | "FINANCIAL_STATEMENTS"
   | "OTHER";
 
 export type DocumentSyncStatus = "NOT_APPLICABLE" | "PENDING" | "SYNCED" | "FAILED";
