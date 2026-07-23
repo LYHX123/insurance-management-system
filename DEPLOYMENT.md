@@ -18,6 +18,8 @@
 | Container port | `3000` |
 | Database | PostgreSQL 16, persisted in named volume `insurance-management-system_insurance_db_data` → `/var/lib/postgresql/data` |
 | Upload storage | Bind mount `./uploads` (on the host, inside the server directory) → `/app/uploads` in the container |
+| Underwriting document storage | Named volume `insurance-management-system_quotation_documents_data` → `/app-data/quotation-documents` |
+| Motor policy document storage | Named volume `insurance-management-system_policy_documents_data` → `/app-data/policy-documents` |
 | ORM / migrations | Prisma 7, versioned migrations in `prisma/migrations/` |
 
 ## 1. First-time server setup

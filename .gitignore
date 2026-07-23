@@ -49,3 +49,6 @@ next-env.d.ts
 
 # quotation underwriting-document uploads (local storage provider)
 /quotation-documents
+
+# Motor policy document uploads (local storage provider)
+/policy-documents

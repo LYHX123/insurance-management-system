@@ -33,6 +33,12 @@ RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 # matters for the mount point's initial ownership.
 RUN mkdir -p /app-data/quotation-documents && chown -R nextjs:nodejs /app-data/quotation-documents
 
+# Phase 1B Motor policy documents — same reasoning as the quotation-documents
+# directory above (see src/lib/policyDocuments/storage.ts). The named volume
+# mounted here in docker-compose.yml (policy_documents_data) takes over this
+# directory at container start.
+RUN mkdir -p /app-data/policy-documents && chown -R nextjs:nodejs /app-data/policy-documents
+
 USER nextjs
 
 EXPOSE 3000

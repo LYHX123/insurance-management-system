@@ -53,11 +53,26 @@ enum CustomerDocumentType {
   OTHER
 }
 
+// Phase 1A.1: distinguishes a normally-onboarded Customer from one created
+// directly out of the Motor historical-import preview (see
+// createCustomersFromHistoricalNamesAction) — mirrors PolicyRecordSource's
+// MANUAL/HISTORICAL_IMPORT split.
+enum CustomerSource {
+  MANUAL
+  HISTORICAL_IMPORT
+}
+
 model Customer {
   id                String         @id @default(cuid())
   sequenceNumber    Int            @unique @default(autoincrement())
   customerNumber    String         @unique
   companyName       String         @unique
+  // Required + unique at the DB level (predates Phase 1A.1) — a historical
+  // import must never invent a plausible-looking real PIN to satisfy this,
+  // so createCustomersFromHistoricalNamesAction writes a clearly-fake
+  // "PENDING-<customerNumber>" sentinel instead (never mistakable for a real
+  // KRA PIN) and sets isIncomplete below. Real PIN capture stays a normal
+  // Customer-module edit once the business has the real number.
   pinNumber         String         @unique
   registeredAddress String?
   mainContactPerson String?
@@ -70,6 +85,21 @@ model Customer {
   storageSyncStatus   String?   @default("pending")
   storageLastSyncedAt DateTime?
 
+  // Phase 1A.1: historical-import provenance. All nullable/defaulted so
+  // every pre-existing and every normally-created Customer is unaffected
+  // (source=MANUAL, isIncomplete=false, nothing else set). Only
+  // createCustomersFromHistoricalNamesAction ever writes these.
+  source            CustomerSource     @default(MANUAL)
+  // True whenever this record is missing real PIN/contact/phone/address —
+  // i.e. every historical-import-created Customer, until someone edits it
+  // with real data. Checked independently of `source` so a manually
+  // completed historical customer can clear this flag via a normal edit.
+  isIncomplete      Boolean            @default(false)
+  importBatchId     String?
+  importBatch       PolicyImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  sourceSheet       String?
+  originalRowNumber Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -77,9 +107,11 @@ model Customer {
   documents      CustomerDocument[]
   quotations     Quotation[]
   quotationCases QuotationCase[]
+  policyRecords  PolicyRecord[]
 
   @@index([companyName])
   @@index([status])
+  @@index([importBatchId])
 }
 
 model CustomerProject {
@@ -99,6 +131,7 @@ model CustomerProject {
   documents      CustomerDocument[]
   quotations     Quotation[]
   quotationCases QuotationCase[]
+  policyRecords  PolicyRecord[]
 
   @@index([customerId])
 }
@@ -1215,4 +1248,514 @@ model QuotationCoverageItem {
   updatedAt DateTime @updatedAt
 
   @@index([sectionId])
+}
+
+// =============================================================================
+// Policy Management — Phase 1A: Motor
+// =============================================================================
+// PolicyRecord is the common parent across every future Policy category
+// (Motor now; Non-Motor/Bond/Work Permit later — each gets its own
+// *PolicyDetail model the same way Motor does here, following the
+// QuotationInsuranceSection -> *SectionDetail pattern already established
+// above). category discriminates which detail relation is populated;
+// exactly one of MotorPolicyDetail (for now) is expected per PolicyRecord.
+
+enum PolicyCategory {
+  MOTOR
+  NON_MOTOR
+  BOND
+  WORK_PERMIT
+}
+
+// DRAFT: future effective date, not yet on cover. ACTIVE: today falls inside
+// [effectiveDate, expiryDate]. EXPIRED: expiryDate has passed. CANCELLED: set
+// explicitly (never inferred from dates alone — see historical import's
+// "Cancel" remarks handling in scripts/backfill/import logic). RENEWED is
+// reserved for a future renewal workflow (Phase 1A never assigns it).
+enum PolicyBusinessStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  RENEWED
+}
+
+// Mirrors RevisionStatus/QuotationCaseStatus's pattern of a small, explicit
+// enum per lifecycle concept rather than reusing QuotationStatus.
+enum PolicyRecordSource {
+  MANUAL
+  HISTORICAL_IMPORT
+}
+
+enum PolicyPaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  FULLY_PAID
+  OVERPAID
+}
+
+// Phase 1A.1: some historical balance cells (ACCOUNT PAYABLE / ACCOUNTS
+// RECEIVABLE) are unreadable at the source — a broken self-referencing
+// formula, a genuinely blank cell, or some other unparseable value. Those
+// rows are never silently treated as a verified zero/blank balance; they
+// carry UNVERIFIED + a reason all the way from the import preview onto the
+// resulting PolicyRecord, so its Financial tab keeps showing the warning
+// until someone manually resolves it.
+enum PolicyBalanceVerificationStatus {
+  VERIFIED
+  UNVERIFIED
+}
+
+enum PolicyBalanceWarningReason {
+  BROKEN_SOURCE_FORMULA
+  BLANK_SOURCE_BALANCE
+  OTHER_UNREADABLE_BALANCE
+}
+
+// Atomic per-category-month counter backing the PM{YYYYMM}-{seq} (Motor),
+// PN.../PB.../PW... record number formats — same INSERT ... ON CONFLICT DO
+// UPDATE pattern as QuotationNumberCounter, keyed by category so each
+// category's sequence is independent.
+model PolicyRecordNumberCounter {
+  key          String @id
+  lastSequence Int    @default(0)
+}
+
+model PolicyRecord {
+  id             String           @id @default(cuid())
+  recordNumber   String           @unique
+  category       PolicyCategory
+  processingDate DateTime
+  customerId     String
+  customer       Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  projectId      String?
+  project        CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  // Nullable: about 2% of historical Motor rows have no insurer recorded at
+  // all (see the Phase 1A import inspection report) — this is real, existing
+  // data quality, not something the schema should force-fix.
+  insurerName    String?
+  effectiveDate  DateTime
+  expiryDate     DateTime
+  businessStatus PolicyBusinessStatus @default(DRAFT)
+  currency       String               @default("KES")
+
+  // "Client Premium" / "Insurer Cost" in the historical workbook — the two
+  // headline amounts every category shares. Category-specific inputs behind
+  // these totals (vehicle value, cover type, ...) live on the detail model.
+  customerPremium Decimal @db.Decimal(16, 2)
+  insurerCost     Decimal @db.Decimal(16, 2)
+
+  // Phase 1A commission fields (commissionReceived/commissionReceivedDate)
+  // stayed intentionally coarse because the historical COMMISSION column is
+  // almost always blank, with a few inconsistent values (YES/Y/N/a bare rate
+  // like 0.12). Phase 1B adds commissionAmount for the same reason it never
+  // added the others sooner: manually-created/edited records can now record
+  // a real received amount, but this is still deliberately just one flat
+  // amount — no installment history, no separate transaction table (see
+  // updateCommissionAction's doc comment). Business rule (enforced only in
+  // that action, not at the DB level): commissionReceived=false requires
+  // commissionAmount/commissionReceivedDate both null; =true requires both
+  // set with commissionAmount >= 0.
+  commissionReceived     Boolean   @default(false)
+  commissionAmount       Decimal?  @db.Decimal(16, 2)
+  commissionReceivedDate DateTime?
+  // Historical NET PROFIT column value, when the workbook actually had one
+  // (it was blank for every row inspected in this phase, but the field
+  // exists for future imports/categories that do carry it). Never computed,
+  // never overwritten — see "System Calculated Margin" for the live figure.
+  historicalNetProfit    Decimal?  @db.Decimal(16, 2)
+
+  // Phase 1A.1: carried over from the PolicyImportRow that created this
+  // record (see PolicyImportRow's matching fields below) — VERIFIED/null
+  // for every manually-created record and every historical row whose
+  // balance was actually readable; UNVERIFIED + a reason only for the rare
+  // row where the source balance itself could not be trusted.
+  insurerBalanceVerification  PolicyBalanceVerificationStatus @default(VERIFIED)
+  insurerBalanceWarningReason PolicyBalanceWarningReason?
+  clientBalanceVerification   PolicyBalanceVerificationStatus @default(VERIFIED)
+  clientBalanceWarningReason  PolicyBalanceWarningReason?
+
+  // Phase 1A.2: manual resolution audit trail — set only by
+  // resolveBalanceVerificationAction, once per side. insurerBalanceWarningReason
+  // above is deliberately left untouched when resolving (never cleared), so
+  // "this was originally BLANK_SOURCE_BALANCE, and was manually verified on
+  // <date> by <user>" both remain visible — see this action's doc comment.
+  insurerBalanceResolutionNote String?
+  insurerBalanceResolvedAt     DateTime?
+  insurerBalanceResolvedById   String?
+  clientBalanceResolutionNote  String?
+  clientBalanceResolvedAt      DateTime?
+  clientBalanceResolvedById    String?
+
+  source            PolicyRecordSource @default(MANUAL)
+  importBatchId     String?
+  importBatch       PolicyImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  sourceSheet       String?
+  originalRowNumber Int?
+
+  remarks String?
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedById String?
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  motorDetail      MotorPolicyDetail?
+  customerReceipts PolicyCustomerReceipt[]
+  providerPayments PolicyProviderPayment[]
+  documents        PolicyDocument[]
+  activities       PolicyActivity[]
+
+  @@index([category])
+  @@index([customerId])
+  @@index([projectId])
+  @@index([businessStatus])
+  @@index([expiryDate])
+  @@index([importBatchId])
+  @@index([deletedAt])
+}
+
+// One detail model per category, same pattern as QuotationInsuranceSection's
+// *SectionDetail models. insuranceType is a plain string (not an enum) —
+// Phase 1A's inspection found exactly six clean, real values in the
+// historical data (COMPREHENSIVE, THIRD PARTY, COMESA, EXCESS, EXCESS
+// PROTECTOR, VALUATION); a DB enum would force a migration for every future
+// cover-type variant, whereas the app validates against a known-values list
+// instead (see src/lib/policy/motorCoverTypes.ts).
+model MotorPolicyDetail {
+  id             String       @id @default(cuid())
+  policyRecordId String       @unique
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  insuranceType      String
+  registrationNumber String
+  // Nullable: ~46% of historical rows have no vehicle value — overwhelmingly
+  // THIRD PARTY/COMESA covers, where this business never records one. See
+  // this phase's inspection report for the exact breakdown.
+  vehicleValue       Decimal? @db.Decimal(18, 2)
+  // The historical ledger has no policy-number column at all — never
+  // required for imported rows; only future manually-created records may
+  // supply one.
+  policyNumber       String?
+  vehicleMake        String?
+  vehicleModel       String?
+
+  @@index([registrationNumber])
+  @@index([insuranceType])
+}
+
+// Reusable child transaction models — deliberately never a single "amount
+// paid" field on PolicyRecord itself, so a policy can accept any number of
+// part-payments over time from either side (see this phase's architecture
+// notes). Historical import creates at most one row per side per policy
+// (from columns J/K and O/P respectively); everything created going forward
+// through the UI can add as many as actually happened.
+model PolicyCustomerReceipt {
+  id             String       @id @default(cuid())
+  policyRecordId String
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  receiptDate     DateTime
+  amount          Decimal  @db.Decimal(16, 2)
+  paymentMethod   String?
+  referenceNumber String?
+  notes           String?
+
+  source            PolicyRecordSource @default(MANUAL)
+  originalRowNumber Int?
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  @@index([policyRecordId])
+  @@index([deletedAt])
+}
+
+model PolicyProviderPayment {
+  id             String       @id @default(cuid())
+  policyRecordId String
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  paymentDate     DateTime
+  amount          Decimal  @db.Decimal(16, 2)
+  paymentMethod   String?
+  referenceNumber String?
+  notes           String?
+
+  source            PolicyRecordSource @default(MANUAL)
+  originalRowNumber Int?
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  @@index([policyRecordId])
+  @@index([deletedAt])
+}
+
+// --- Historical import staging ---------------------------------------------
+// A real, persisted staging area (not just client-side/session state) between
+// "user uploads a workbook" and "user confirms the import" — necessary since
+// Next.js Server Actions are stateless per request and this is a multi-step,
+// paginated review over ~1,400+ rows. PolicyImportRow rows are never
+// deleted after a batch completes: they stay as the permanent audit trail of
+// exactly what the source workbook said per row versus what was actually
+// imported.
+
+// PARTIALLY_IMPORTED (Phase 1A.2): the controlled "Import Selected"
+// workflow imports only an explicit subset at a time, so a batch can sit
+// indefinitely with some rows IMPORTED and others still READY/WARNING,
+// waiting for a later selected-import run — COMPLETED is reserved for when
+// no such eligible-but-not-yet-imported rows remain.
+enum PolicyImportBatchStatus {
+  UPLOADED
+  PREVIEWED
+  CONFIRMED
+  PARTIALLY_IMPORTED
+  COMPLETED
+  FAILED
+}
+
+// POSSIBLE_DUPLICATE: shares a duplicate key (registration+effective,
+// registration+expiry, or customer+registration+type+effective) with
+// another row in this same batch — defaults to excluded, but the user can
+// override and include it (a legitimate renewal or a second cover type on
+// the same vehicle is a real, valid case, not necessarily a mistake).
+// EXACT_DUPLICATE: an equivalent PolicyRecord already exists in the
+// database (same source row already imported, or the same
+// customer+registration+type+effective+expiry already has a real record) —
+// always blocked, never overridable, see confirmMotorImportAction.
+enum PolicyImportRowStatus {
+  READY
+  WARNING
+  POSSIBLE_DUPLICATE
+  EXACT_DUPLICATE
+  ERROR
+  IMPORTED
+  SKIPPED
+}
+
+enum PolicyCustomerMatchStatus {
+  MATCHED
+  POSSIBLE
+  MANUAL
+  UNMATCHED
+}
+
+model PolicyImportBatch {
+  id             String                  @id @default(cuid())
+  category       PolicyCategory
+  sourceFileName String
+  // SHA-256 of the uploaded file bytes (see src/lib/quotationDocuments/storage.ts's
+  // sha256Checksum, reused here) — an extra corroborating signal for "was
+  // this exact file already imported", alongside the per-row
+  // sourceSheet+originalRowNumber check that EXACT_DUPLICATE actually relies
+  // on. Nullable so nothing breaks if hashing ever fails for a given upload.
+  sourceFileHash String?
+  sourceSheet    String
+  status         PolicyImportBatchStatus @default(UPLOADED)
+  totalRows      Int
+  importedCount  Int                     @default(0)
+  skippedCount   Int                     @default(0)
+  errorCount     Int                     @default(0)
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  rows             PolicyImportRow[]
+  policyRecords    PolicyRecord[]
+  // Customers created directly from this batch's preview (see
+  // createCustomersFromHistoricalNamesAction) — distinct from policyRecords
+  // above, which are the actual imported policies.
+  customersCreated Customer[]
+
+  @@index([category])
+  @@index([status])
+}
+
+// Flat, typed columns (not a JSON blob) mirroring this project's existing
+// convention (every quotation section/detail row is flat and typed too) and
+// matching the Phase 1A preview-table spec column-for-column, so the preview
+// page can query and render this directly with no transformation layer.
+model PolicyImportRow {
+  id                String            @id @default(cuid())
+  importBatchId     String
+  importBatch       PolicyImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  originalRowNumber Int
+
+  processingDate DateTime?
+
+  customerNameRaw     String?
+  matchedCustomerId   String?
+  customerMatchStatus PolicyCustomerMatchStatus @default(UNMATCHED)
+
+  insuranceType      String?
+  registrationNumber String?
+  insurerName        String?
+  effectiveDate      DateTime?
+  expiryDate         DateTime?
+
+  insurerCost                 Decimal?                        @db.Decimal(16, 2)
+  amountPaidToInsurer         Decimal?                        @db.Decimal(16, 2)
+  insurerPaymentDate          DateTime?
+  calculatedInsurerBalance    Decimal?                        @db.Decimal(16, 2)
+  // Historical ACCOUNT PAYABLE (column L) as found in the workbook, kept
+  // verbatim for comparison — never silently reconciled against the
+  // calculated value above (see this phase's balance-consistency findings).
+  originalInsurerBalance      Decimal?                        @db.Decimal(16, 2)
+  // Raw/cached text of the source cell when originalInsurerBalance above
+  // couldn't be parsed into a number (e.g. a broken formula's literal text,
+  // or "" for a genuinely blank cell) — audit trail for
+  // insurerBalanceWarningReason below, since the numeric field alone can't
+  // distinguish "blank" from "unreadable formula".
+  originalInsurerBalanceRaw   String?
+  insurerBalanceVerification  PolicyBalanceVerificationStatus @default(VERIFIED)
+  insurerBalanceWarningReason PolicyBalanceWarningReason?
+
+  clientPremium              Decimal?                        @db.Decimal(16, 2)
+  amountReceivedFromClient   Decimal?                        @db.Decimal(16, 2)
+  clientReceiptDate          DateTime?
+  calculatedClientBalance    Decimal?                        @db.Decimal(16, 2)
+  // Historical ACCOUNTS RECEIVABLE (column Q), same verbatim-preservation
+  // rule as originalInsurerBalance above.
+  originalClientBalance      Decimal?                        @db.Decimal(16, 2)
+  originalClientBalanceRaw   String?
+  clientBalanceVerification  PolicyBalanceVerificationStatus @default(VERIFIED)
+  clientBalanceWarningReason PolicyBalanceWarningReason?
+
+  vehicleValue Decimal? @db.Decimal(18, 2)
+
+  commissionReceived     Boolean   @default(false)
+  commissionReceivedDate DateTime?
+  historicalNetProfit    Decimal?  @db.Decimal(16, 2)
+
+  remarks String?
+
+  // Within-batch POSSIBLE_DUPLICATE group members (see PolicyImportRowStatus).
+  duplicateOfRowNumbers     Int[]                 @default([])
+  // Set only for EXACT_DUPLICATE — the already-existing PolicyRecord this
+  // row collides with. Plain unenforced id string (this project's existing
+  // convention for informational cross-references — see e.g.
+  // Quotation.createdBy), not a formal relation.
+  duplicateOfPolicyRecordId String?
+  status                    PolicyImportRowStatus @default(READY)
+  warnings                  String[]              @default([])
+  includeInImport           Boolean               @default(true)
+  // Phase 1A.2: persisted selection state for the controlled "Import
+  // Selected" workflow — deliberately a real DB column (not client-only
+  // component state) so selection survives pagination/navigation and is the
+  // one thing importSelectedRowsAction actually trusts (never the client's
+  // in-memory list alone). Only ever true for a row that is currently
+  // eligible (see the selection actions in
+  // src/app/(app)/policy/motor/import/actions.ts); toggling a row
+  // ineligible again (e.g. a customer mapping is reverted) also clears this.
+  isSelectedForImport       Boolean               @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([importBatchId])
+  @@index([status])
+}
+
+// =============================================================================
+// Phase 1B — Policy Documents and Activity Log
+// =============================================================================
+// PolicyDocument is shared across every Policy category (Motor now;
+// Non-Motor/Bond/Work Permit later) — same reasoning as PolicyRecord itself:
+// one model, no Motor-only document table, so a future category needs no
+// schema change to get document support, only its own upload/list UI.
+
+enum PolicyDocumentType {
+  POLICY_SCHEDULE
+  CERTIFICATE
+  STICKER
+  DEBIT_NOTE
+  RECEIPT
+  ENDORSEMENT
+  CANCELLATION
+  OTHER
+}
+
+// Mirrors DocumentStorageProvider's Phase 2/3 pattern already established
+// for QuotationDocument: every Phase 1B document is LOCAL; DROPBOX is
+// reserved for a future phase and must not be selectable or written by any
+// code path yet (see src/lib/policyDocuments/storage.ts's doc comment).
+enum PolicyDocumentStorageProvider {
+  LOCAL
+  DROPBOX
+}
+
+model PolicyDocument {
+  id             String       @id @default(cuid())
+  policyRecordId String
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  documentType     PolicyDocumentType
+  originalFileName String
+  storedFileName   String
+  mimeType         String
+  fileSize         Int
+
+  storageProvider PolicyDocumentStorageProvider @default(LOCAL)
+  storagePath     String
+  // Reserved for the future Dropbox implementation
+  // (src/lib/policyDocuments/storage.ts's PolicyDocumentStorage interface) —
+  // never written by any Phase 1B code path.
+  externalFileId  String?
+  externalPath    String?
+
+  issueDate  DateTime?
+  expiryDate DateTime?
+  notes      String?
+
+  uploadedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([policyRecordId])
+  @@index([documentType])
+}
+
+// One entry per action listed in updatePolicyActivity's doc comment
+// (src/lib/policy/activity.ts) — append-only from the UI's perspective (no
+// edit/delete action is ever exposed for these rows).
+enum PolicyActivityActionType {
+  POLICY_CREATED
+  POLICY_UPDATED
+  POLICY_CANCELLED
+  CUSTOMER_RECEIPT_ADDED
+  INSURER_PAYMENT_ADDED
+  COMMISSION_UPDATED
+  DOCUMENT_UPLOADED
+  DOCUMENT_DELETED
+  BALANCE_VERIFIED
+  HISTORICAL_POLICY_IMPORTED
+}
+
+model PolicyActivity {
+  id             String       @id @default(cuid())
+  policyRecordId String
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  actionType PolicyActivityActionType
+  // A single, already-human-readable sentence (see recordPolicyActivity's
+  // examples) — this project's established convention is flat, typed
+  // columns rather than a JSON blob (no model anywhere in this schema uses
+  // Json), so structured extras go in this optional plain-text field
+  // instead of a metadata JSON column.
+  summary    String
+  details    String?
+
+  // Plain unenforced id string, this project's existing convention for a
+  // single user reference (see e.g. Quotation.createdBy) — nullable since a
+  // future system-triggered event might have no acting user.
+  performedById String?
+  createdAt     DateTime @default(now())
+
+  @@index([policyRecordId])
+  @@index([createdAt])
 }
