@@ -2601,17 +2601,21 @@ export async function updateQuotationStatusAction(
 // Deleting a Quotation cascades (schema-level onDelete: Cascade) through its
 // QuotationInsuranceSection rows to their coverage items and structured
 // detail rows (CAR/WIBA/EL/CPM, including WIBA payroll rows and CPM
-// equipment rows) — nothing is left orphaned. There are currently no
-// Invoice/Policy models in the schema (those modules are placeholders), so
-// there is no downstream record that could reference a quotation; once such
-// a relation exists, add a guard here that blocks deletion with a clear
-// error instead of letting the cascade run.
+// equipment rows) — nothing is left orphaned. Phase 2A added
+// PolicyRecord.sourceQuotationId, so a quotation with at least one linked
+// policy can never be deleted — blocked here with a friendly error instead
+// of letting the cascade run and relying on the FK's onDelete: SetNull.
 export async function deleteQuotationAction(id: string): Promise<ActionResult> {
   const session = await requireQuotationPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
   const existing = await prisma.quotation.findUnique({ where: { id }, select: { id: true } });
   if (!existing) return { success: false, error: "QUOTATION_NOT_FOUND" };
+
+  const linkedPolicyCount = await prisma.policyRecord.count({
+    where: { sourceQuotationId: id, deletedAt: null },
+  });
+  if (linkedPolicyCount > 0) return { success: false, error: "QUOTATION_HAS_LINKED_POLICIES" };
 
   try {
     await prisma.quotation.delete({ where: { id } });

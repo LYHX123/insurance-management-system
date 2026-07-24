@@ -366,6 +366,27 @@ export type QuotationDetail = {
   revisionReason?: string | null;
   isCurrentRevision?: boolean;
   sections: SectionRow[];
+  // Phase 2A: Quotation -> PolicyRecord relationship. Empty until at least
+  // one policy has been created from this revision (see "Create Policy").
+  relatedPolicies: RelatedPolicyRow[];
+};
+
+// Phase 2A: policy categories only ever created starting from Motor (see
+// PolicyCategory) — kept as a local union (rather than importing from
+// components/policy/types.ts) to match this file's existing convention of
+// duplicating small cross-module types (see CustomerOption below) instead of
+// creating a cross-module dependency for one shared shape.
+export type RelatedPolicyCategory = "MOTOR" | "NON_MOTOR" | "BOND" | "WORK_PERMIT";
+export type RelatedPolicyBusinessStatus = "DRAFT" | "ACTIVE" | "EXPIRED" | "CANCELLED" | "RENEWED";
+
+export type RelatedPolicyRow = {
+  id: string;
+  recordNumber: string;
+  category: RelatedPolicyCategory;
+  businessStatus: RelatedPolicyBusinessStatus;
+  effectiveDate: string;
+  expiryDate: string;
+  customerName: string;
 };
 
 // --- Phase 2 underwriting documents ---------------------------------------

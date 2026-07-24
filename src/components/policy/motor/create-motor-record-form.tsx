@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -14,6 +15,21 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { createMotorRecordAction } from "@/app/(app)/policy/motor/actions";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import type { CustomerOption } from "@/components/policy/types";
+
+// Phase 2A: passed only when this form is reached via the quotation detail
+// page's "Create Policy" action (see policy/motor/new/page.tsx's
+// "fromQuotationId" handling). insuranceType/customerPremium are prefilled
+// "where applicable" — null whenever the quotation doesn't have exactly one
+// Motor-kind section, leaving those two fields for the user to fill in same
+// as a fully manual creation.
+export type CreateMotorRecordPrefill = {
+  quotationId: string;
+  quotationNumber: string;
+  customerId: string;
+  projectId: string | null;
+  insuranceType: string | null;
+  customerPremium: string | null;
+};
 
 const ERROR_KEY: Record<string, string> = {
   CUSTOMER_REQUIRED: "customerRequired",
@@ -30,25 +46,38 @@ const ERROR_KEY: Record<string, string> = {
   COMMISSION_DATE_REQUIRED: "commissionDateRequired",
   FORBIDDEN: "genericError",
   CREATE_FAILED: "createFailedError",
+  QUOTATION_NOT_ELIGIBLE: "quotationNotEligibleError",
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function CreateMotorRecordForm({ customers }: { customers: CustomerOption[] }) {
+export function CreateMotorRecordForm({
+  customers,
+  prefill = null,
+  ineligibleQuotation = null,
+}: {
+  customers: CustomerOption[];
+  prefill?: CreateMotorRecordPrefill | null;
+  // Phase 2B: set when ?fromQuotationId= pointed at a real quotation that is
+  // not in an eligible finalized state (ISSUED/ACCEPTED) — blocks the form
+  // entirely rather than silently falling back to a blank manual form, so
+  // the restriction can't be defeated by simply ignoring the failed prefill.
+  ineligibleQuotation?: { quotationId: string; quotationNumber: string } | null;
+}) {
   const { t } = useLocale();
   const router = useRouter();
 
   const [processingDate, setProcessingDate] = useState(today());
-  const [customerId, setCustomerId] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [insuranceType, setInsuranceType] = useState("");
+  const [customerId, setCustomerId] = useState(prefill?.customerId ?? "");
+  const [projectId, setProjectId] = useState(prefill?.projectId ?? "");
+  const [insuranceType, setInsuranceType] = useState(prefill?.insuranceType ?? "");
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [vehicleValue, setVehicleValue] = useState("");
   const [insurerName, setInsurerName] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(today());
   const [expiryDate, setExpiryDate] = useState("");
-  const [customerPremium, setCustomerPremium] = useState("");
+  const [customerPremium, setCustomerPremium] = useState(prefill?.customerPremium ?? "");
   const [insurerCost, setInsurerCost] = useState("");
   const [commissionReceived, setCommissionReceived] = useState(false);
   const [commissionAmount, setCommissionAmount] = useState("");
@@ -110,6 +139,7 @@ export function CreateMotorRecordForm({ customers }: { customers: CustomerOption
       commissionAmount: commissionReceived ? commissionAmount : null,
       commissionReceivedDate: commissionReceived ? commissionReceivedDate || null : null,
       remarks: remarks || null,
+      sourceQuotationId: prefill?.quotationId ?? null,
     });
     setIsSubmitting(false);
 
@@ -121,9 +151,34 @@ export function CreateMotorRecordForm({ customers }: { customers: CustomerOption
     router.push(`/policy/motor/${result.id}`);
   };
 
+  if (ineligibleQuotation) {
+    return (
+      <div className="flex flex-col gap-section">
+        <PageHeader title={t.policy.createTitle} description={t.policy.createDescription} />
+        <div className="rounded-control border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {t.quotations.policyCreationIneligibleHint}
+        </div>
+        <div>
+          <Link href={`/quotation/${ineligibleQuotation.quotationId}`} className="text-sm font-medium text-emerald-700 hover:underline">
+            {t.quotations.view} — {ineligibleQuotation.quotationNumber}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-section">
       <PageHeader title={t.policy.createTitle} description={t.policy.createDescription} />
+
+      {prefill && (
+        <div className="rounded-control border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          {t.policy.creatingFromQuotation.replace("{number}", prefill.quotationNumber)}{" "}
+          <Link href={`/quotation/${prefill.quotationId}`} className="font-medium underline">
+            {t.quotations.view}
+          </Link>
+        </div>
+      )}
 
       <Card>
         <div className="form-grid">

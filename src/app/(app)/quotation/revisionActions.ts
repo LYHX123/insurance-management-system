@@ -388,10 +388,10 @@ export async function compareRevisionsAction(
 // Physically deletes a DRAFT revision. If it is the only revision under its
 // case, the whole case is deleted too (deleting QuotationCase cascades to
 // its sole Quotation, same net effect as the pre-Phase-1
-// deleteQuotationAction). There are currently no Invoice/Policy models in
-// the schema (both modules are still "Coming Soon" placeholders), so there
-// is nothing else that could reference this revision — once such a model
-// exists, add a guard here before allowing deletion.
+// deleteQuotationAction). Phase 2A added PolicyRecord.sourceQuotationId, so a
+// revision with at least one linked policy can never be deleted — blocked
+// here with a friendly error rather than relying on the FK's onDelete:
+// SetNull (which would silently orphan the policy's quotation reference).
 export async function deleteDraftRevisionAction(revisionId: string): Promise<ActionResult> {
   const session = await requireQuotationPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
@@ -401,6 +401,11 @@ export async function deleteDraftRevisionAction(revisionId: string): Promise<Act
       const revision = await tx.quotation.findUnique({ where: { id: revisionId } });
       if (!revision || !revision.quotationCaseId) throw new Error("REVISION_NOT_FOUND");
       if (revision.revisionStatus !== "DRAFT") throw new Error("ONLY_DRAFT_DELETABLE");
+
+      const linkedPolicyCount = await tx.policyRecord.count({
+        where: { sourceQuotationId: revisionId, deletedAt: null },
+      });
+      if (linkedPolicyCount > 0) throw new Error("REVISION_HAS_LINKED_POLICIES");
 
       await lockCase(tx, revision.quotationCaseId);
 
@@ -431,7 +436,10 @@ export async function deleteDraftRevisionAction(revisionId: string): Promise<Act
     revalidatePath("/quotation");
     return { success: true };
   } catch (err) {
-    if (err instanceof Error && ["REVISION_NOT_FOUND", "ONLY_DRAFT_DELETABLE"].includes(err.message)) {
+    if (
+      err instanceof Error &&
+      ["REVISION_NOT_FOUND", "ONLY_DRAFT_DELETABLE", "REVISION_HAS_LINKED_POLICIES"].includes(err.message)
+    ) {
       return { success: false, error: err.message };
     }
     console.error("Failed to delete draft revision:", err);

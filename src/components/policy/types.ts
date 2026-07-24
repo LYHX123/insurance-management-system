@@ -115,6 +115,35 @@ export type MotorDetail = {
   providerPayments: TransactionRow[];
   documents: PolicyDocumentRow[];
   activities: PolicyActivityRow[];
+  // Phase 2A: Quotation -> PolicyRecord relationship. Null for every
+  // manually-created and every historical-import record — see
+  // PolicyRecord.sourceQuotationId's schema comment. Populated only when the
+  // live Quotation relation still resolves.
+  sourceQuotation: SourceQuotationInfo | null;
+  // Phase 2B: immutable audit snapshot (see
+  // PolicyRecord.sourceQuotationNumberSnapshot's schema comment) — populated
+  // whenever this policy was created from a quotation, independent of
+  // whether the live relation above still resolves. Used as the display
+  // fallback ("Source Quotation" card) if sourceQuotation above is null but
+  // this isn't (i.e. the quotation existed at creation time but its relation
+  // later went away).
+  sourceQuotationSnapshot: SourceQuotationSnapshot | null;
+};
+
+export type SourceQuotationInfo = {
+  id: string;
+  quotationNumber: string;
+  revisionCode: string | null;
+  customerName: string;
+  projectName: string | null;
+  quotationDate: string;
+  grandTotal: string;
+};
+
+export type SourceQuotationSnapshot = {
+  quotationNumber: string;
+  revisionCode: string | null;
+  quotationDate: string;
 };
 
 export type PolicyDocumentRow = {

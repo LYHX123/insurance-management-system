@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Download, Trash2, GitBranch, Send, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Pencil, Download, Trash2, GitBranch, Send, CheckCircle2, XCircle, FilePlus, ExternalLink } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -22,8 +22,29 @@ import {
   cancelRevisionAction,
   deleteDraftRevisionAction,
 } from "@/app/(app)/quotation/revisionActions";
-import type { QuotationDetail, RevisionStatus, QuotationCaseStatus } from "@/components/quotations/types";
+import type {
+  QuotationDetail,
+  RevisionStatus,
+  QuotationCaseStatus,
+  RelatedPolicyCategory,
+  RelatedPolicyBusinessStatus,
+} from "@/components/quotations/types";
 import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
+
+// Phase 2A: only Motor exists today (see PolicyCategory) — every other
+// category is shown disabled in the category selector below rather than
+// hidden, so the future roadmap is visible without offering a broken link.
+const POLICY_CATEGORY_ROUTE: Partial<Record<RelatedPolicyCategory, string>> = {
+  MOTOR: "/policy/motor",
+};
+
+const POLICY_BUSINESS_STATUS_TONE: Record<RelatedPolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
+  DRAFT: "neutral",
+  ACTIVE: "success",
+  EXPIRED: "warning",
+  CANCELLED: "danger",
+  RENEWED: "brand",
+};
 
 function ReasonModal({
   title,
@@ -93,9 +114,19 @@ export function QuotationDetailView({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const [showCreatePolicy, setShowCreatePolicy] = useState(false);
+
   const revisionStatus = quotation.revisionStatus ?? null;
   const isLocked = revisionStatus !== null && revisionStatus !== "DRAFT";
   const hasRevisionInfo = !!quotation.quotationCaseId;
+  // Phase 2B: mirrors createMotorRecordAction's own eligibility check
+  // exactly (ISSUED or ACCEPTED only) — this is a UI convenience only, the
+  // server action is what actually enforces it, so this can never be the
+  // sole guard even if this component's logic ever drifts.
+  const isPolicyEligible = revisionStatus === "ISSUED" || revisionStatus === "ACCEPTED";
+
+  const activePolicyCount = quotation.relatedPolicies.filter((p) => p.businessStatus !== "CANCELLED").length;
+  const policyCategoriesRepresented = Array.from(new Set(quotation.relatedPolicies.map((p) => p.category)));
 
   const revisionErrorLabel: Record<string, string> = {
     DRAFT_ALREADY_EXISTS: t.quotations.draftAlreadyExists,
@@ -114,6 +145,8 @@ export function QuotationDetailView({
     CANCEL_FAILED: t.quotations.cancelFailedError,
     ONLY_DRAFT_DELETABLE: t.quotations.onlyDraftDeletableError,
     DELETE_FAILED: t.quotations.deleteRevisionFailedError,
+    REVISION_HAS_LINKED_POLICIES: t.quotations.hasLinkedPoliciesError,
+    QUOTATION_HAS_LINKED_POLICIES: t.quotations.hasLinkedPoliciesError,
     FORBIDDEN: t.quotations.genericError,
   };
 
@@ -232,6 +265,16 @@ export function QuotationDetailView({
         </Button>
       </a>
 
+      <Button
+        variant="secondary"
+        onClick={() => setShowCreatePolicy(true)}
+        disabled={!isPolicyEligible}
+        title={!isPolicyEligible ? t.quotations.policyCreationIneligibleHint : undefined}
+      >
+        <FilePlus size={16} />
+        {t.quotations.createPolicy}
+      </Button>
+
       {!isLocked && (
         <Link href={`/quotation/${quotation.id}/edit`}>
           <Button variant="secondary">
@@ -318,6 +361,12 @@ export function QuotationDetailView({
         </div>
       )}
 
+      {!isPolicyEligible && (
+        <div className="rounded-control border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
+          {t.quotations.policyCreationIneligibleHint}
+        </div>
+      )}
+
       {confirmingDelete && (
         <ConfirmDialog
           title={t.quotations.confirmDeleteQuotation}
@@ -385,6 +434,38 @@ export function QuotationDetailView({
             setActionError(null);
           }}
         />
+      )}
+
+      {showCreatePolicy && (
+        <Modal title={t.quotations.createPolicyModalTitle} onClose={() => setShowCreatePolicy(false)}>
+          <div className="flex flex-col gap-2">
+            <p className="text-secondary text-sm">{t.quotations.createPolicyModalDescription}</p>
+
+            <button
+              type="button"
+              onClick={() => router.push(`/policy/motor/new?fromQuotationId=${quotation.id}`)}
+              className="flex items-center justify-between rounded-control border border-zinc-200 p-3 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50"
+            >
+              <span className="font-medium text-zinc-800">{t.quotations.categoryMotor}</span>
+              <span className="text-emerald-700">{t.quotations.categorySelect}</span>
+            </button>
+
+            {[t.quotations.categoryNonMotor, t.quotations.categoryBond, t.quotations.categoryWorkPermit].map((label) => (
+              <div
+                key={label}
+                className="flex items-center justify-between rounded-control border border-zinc-100 bg-zinc-50 p-3 text-left text-sm text-zinc-400"
+              >
+                <span>{label}</span>
+                <span>{t.quotations.categoryComingSoon}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Button variant="secondary" onClick={() => setShowCreatePolicy(false)}>
+              {t.common.cancel}
+            </Button>
+          </div>
+        </Modal>
       )}
 
       <Card>
@@ -540,6 +621,73 @@ export function QuotationDetailView({
             </div>
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-title">{t.quotations.relatedPolicies}</h2>
+          {quotation.relatedPolicies.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+              <span className="font-medium text-zinc-800">
+                {t.quotations.policiesCreatedLabel}: {quotation.relatedPolicies.length}
+              </span>
+              <span>
+                ({activePolicyCount} {t.quotations.activePoliciesLabel})
+              </span>
+              {policyCategoriesRepresented.map((c) => (
+                <Badge key={c} tone="neutral">
+                  {c}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+        {quotation.relatedPolicies.length === 0 ? (
+          <p className="text-secondary text-sm">{t.quotations.noRelatedPolicies}</p>
+        ) : (
+          <TableWrap scroll>
+            <Table className="min-w-[820px]">
+              <thead>
+                <tr>
+                  <th>{t.quotations.policyNumber}</th>
+                  <th>{t.quotations.policyCategory}</th>
+                  <th>{t.common.status}</th>
+                  <th>{t.policy.effectiveDate}</th>
+                  <th>{t.policy.expiryDate}</th>
+                  <th>{t.quotations.customer}</th>
+                  <th>{t.common.actions}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quotation.relatedPolicies.map((p) => {
+                  const route = POLICY_CATEGORY_ROUTE[p.category];
+                  return (
+                    <tr key={p.id}>
+                      <td className="font-medium text-zinc-800">{p.recordNumber}</td>
+                      <td className="text-zinc-500">{p.category}</td>
+                      <td>
+                        <Badge tone={POLICY_BUSINESS_STATUS_TONE[p.businessStatus]}>{p.businessStatus}</Badge>
+                      </td>
+                      <td className="text-zinc-500">{dateFormatter.format(new Date(p.effectiveDate))}</td>
+                      <td className="text-zinc-500">{dateFormatter.format(new Date(p.expiryDate))}</td>
+                      <td className="text-zinc-500">{p.customerName}</td>
+                      <td>
+                        {route ? (
+                          <Link href={`${route}/${p.id}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline">
+                            <ExternalLink size={14} />
+                            {t.quotations.openPolicy}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </TableWrap>
+        )}
       </Card>
 
       <Card>

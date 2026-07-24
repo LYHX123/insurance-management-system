@@ -62,6 +62,12 @@ export type CreateMotorRecordInput = {
   commissionAmount?: number | string | null;
   commissionReceivedDate?: string | null;
   remarks?: string | null;
+  // Phase 2A: set only when this record is created via the quotation
+  // detail page's "Create Policy" action (see
+  // src/app/(app)/quotation/[id]/page.tsx's "fromQuotationId" flow). Never
+  // required — every other creation path (manual, historical import)
+  // leaves this null forever.
+  sourceQuotationId?: string | null;
 };
 
 export async function createMotorRecordAction(
@@ -100,6 +106,36 @@ export async function createMotorRecordAction(
   const expiryDate = new Date(data.expiryDate);
   if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
 
+  // Phase 2A: resolve the source quotation (if any) before the transaction —
+  // a broken/unknown reference is never fatal to record creation, it's just
+  // silently treated as "no quotation link" (this field is never
+  // user-typed; it only ever arrives via the server-rendered "Create
+  // Policy" flow, so a miss here means the link is stale, not a user error).
+  const sourceQuotation = data.sourceQuotationId
+    ? await prisma.quotation.findUnique({
+        where: { id: data.sourceQuotationId },
+        select: {
+          id: true,
+          quotationNumber: true,
+          quotationCaseId: true,
+          revisionStatus: true,
+          revisionCode: true,
+          quotationDate: true,
+        },
+      })
+    : null;
+
+  // Phase 2B: a real (found) source quotation must be in an eligible
+  // finalized state (ISSUED or ACCEPTED) — DRAFT/SUPERSEDED/CANCELLED
+  // revisions can never become a policy's source. Checked here (not just in
+  // the UI/page layer) so directly posting a stale or manually-edited
+  // fromQuotationId can never bypass the rule. A quotation that simply
+  // wasn't found is left to the lenient "no link" fallback above/below —
+  // this check only fires for a real quotation in the wrong status.
+  if (sourceQuotation && sourceQuotation.revisionStatus !== "ISSUED" && sourceQuotation.revisionStatus !== "ACCEPTED") {
+    return { success: false, error: "QUOTATION_NOT_ELIGIBLE" };
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const recordNumber = await generatePolicyRecordNumber(tx, "MOTOR");
@@ -125,6 +161,17 @@ export async function createMotorRecordAction(
           source: "MANUAL",
           remarks: data.remarks?.trim() || null,
           createdById: session.user.id,
+          sourceQuotationId: sourceQuotation?.id ?? null,
+          // Phase 2B: immutable audit snapshot, written only alongside a
+          // real sourceQuotationId — never for manual/historical-import
+          // creation (see PolicyRecord.sourceQuotationNumberSnapshot's
+          // schema comment). Never refreshed after this point, even if the
+          // quotation is later edited/superseded — that's the point: this
+          // reflects what the quotation looked like at the moment this
+          // specific policy was created from it.
+          sourceQuotationNumberSnapshot: sourceQuotation?.quotationNumber ?? null,
+          sourceQuotationRevisionSnapshot: sourceQuotation?.revisionCode ?? null,
+          sourceQuotationDateSnapshot: sourceQuotation?.quotationDate ?? null,
           motorDetail: {
             create: {
               insuranceType: data.insuranceType.trim(),
@@ -139,14 +186,39 @@ export async function createMotorRecordAction(
       await recordPolicyActivity(tx, {
         policyRecordId: created.id,
         actionType: "POLICY_CREATED",
-        summary: `Motor policy ${recordNumber} created`,
+        summary: sourceQuotation
+          ? `Motor policy ${recordNumber} created from quotation ${sourceQuotation.quotationNumber}`
+          : `Motor policy ${recordNumber} created`,
         performedById: session.user.id,
       });
+
+      // Phase 2B: mirror the event onto the quotation side only — this never
+      // deletes/archives the quotation, and (per Phase 2B correction) it no
+      // longer mutates QuotationCase.status to CONVERTED_TO_POLICY either.
+      // A quotation/case can have several sections or vehicles and only
+      // partial conversion; the case's own ACCEPTED/ISSUED status is left
+      // exactly as the user set it. See "Policies Created" derived display
+      // on the quotation detail page for a non-authoritative, purely
+      // observational progress indicator instead.
+      if (sourceQuotation?.quotationCaseId) {
+        await tx.quotationCaseActivity.create({
+          data: {
+            quotationCaseId: sourceQuotation.quotationCaseId,
+            actionType: "POLICY_CREATED",
+            summary: `Policy ${recordNumber} created`,
+            performedById: session.user.id,
+          },
+        });
+      }
 
       return created;
     });
 
     revalidatePath("/policy/motor");
+    if (sourceQuotation?.quotationCaseId) {
+      revalidatePath(`/quotation/${sourceQuotation.id}`);
+      revalidatePath(`/quotation/case/${sourceQuotation.quotationCaseId}`);
+    }
     return { success: true, id: result.id, recordNumber: result.recordNumber };
   } catch (err) {
     console.error("Failed to create Motor policy record:", err);

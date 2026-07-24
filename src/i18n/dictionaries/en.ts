@@ -431,6 +431,26 @@ const en = {
     cancellationReasonRequiredError: "Please enter a cancellation reason.",
     revisionLockedError: "This revision is locked. Create a new revision to make changes.",
 
+    // --- Phase 2A: Quotation -> Policy relationship ---
+    createPolicy: "Create Policy",
+    createPolicyModalTitle: "Create Policy",
+    createPolicyModalDescription: "Choose a policy category to create from this quotation.",
+    categoryMotor: "Motor",
+    categoryNonMotor: "Non-Motor",
+    categoryBond: "Bond",
+    categoryWorkPermit: "Work Permit",
+    categorySelect: "Select",
+    categoryComingSoon: "Coming soon",
+    relatedPolicies: "Related Policies",
+    noRelatedPolicies: "No policies have been created from this quotation yet.",
+    policyNumber: "Policy Number",
+    policyCategory: "Category",
+    openPolicy: "Open Policy",
+    hasLinkedPoliciesError: "This quotation has one or more linked policies and cannot be deleted.",
+    policyCreationIneligibleHint: "Policy creation is only available for accepted or issued quotations.",
+    policiesCreatedLabel: "Policies Created",
+    activePoliciesLabel: "active",
+
     // Insurance type master configuration
     insuranceTypesTitle: "Insurance Types",
     manageInsuranceTypes: "Manage Insurance Types",
@@ -717,6 +737,19 @@ const en = {
     cancelPolicy: "Cancel Policy",
     cancelPolicyConfirmTitle: "Cancel Policy",
     cancelPolicyConfirmMessage: "Are you sure you want to mark this policy as cancelled? This cannot be undone from this screen.",
+
+    // --- Phase 2A: Quotation -> Policy relationship ---
+    sourceQuotationTitle: "Source Quotation",
+    sourceQuotationNumber: "Quotation Number",
+    sourceQuotationRevision: "Revision",
+    sourceQuotationDate: "Quotation Date",
+    sourceQuotationTotalPremium: "Quotation Total Premium",
+    openQuotation: "Open Quotation",
+    noLinkedQuotation: "No linked quotation",
+    creatingFromQuotation: "Creating this policy from quotation {number}.",
+    // --- Phase 2B: Quotation -> Policy eligibility correction ---
+    sourceQuotationUnavailable: "The original quotation is no longer available. Showing saved reference information.",
+    quotationNotEligibleError: "This quotation is not eligible for policy creation. Only accepted or issued quotations can be used.",
 
     customerCardTitle: "Customer",
     totalReceived: "Total Received",

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import Link from "next/link";
+import { Pencil, ExternalLink } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -128,6 +129,44 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
               <dt className="text-secondary">{t.policy.remarks}</dt>
               <dd className="mt-1 whitespace-pre-wrap text-zinc-800">{detail.remarks}</dd>
             </div>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="section-title mb-4">{t.policy.sourceQuotationTitle}</h2>
+          {detail.sourceQuotation ? (
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {field(t.policy.sourceQuotationNumber, detail.sourceQuotation.quotationNumber)}
+              {detail.sourceQuotation.revisionCode && field(t.policy.sourceQuotationRevision, detail.sourceQuotation.revisionCode)}
+              {field(t.policy.customer, detail.sourceQuotation.customerName)}
+              {field(t.policy.project, detail.sourceQuotation.projectName || "—")}
+              {field(t.policy.sourceQuotationDate, dateFormatter.format(new Date(detail.sourceQuotation.quotationDate)))}
+              {field(t.policy.sourceQuotationTotalPremium, formatMoney(detail.sourceQuotation.grandTotal))}
+              <div>
+                <dt className="text-secondary">&nbsp;</dt>
+                <dd>
+                  <Link
+                    href={`/quotation/${detail.sourceQuotation.id}`}
+                    className="inline-flex items-center gap-1 font-medium text-emerald-700 hover:underline"
+                  >
+                    <ExternalLink size={14} />
+                    {t.policy.openQuotation}
+                  </Link>
+                </dd>
+              </div>
+            </dl>
+          ) : detail.sourceQuotationSnapshot ? (
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {field(t.policy.sourceQuotationNumber, detail.sourceQuotationSnapshot.quotationNumber)}
+              {detail.sourceQuotationSnapshot.revisionCode &&
+                field(t.policy.sourceQuotationRevision, detail.sourceQuotationSnapshot.revisionCode)}
+              {field(t.policy.sourceQuotationDate, dateFormatter.format(new Date(detail.sourceQuotationSnapshot.quotationDate)))}
+              <div className="sm:col-span-2 lg:col-span-3">
+                <p className="text-secondary text-sm">{t.policy.sourceQuotationUnavailable}</p>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-secondary text-sm">{t.policy.noLinkedQuotation}</p>
           )}
         </Card>
 

@@ -378,13 +378,40 @@ model QuotationCase {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  revisions Quotation[]
-  documents QuotationDocument[]
+  revisions  Quotation[]
+  documents  QuotationDocument[]
+  activities QuotationCaseActivity[]
 
   @@index([customerId])
   @@index([projectId])
   @@index([status])
   @@index([updatedAt])
+}
+
+// Phase 2A: minimal, quotation-side counterpart to PolicyActivity — records
+// events that happen to the case as a *result* of the Quotation -> Policy
+// relationship (currently just POLICY_CREATED). Deliberately much smaller
+// than PolicyActivity's action-type list: this is not a general quotation
+// audit log, only the one cross-module event this phase introduces. Follows
+// the same append-only, no-edit/delete convention as PolicyActivity.
+enum QuotationCaseActivityActionType {
+  POLICY_CREATED
+}
+
+model QuotationCaseActivity {
+  id              String        @id @default(cuid())
+  quotationCaseId String
+  quotationCase   QuotationCase @relation(fields: [quotationCaseId], references: [id], onDelete: Cascade)
+
+  actionType QuotationCaseActivityActionType
+  summary    String
+  details    String?
+
+  performedById String?
+  createdAt     DateTime @default(now())
+
+  @@index([quotationCaseId])
+  @@index([createdAt])
 }
 
 // Phase 2: one shared underwriting-document library per QuotationCase —
@@ -498,6 +525,14 @@ model Quotation {
   // Required by cancelRevisionAction's validation, not enforced at the DB
   // level (nullable) so any pre-Phase-1 row is never in violation.
   cancellationReason String?
+
+  // --- Phase 2A: Quotation -> PolicyRecord relationship ------------------
+  // One revision may become the source of zero, one, or many policies (see
+  // PolicyRecord.sourceQuotationId's doc comment) — never the other way
+  // round, and never one-to-one: a single revision can carry several Motor
+  // sections (multiple vehicles) or, in the future, several different
+  // insurance-type sections, each producing its own PolicyRecord.
+  policyRecords PolicyRecord[]
 
   @@unique([quotationCaseId, revisionNumber])
   @@index([quotationNumber])
@@ -1394,6 +1429,32 @@ model PolicyRecord {
   sourceSheet       String?
   originalRowNumber Int?
 
+  // --- Phase 2A: Quotation -> PolicyRecord relationship -------------------
+  // Optional reference to the specific Quotation revision this policy was
+  // created from — never required (manual creation and historical import
+  // both leave this null forever) and never one-to-one (many PolicyRecords
+  // may point at the same Quotation: one per vehicle/section). onDelete:
+  // SetNull rather than Restrict at the DB level because the app layer
+  // already blocks deleting a revision/quotation that still has linked
+  // policies with a friendly error (see deleteDraftRevisionAction and
+  // deleteQuotationAction) — this is just a defensive fallback so a policy
+  // record itself is never lost if that guard is ever bypassed.
+  sourceQuotationId String?
+  sourceQuotation   Quotation? @relation(fields: [sourceQuotationId], references: [id], onDelete: SetNull)
+
+  // Phase 2B: immutable audit snapshot of the source quotation, written once
+  // at creation time alongside sourceQuotationId and never refreshed
+  // afterward — so the origin stays understandable even if the quotation is
+  // later edited, superseded, or (should the SetNull fallback above ever
+  // fire) removed entirely. sourceQuotationId + the live relation remain the
+  // authoritative navigation link while they exist; these three fields are
+  // reference-only and are never read as authoritative premium/status data.
+  // Null for every manually-created and every historical-import record —
+  // only createMotorRecordAction's quotation-linked path ever sets them.
+  sourceQuotationNumberSnapshot   String?
+  sourceQuotationRevisionSnapshot String?
+  sourceQuotationDateSnapshot     DateTime?
+
   remarks String?
 
   createdById String
@@ -1415,6 +1476,7 @@ model PolicyRecord {
   @@index([expiryDate])
   @@index([importBatchId])
   @@index([deletedAt])
+  @@index([sourceQuotationId])
 }
 
 // One detail model per category, same pattern as QuotationInsuranceSection's

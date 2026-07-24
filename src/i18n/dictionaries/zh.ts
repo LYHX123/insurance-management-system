@@ -431,6 +431,26 @@ const zh: Dictionary = {
     cancellationReasonRequiredError: "请填写作废原因。",
     revisionLockedError: "该修订版本已锁定，请创建新的修订版本进行修改。",
 
+    // --- Phase 2A: 报价单 -> 保单关联 ---
+    createPolicy: "创建保单",
+    createPolicyModalTitle: "创建保单",
+    createPolicyModalDescription: "选择要从此报价单创建的保单类别。",
+    categoryMotor: "机动车",
+    categoryNonMotor: "非机动车",
+    categoryBond: "保证保险",
+    categoryWorkPermit: "工作许可",
+    categorySelect: "选择",
+    categoryComingSoon: "即将推出",
+    relatedPolicies: "关联保单",
+    noRelatedPolicies: "尚未从此报价单创建任何保单。",
+    policyNumber: "保单编号",
+    policyCategory: "类别",
+    openPolicy: "打开保单",
+    hasLinkedPoliciesError: "此报价单存在关联保单，无法删除。",
+    policyCreationIneligibleHint: "仅已接受或已发出的报价可创建保单。",
+    policiesCreatedLabel: "已创建保单数",
+    activePoliciesLabel: "有效",
+
     insuranceTypesTitle: "保险类型管理",
     manageInsuranceTypes: "管理保险类型",
     createInsuranceTypeTitle: "添加保险类型",
@@ -716,6 +736,19 @@ const zh: Dictionary = {
     cancelPolicy: "取消保单",
     cancelPolicyConfirmTitle: "取消保单",
     cancelPolicyConfirmMessage: "确定要将此保单标记为已取消吗？此操作在此页面无法撤销。",
+
+    // --- Phase 2A: 报价单 -> 保单关联 ---
+    sourceQuotationTitle: "来源报价单",
+    sourceQuotationNumber: "报价单编号",
+    sourceQuotationRevision: "修订版本",
+    sourceQuotationDate: "报价日期",
+    sourceQuotationTotalPremium: "报价总保费",
+    openQuotation: "打开报价单",
+    noLinkedQuotation: "无关联报价单",
+    creatingFromQuotation: "正在从报价单 {number} 创建此保单。",
+    // --- Phase 2B: 报价单 -> 保单资格修正 ---
+    sourceQuotationUnavailable: "原报价单已不可用，以下为已保存的参考信息。",
+    quotationNotEligibleError: "此报价单不符合创建保单的条件，只能使用已接受或已发出的报价单。",
 
     customerCardTitle: "客户",
     totalReceived: "已收总额",

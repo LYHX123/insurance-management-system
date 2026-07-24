@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { computeBusinessStatus } from "@/lib/policy/status";
 import type { QuotationDetail } from "@/components/quotations/types";
 
 const DETAIL_INCLUDE = {
@@ -46,6 +47,26 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
     select: { fullName: true, username: true },
   });
 
+  // Phase 2A: policies created from this revision (see "Create Policy").
+  // Never filtered by category — Motor is the only one that exists yet, but
+  // this list must keep working unchanged once Non-Motor/Bond/Work Permit
+  // start creating policies the same way.
+  const relatedPolicyRecords = await prisma.policyRecord.findMany({
+    where: { sourceQuotationId: id, deletedAt: null },
+    include: { customer: { select: { companyName: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const now = new Date();
+  const relatedPolicies = relatedPolicyRecords.map((p) => ({
+    id: p.id,
+    recordNumber: p.recordNumber,
+    category: p.category,
+    businessStatus: computeBusinessStatus(p.effectiveDate, p.expiryDate, p.businessStatus, now),
+    effectiveDate: p.effectiveDate.toISOString(),
+    expiryDate: p.expiryDate.toISOString(),
+    customerName: p.customer.companyName,
+  }));
+
   return {
     id: quotation.id,
     quotationNumber: quotation.quotationNumber,
@@ -72,6 +93,7 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
     revisionStatus: quotation.revisionStatus,
     revisionReason: quotation.revisionReason,
     isCurrentRevision: quotation.isCurrentRevision,
+    relatedPolicies,
     sections: quotation.sections.map((s) => ({
       id: s.id,
       insuranceTypeId: s.insuranceTypeId,

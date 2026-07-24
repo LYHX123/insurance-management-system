@@ -24,6 +24,17 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
       motorDetail: true,
       customerReceipts: { where: { deletedAt: null }, orderBy: { receiptDate: "desc" } },
       providerPayments: { where: { deletedAt: null }, orderBy: { paymentDate: "desc" } },
+      sourceQuotation: {
+        select: {
+          id: true,
+          quotationNumber: true,
+          revisionCode: true,
+          quotationDate: true,
+          grandTotal: true,
+          customer: { select: { companyName: true } },
+          project: { select: { projectName: true } },
+        },
+      },
     },
   });
   if (!record || !record.motorDetail) notFound();
@@ -181,6 +192,28 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
     providerPayments,
     documents: documentRows,
     activities: activityRows,
+    sourceQuotation: record.sourceQuotation
+      ? {
+          id: record.sourceQuotation.id,
+          quotationNumber: record.sourceQuotation.quotationNumber,
+          revisionCode: record.sourceQuotation.revisionCode,
+          customerName: record.sourceQuotation.customer.companyName,
+          projectName: record.sourceQuotation.project?.projectName ?? null,
+          quotationDate: record.sourceQuotation.quotationDate.toISOString(),
+          grandTotal: record.sourceQuotation.grandTotal.toString(),
+        }
+      : null,
+    // Phase 2B: fallback display data for when the live relation above is
+    // null but this policy was in fact created from a quotation (e.g. the
+    // relation's onDelete: SetNull fired) — see
+    // PolicyRecord.sourceQuotationNumberSnapshot's schema comment.
+    sourceQuotationSnapshot: record.sourceQuotationNumberSnapshot
+      ? {
+          quotationNumber: record.sourceQuotationNumberSnapshot,
+          revisionCode: record.sourceQuotationRevisionSnapshot,
+          quotationDate: (record.sourceQuotationDateSnapshot ?? record.createdAt).toISOString(),
+        }
+      : null,
   };
 
   const customers = await prisma.customer.findMany({
