@@ -2067,3 +2067,82 @@ model InvoiceItem {
   @@unique([invoiceId, policyRecordId])
   @@index([policyRecordId])
 }
+
+// =============================================================================
+// Phase 5A: Ledger — Manual Records only get real persistence here. System
+// Records (Customer Premium Receipts, Provider/Agent Payments, Commission
+// Income) are deliberately NOT duplicated into a second table: the Ledger's
+// "System Records" tab is a read-only normalized projection computed
+// on-the-fly from the existing PolicyCustomerReceipt / PolicyProviderPayment
+// / PolicyRecord.commission* source-of-truth records — see
+// src/lib/ledger/systemRecords.ts. This keeps exactly one place that can
+// ever create/edit those business transactions (the Policy Financial tabs).
+// =============================================================================
+
+enum LedgerTransactionType {
+  INCOME
+  EXPENSE
+}
+
+// User-created only — this project deliberately never seeds/hard-codes
+// business categories (e.g. "Office Expense") here; see this phase's spec.
+// transactionType is fixed for the lifetime of a category once created (see
+// updateLedgerCategoryAction's doc comment for why changing it is never
+// offered, rather than attempting "safe validation" of existing usage).
+model LedgerCategory {
+  id              String                @id @default(cuid())
+  name            String
+  transactionType LedgerTransactionType
+  isActive        Boolean               @default(true)
+
+  // Plain unenforced id string, this project's existing convention for a
+  // single user reference (see e.g. PolicyActivity.performedById).
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  manualEntries LedgerManualEntry[]
+
+  // The same name may exist once under INCOME and once under EXPENSE (see
+  // this phase's spec) — never a bare unique on name alone.
+  @@unique([name, transactionType])
+  @@index([transactionType])
+  @@index([isActive])
+}
+
+// User-entered daily non-business income/expense — never a source for or
+// derived from PolicyCustomerReceipt, PolicyProviderPayment, commission
+// fields, or Invoice (see this phase's spec: "Editing must not affect
+// Policy, Invoice, CustomerReceipt, ProviderPayment, or Commission").
+model LedgerManualEntry {
+  id              String                @id @default(cuid())
+  transactionDate DateTime
+  transactionType LedgerTransactionType
+  categoryId      String
+  category        LedgerCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  amount          Decimal @db.Decimal(16, 2)
+  paymentMethod   String?
+  referenceNumber String?
+  description     String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  // Same cancellation shape as Invoice (cancelledAt/cancelledById) rather
+  // than PolicyCustomerReceipt/PolicyProviderPayment's bare deletedAt — a
+  // Manual Record is a standalone financial record a user explicitly
+  // cancels (mirroring "Cancel Invoice"), not a child row silently removed
+  // as part of editing a parent, so tracking who cancelled it matters the
+  // same way it does for Invoice.
+  cancelledAt   DateTime?
+  cancelledById String?
+
+  @@index([transactionDate])
+  @@index([transactionType])
+  @@index([categoryId])
+  @@index([cancelledAt])
+  @@index([createdById])
+}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
@@ -21,10 +22,17 @@ const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" 
 };
 
 type Tab = "overview" | "financial" | "documents" | "activity";
+const VALID_TABS: Tab[] = ["overview", "financial", "documents", "activity"];
 
 export function MotorDetailView({ detail, customers }: { detail: MotorDetail; customers: CustomerOption[] }) {
   const { t } = useLocale();
-  const [tab, setTab] = useState<Tab>("overview");
+  // Allows deep-linking straight to a tab (e.g. Ledger's "Open Source" link
+  // to a Policy's Financial tab, see src/lib/ledger/systemRecords.ts) via
+  // ?tab=financial — read once on mount, not kept in sync afterward (the
+  // tab buttons below manage state locally from here on, same as before).
+  const searchParams = useSearchParams();
+  const initialTab = VALID_TABS.includes(searchParams.get("tab") as Tab) ? (searchParams.get("tab") as Tab) : "overview";
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   const statusLabel: Record<PolicyBusinessStatus, string> = {
     DRAFT: t.policy.statusDraft,
