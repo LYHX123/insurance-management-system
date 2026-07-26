@@ -4,7 +4,9 @@ export type BadgeTone =
   | "success"
   | "warning"
   | "danger"
-  | "info";
+  | "info"
+  | "purple"
+  | "teal";
 
 const toneClass: Record<BadgeTone, string> = {
   neutral: "badge-neutral",
@@ -13,6 +15,8 @@ const toneClass: Record<BadgeTone, string> = {
   warning: "badge-warning",
   danger: "badge-danger",
   info: "badge-info",
+  purple: "badge-purple",
+  teal: "badge-teal",
 };
 
 export function Badge({

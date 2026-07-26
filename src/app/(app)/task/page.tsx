@@ -1,9 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { ComingSoon } from "@/components/coming-soon";
-import { useLocale } from "@/i18n/locale-provider";
-
-export default function TaskPage() {
-  const { t } = useLocale();
-  return <ComingSoon moduleName={t.sidebar.task} />;
+export default function TaskIndexPage() {
+  redirect("/task/daily");
 }

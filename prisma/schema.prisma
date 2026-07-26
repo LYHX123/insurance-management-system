@@ -109,6 +109,8 @@ model Customer {
   quotationCases QuotationCase[]
   policyRecords  PolicyRecord[]
   invoices       Invoice[]
+  motorClaims    MotorClaim[]
+  nonMotorClaims NonMotorClaim[]
 
   @@index([companyName])
   @@index([status])
@@ -133,6 +135,8 @@ model CustomerProject {
   quotations     Quotation[]
   quotationCases QuotationCase[]
   policyRecords  PolicyRecord[]
+  motorClaims    MotorClaim[]
+  nonMotorClaims NonMotorClaim[]
 
   @@index([customerId])
 }
@@ -2145,4 +2149,370 @@ model LedgerManualEntry {
   @@index([categoryId])
   @@index([cancelledAt])
   @@index([createdById])
+}
+
+// =============================================================================
+// Phase 6A: Task — a generic participant-scoped task/timeline shared by all
+// three category tabs (Daily Task, Motor Claim, Non-Motor Claim). Claim
+// categories deliberately reuse the exact same Task/TaskStep shape rather
+// than duplicated per-category tables — no claim-specific fields (policy
+// link, claim number, amounts, ...) exist yet; those belong to a later Claim
+// phase (see this phase's spec, Part K). Visibility is participant-only and
+// enforced at query time everywhere (see requireTaskAccess /
+// getVisibleTasksForCategory), never only hidden in the UI.
+// =============================================================================
+
+enum TaskCategory {
+  DAILY_TASK
+  MOTOR_CLAIM
+  NON_MOTOR_CLAIM
+}
+
+enum TaskStatus {
+  ACTIVE
+  COMPLETED
+}
+
+model Task {
+  id       String       @id @default(cuid())
+  // Immutable after creation by design — no action in this phase ever
+  // accepts a category change (see this phase's spec, Part B.3).
+  category TaskCategory
+  title    String
+  status   TaskStatus   @default(ACTIVE)
+
+  // Plain unenforced id string, this project's existing convention for a
+  // single user reference (see e.g. PolicyActivity.performedById,
+  // LedgerManualEntry.createdById) — the creator is always also present as
+  // a TaskParticipant row (enforced in createTaskAction), so this field is
+  // never used for visibility, only for authorship/authority display and
+  // the "task creator" authorization checks.
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  completedAt   DateTime?
+  completedById String?
+
+  // Soft-delete/cancellation, matching Invoice/LedgerManualEntry's
+  // cancelledAt+cancelledById shape (richer than the bare deletedAt used by
+  // PolicyCustomerReceipt/PolicyProviderPayment) — a Task is a standalone
+  // record a creator explicitly deletes, not a child row silently removed
+  // as part of editing a parent.
+  deletedAt   DateTime?
+  deletedById String?
+
+  participants TaskParticipant[]
+  steps        TaskStep[]
+
+  @@index([category])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([updatedAt])
+  @@index([createdById])
+}
+
+// Explicit many-to-many join (not Prisma's implicit m:n) so addedAt/addedById
+// audit metadata has somewhere to live — this project's existing convention
+// whenever a join table needs its own fields (see e.g. InvoiceItem).
+model TaskParticipant {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  // Plain unenforced id string (see Task.createdById's comment) — never FK'd
+  // to User, so a participant's historical steps/attribution remain intact
+  // even if that User row is later edited; deactivation is handled by
+  // UserStatus, not by touching this table.
+  userId String
+
+  addedAt   DateTime @default(now())
+  addedById String
+
+  // A user can appear at most once per Task — enforced at the database
+  // level, not just in the create/update actions.
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+// A single node in a Task's sequential action timeline. Deliberately no
+// sequenceNumber column (see this phase's spec, Part C.7 — "ordering must
+// remain stable and deterministic"): visible position is always computed at
+// read time as the index of a step within its Task's non-deleted steps
+// ordered by (createdAt asc, id asc), which trivially closes any gap left by
+// a soft-deleted step without ever renumbering or touching historical
+// createdAt values.
+model TaskStep {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  content String
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  // Set only by updateStepAction when the content is actually edited — the
+  // UI's "Edited" indicator reads this field (not updatedAt) so it is never
+  // triggered by anything else.
+  editedAt    DateTime?
+
+  deletedAt   DateTime?
+  deletedById String?
+
+  @@index([taskId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+// =============================================================================
+// Phase 6B: Motor Claim / Non-Motor Claim — dedicated claim-record
+// management, deliberately NOT built on the generic Task/TaskStep model
+// (see this phase's spec, Part B.4: "Do not render TaskWorkspace for either
+// claim route after this phase"). Phase 6A created zero genuine MOTOR_CLAIM
+// / NON_MOTOR_CLAIM Task rows before this phase (confirmed by inspection),
+// so no legacy-data migration was required — Daily Task keeps using
+// Task/TaskParticipant/TaskStep unchanged. No Policy linkage, payment,
+// reserve, document, or notification fields exist yet — see this phase's
+// Part K scope note; those belong to a later Claim phase.
+// =============================================================================
+
+enum ClaimStatus {
+  OPEN
+  CLOSED
+}
+
+enum MotorClaimNature {
+  OWN_DAMAGE
+  THIRD_PARTY_CLAIM
+  WINDSCREEN
+  ACCIDENT
+}
+
+// Fixed business order (see this phase's spec, Part C.10) — Prisma enums
+// preserve declaration order, and this project's UI always iterates enum
+// options in declaration order rather than re-sorting them, so the order
+// here IS the order actually shown to the user.
+enum MotorClaimProgress {
+  PREPARE_CLAIM_DOCUMENT
+  ASSESSMENT_PROCESS
+  APPROVAL_AND_REPAIR
+  RE_INSPECTION_AND_RELEASE
+  FINISH
+}
+
+enum NonMotorClaimProgress {
+  DOCUMENT_PREPARATION
+  LOSS_ASSESSMENT_INVESTIGATION
+  APPROVAL
+  DV_ISSUED
+  PAYMENT
+  FINISH
+}
+
+// Same per-yearMonth atomic upsert pattern as InvoiceNumberCounter — a
+// dedicated table per claim type (not a shared multi-key table) so Motor
+// and Non-Motor Claim sequences are fully independent, mirroring
+// InvoiceNumberCounter's own reasoning for not reusing
+// PolicyRecordNumberCounter.
+model MotorClaimNumberCounter {
+  yearMonth    String @id
+  lastSequence Int    @default(0)
+}
+
+model NonMotorClaimNumberCounter {
+  yearMonth    String @id
+  lastSequence Int    @default(0)
+}
+
+model MotorClaim {
+  id          String @id @default(cuid())
+  claimNumber String @unique
+
+  reportedAt DateTime
+
+  customerId   String
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  // Optional, customer-scoped (see this phase's spec, Part B.3) — same
+  // nullable-FK + onDelete: Restrict shape as PolicyRecord.projectId.
+  projectId    String?
+  project      CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  // Claim-specific snapshot, independently editable — never written back to
+  // the Customer master record (see this phase's spec, Part D.14).
+  contactName  String
+  contactPhone String
+
+  // No reusable insurer master list exists anywhere in this repository yet
+  // (checked before implementing) — plain required text, same as
+  // PolicyRecord.insurerName, not a seeded/invented list. Phase 6C adds a
+  // searchable UI selector (src/lib/claims/insurers.ts) sourced from this
+  // and every other insurer-bearing field, but the column itself stays
+  // plain text — never a foreign key to a master table that doesn't exist.
+  insurer String
+
+  numberPlate String
+  claimNature MotorClaimNature
+  progress    MotorClaimProgress @default(PREPARE_CLAIM_DOCUMENT)
+  status      ClaimStatus        @default(OPEN)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  // Progress and status are deliberately independent fields — selecting
+  // FINISH never auto-sets CLOSED, and closing never overwrites progress
+  // (see this phase's spec, Part C.11).
+  closedAt   DateTime?
+  closedById String?
+
+  deletedAt   DateTime?
+  deletedById String?
+
+  participants MotorClaimParticipant[]
+  updates      MotorClaimUpdate[]
+
+  @@index([status])
+  @@index([reportedAt])
+  @@index([customerId])
+  @@index([projectId])
+  @@index([deletedAt])
+  @@index([numberPlate])
+}
+
+model NonMotorClaim {
+  id          String @id @default(cuid())
+  claimNumber String @unique
+
+  reportedAt DateTime
+
+  customerId   String
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  projectId    String?
+  project      CustomerProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contactName  String
+  contactPhone String
+
+  insurer String
+
+  // Reuses the existing NonMotorCoverType enum (see NonMotorPolicyDetail)
+  // instead of a second, drifting type list — see this phase's spec, Part
+  // F.28.
+  insuranceType NonMotorCoverType
+  progress      NonMotorClaimProgress @default(DOCUMENT_PREPARATION)
+  status        ClaimStatus           @default(OPEN)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  closedAt   DateTime?
+  closedById String?
+
+  deletedAt   DateTime?
+  deletedById String?
+
+  participants NonMotorClaimParticipant[]
+  updates      NonMotorClaimUpdate[]
+
+  @@index([status])
+  @@index([reportedAt])
+  @@index([customerId])
+  @@index([projectId])
+  @@index([deletedAt])
+}
+
+// =============================================================================
+// Phase 6C: Claim collaboration — participant-scoped visibility (mirrors
+// TaskParticipant exactly) and a per-Claim timeline (mirrors TaskStep
+// exactly), plus optional customer-scoped Project selection. Two dedicated
+// participant/update model pairs (Motor/Non-Motor) rather than one shared
+// polymorphic table — this schema has no polymorphic entityType+entityId
+// pattern anywhere else, and a single foreign key column can only reference
+// one parent table with real referential integrity, so dedicated models are
+// the only way to keep a real, enforced foreign key (see this phase's spec,
+// Part C.5 / Part H.25).
+// =============================================================================
+
+model MotorClaimParticipant {
+  id           String     @id @default(cuid())
+  motorClaimId String
+  motorClaim   MotorClaim @relation(fields: [motorClaimId], references: [id], onDelete: Cascade)
+  // Plain unenforced id string (see Task.createdById's comment) — never FK'd
+  // to User, so a participant's historical timeline entries/attribution
+  // remain intact even after their account is later deactivated.
+  userId       String
+
+  addedAt   DateTime @default(now())
+  addedById String
+
+  @@unique([motorClaimId, userId])
+  @@index([userId])
+}
+
+model NonMotorClaimParticipant {
+  id              String        @id @default(cuid())
+  nonMotorClaimId String
+  nonMotorClaim   NonMotorClaim @relation(fields: [nonMotorClaimId], references: [id], onDelete: Cascade)
+  userId          String
+
+  addedAt   DateTime @default(now())
+  addedById String
+
+  @@unique([nonMotorClaimId, userId])
+  @@index([userId])
+}
+
+// A single node in a Motor Claim's chronological timeline — user-entered
+// updates and system-generated entries (created, progress changed,
+// closed, reopened, participants updated) share this one model, exactly
+// like a Daily Task's TaskStep. No sequenceNumber column, same reasoning as
+// TaskStep: visible position is always the index of a non-deleted entry
+// ordered by (createdAt asc, id asc).
+model MotorClaimUpdate {
+  id           String     @id @default(cuid())
+  motorClaimId String
+  motorClaim   MotorClaim @relation(fields: [motorClaimId], references: [id], onDelete: Cascade)
+
+  content String
+
+  // True only for the single automatic "Claim created" entry — protected
+  // from edit/delete for audit safety (see this phase's spec, Part H.30).
+  // Every other system-generated entry (progress change, close, reopen,
+  // participants updated) is a normal, editable/deletable entry.
+  isInitial Boolean @default(false)
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  editedAt    DateTime?
+
+  deletedAt   DateTime?
+  deletedById String?
+
+  @@index([motorClaimId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model NonMotorClaimUpdate {
+  id              String        @id @default(cuid())
+  nonMotorClaimId String
+  nonMotorClaim   NonMotorClaim @relation(fields: [nonMotorClaimId], references: [id], onDelete: Cascade)
+
+  content String
+
+  isInitial Boolean @default(false)
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  editedAt    DateTime?
+
+  deletedAt   DateTime?
+  deletedById String?
+
+  @@index([nonMotorClaimId])
+  @@index([createdAt])
+  @@index([deletedAt])
 }
