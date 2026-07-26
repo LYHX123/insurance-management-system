@@ -14,26 +14,25 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { updateMotorOverviewAction } from "@/app/(app)/policy/motor/actions";
-import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
-import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
-import type { MotorDetail, CustomerOption } from "@/components/policy/types";
+import { updateBondOverviewAction } from "@/app/(app)/policy/bond/actions";
+import { BOND_TYPES } from "@/lib/policy/bondTypes";
+import type { BondDetail, CustomerOption, BondType } from "@/components/policy/types";
 
 const ERROR_KEY: Record<string, string> = {
   CUSTOMER_REQUIRED: "customerRequired",
   CUSTOMER_NOT_FOUND: "genericError",
   PROJECT_NOT_BELONG_TO_CUSTOMER: "projectNotBelongToCustomer",
-  INSURANCE_TYPE_REQUIRED: "insuranceTypeRequired",
-  REGISTRATION_NUMBER_REQUIRED: "registrationNumberRequired",
+  BOND_TYPE_REQUIRED: "bondTypeRequired",
+  INVALID_BOND_TYPE: "bondTypeRequired",
+  CUSTOM_BOND_TYPE_REQUIRED: "typeOfCustomBondRequired",
+  BOND_AMOUNT_INVALID: "bondAmountInvalid",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
-  TAX_CLASS_REQUIRED: "taxClassRequired",
-  INVALID_TAX_CLASS: "taxClassRequired",
   RECORD_NOT_FOUND: "recordNotFound",
   FORBIDDEN: "genericError",
   UPDATE_FAILED: "updateFailedError",
 };
 
-export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; customers: CustomerOption[] }) {
+export function BondOverviewTab({ detail, customers }: { detail: BondDetail; customers: CustomerOption[] }) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -46,16 +45,9 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
   const [processingDate, setProcessingDate] = useState(detail.processingDate.slice(0, 10));
   const [customerId, setCustomerId] = useState(detail.customerId);
   const [projectId, setProjectId] = useState(detail.projectId ?? "");
-  const [insuranceType, setInsuranceType] = useState(detail.insuranceType);
-  const [registrationNumber, setRegistrationNumber] = useState(detail.registrationNumber);
-  // Phase 2B: blank ("") for a legacy record with no Tax Class yet — the
-  // user must choose one before a real edit-save succeeds (see
-  // updateMotorOverviewAction's validation), though the narrow "Cancel
-  // Policy" action below tolerates this staying blank.
-  const [taxClass, setTaxClass] = useState(detail.taxClass ?? "");
-  const [vehicleValue, setVehicleValue] = useState(detail.vehicleValue ?? "");
-  const [vehicleMake, setVehicleMake] = useState(detail.vehicleMake ?? "");
-  const [vehicleModel, setVehicleModel] = useState(detail.vehicleModel ?? "");
+  const [bondType, setBondType] = useState<string>(detail.bondType);
+  const [customBondType, setCustomBondType] = useState(detail.customBondType ?? "");
+  const [bondAmount, setBondAmount] = useState(detail.bondAmount);
   const [insurerName, setInsurerName] = useState(detail.insurerName ?? "");
   const [policyNumber, setPolicyNumber] = useState(detail.policyNumber ?? "");
   const [effectiveDate, setEffectiveDate] = useState(detail.effectiveDate.slice(0, 10));
@@ -69,11 +61,11 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
     [customers, customerId]
   );
 
-  const taxClassLabel: Record<string, string> = {
-    PRIVATE: t.policy.taxClassPrivate,
-    COMMERCIAL: t.policy.taxClassCommercial,
-    SPV: t.policy.taxClassSpv,
-    SPECIAL_USE: t.policy.taxClassSpecialUse,
+  const bondTypeLabel: Record<BondType, string> = {
+    TENDER_BOND: t.policy.bondTenderBond,
+    PERFORMANCE_BOND: t.policy.bondPerformanceBond,
+    ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
+    CUSTOM_BOND: t.policy.bondCustomBond,
   };
 
   const field = (label: string, value: React.ReactNode) => (
@@ -83,27 +75,25 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
     </div>
   );
 
+  const handleBondTypeChange = (value: string) => {
+    setBondType(value);
+    if (value !== "CUSTOM_BOND") setCustomBondType("");
+  };
+
   const submit = async (cancelled: boolean) => {
     setError(null);
-    // Client-side mirror of updateMotorOverviewAction's own rule: required
-    // for a real edit-save, but the narrow "Cancel Policy" action (fired
-    // straight from the read-only view, never through the edit form) must
-    // still work for a legacy record that has no Tax Class yet.
-    if (!cancelled && !taxClass) {
-      setError(t.policy.taxClassRequired);
+    if (!cancelled && bondType === "CUSTOM_BOND" && !customBondType.trim()) {
+      setError(t.policy.typeOfCustomBondRequired);
       return;
     }
     setIsSubmitting(true);
-    const result = await updateMotorOverviewAction(detail.id, {
+    const result = await updateBondOverviewAction(detail.id, {
       processingDate,
       customerId,
       projectId: projectId || null,
-      insuranceType,
-      registrationNumber,
-      taxClass,
-      vehicleValue: vehicleValue || null,
-      vehicleMake: vehicleMake || null,
-      vehicleModel: vehicleModel || null,
+      bondType,
+      customBondType: bondType === "CUSTOM_BOND" ? customBondType : null,
+      bondAmount,
       insurerName: insurerName || null,
       policyNumber: policyNumber || null,
       effectiveDate,
@@ -139,14 +129,15 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
             {field(t.policy.processingDate, dateFormatter.format(new Date(detail.processingDate)))}
             {field(t.policy.customer, detail.customerName)}
             {field(t.policy.project, detail.projectName || "—")}
-            {field(t.policy.typeOfCover, detail.insuranceType)}
-            {field(t.policy.registrationNumber, detail.registrationNumber)}
-            {field(t.policy.taxClass, detail.taxClass ? taxClassLabel[detail.taxClass] : t.policy.notSpecified)}
-            {field(t.policy.vehicleValue, detail.vehicleValue ? formatMoney(detail.vehicleValue) : "—")}
+            {field(t.policy.typeOfBond, bondTypeLabel[detail.bondType])}
+            {detail.bondType === "CUSTOM_BOND" && field(t.policy.typeOfCustomBond, detail.customBondType || "—")}
+            {field(t.policy.bondAmount, formatMoney(detail.bondAmount))}
             {field(t.policy.insurer, detail.insurerName || "—")}
             {field(t.policy.policyNumber, detail.policyNumber || "—")}
             {field(t.policy.effectiveDate, dateFormatter.format(new Date(detail.effectiveDate)))}
             {field(t.policy.expiryDate, dateFormatter.format(new Date(detail.expiryDate)))}
+            {field(t.policy.clientPremium, formatMoney(detail.customerPremium))}
+            {field(t.policy.insurerCost, formatMoney(detail.insurerCost))}
             {field(t.policy.source, detail.source === "MANUAL" ? t.policy.sourceManual : t.policy.sourceHistoricalImport)}
           </dl>
           {detail.remarks && (
@@ -250,63 +241,44 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
             ))}
           </Select>
         </FormField>
-        <FormField label={t.policy.typeOfCover}>
-          <Select value={insuranceType} onChange={(e) => setInsuranceType(e.target.value)} required>
-            {MOTOR_COVER_TYPES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-            {!MOTOR_COVER_TYPES.includes(insuranceType as (typeof MOTOR_COVER_TYPES)[number]) && (
-              <option value={insuranceType}>{insuranceType}</option>
-            )}
-          </Select>
-        </FormField>
-
-        {/* Row 3 */}
-        <FormField label={t.policy.registrationNumber}>
-          <Input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} required />
-        </FormField>
-        <FormField label={t.policy.taxClass}>
-          <Select value={taxClass} onChange={(e) => setTaxClass(e.target.value)} required>
-            <option value="">{t.policy.selectTaxClass}</option>
-            {MOTOR_TAX_CLASSES.map((c) => (
-              <option key={c} value={c}>{taxClassLabel[c]}</option>
+        <FormField label={t.policy.typeOfBond}>
+          <Select value={bondType} onChange={(e) => handleBondTypeChange(e.target.value)} required>
+            {BOND_TYPES.map((bt) => (
+              <option key={bt} value={bt}>{bondTypeLabel[bt]}</option>
             ))}
           </Select>
         </FormField>
 
-        {/* Row 4 */}
-        <FormField label={t.policy.vehicleValueOptional}>
-          <MoneyInput value={vehicleValue} onChange={setVehicleValue} />
+        {/* Conditional row: Type of Custom Bond + Bond Amount */}
+        {bondType === "CUSTOM_BOND" && (
+          <FormField label={t.policy.typeOfCustomBond}>
+            <Input value={customBondType} onChange={(e) => setCustomBondType(e.target.value)} required />
+          </FormField>
+        )}
+        <FormField label={t.policy.bondAmount}>
+          <MoneyInput value={bondAmount} onChange={setBondAmount} required />
+        </FormField>
+
+        {/* Insurer / Policy Number */}
+        <FormField label={t.policy.insurerOptional}>
+          <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
         </FormField>
         <FormField label={t.policy.policyNumberOptional}>
           <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} />
         </FormField>
 
-        {/* Row 5 */}
-        <FormField label={t.policy.insurerOptional}>
-          <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
-        </FormField>
-        <FormField label={t.policy.vehicleMake}>
-          <Input value={vehicleMake} onChange={(e) => setVehicleMake(e.target.value)} />
-        </FormField>
-
-        {/* Row 6 */}
-        <FormField label={t.policy.vehicleModel}>
-          <Input value={vehicleModel} onChange={(e) => setVehicleModel(e.target.value)} />
-        </FormField>
+        {/* Effective / Expiry */}
         <FormField label={t.policy.effectiveDate}>
           <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
         </FormField>
-
-        {/* Row 7 */}
         <FormField label={t.policy.expiryDate}>
           <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
         </FormField>
+
+        {/* Client Premium / Insurer Cost */}
         <FormField label={t.policy.clientPremium}>
           <MoneyInput value={customerPremium} onChange={setCustomerPremium} required />
         </FormField>
-
-        {/* Row 8 */}
         <FormField label={t.policy.insurerCost}>
           <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
         </FormField>

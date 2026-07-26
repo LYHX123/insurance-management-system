@@ -1464,6 +1464,9 @@ model PolicyRecord {
   deletedAt   DateTime?
 
   motorDetail      MotorPolicyDetail?
+  nonMotorDetail   NonMotorPolicyDetail?
+  bondDetail       BondPolicyDetail?
+  workPermitDetail WorkPermitPolicyDetail?
   customerReceipts PolicyCustomerReceipt[]
   providerPayments PolicyProviderPayment[]
   documents        PolicyDocument[]
@@ -1477,6 +1480,17 @@ model PolicyRecord {
   @@index([importBatchId])
   @@index([deletedAt])
   @@index([sourceQuotationId])
+}
+
+// Fixed, small, closed classification (unlike insuranceType below, which is
+// deliberately an open string list) — a real Prisma enum since "what kind of
+// vehicle use is this" only ever has these four business-defined answers,
+// with no history of previously-unseen values the way cover type had.
+enum MotorTaxClass {
+  PRIVATE
+  COMMERCIAL
+  SPV
+  SPECIAL_USE
 }
 
 // One detail model per category, same pattern as QuotationInsuranceSection's
@@ -1496,16 +1510,141 @@ model MotorPolicyDetail {
   // Nullable: ~46% of historical rows have no vehicle value — overwhelmingly
   // THIRD PARTY/COMESA covers, where this business never records one. See
   // this phase's inspection report for the exact breakdown.
-  vehicleValue       Decimal? @db.Decimal(18, 2)
+  vehicleValue       Decimal?       @db.Decimal(18, 2)
   // The historical ledger has no policy-number column at all — never
   // required for imported rows; only future manually-created records may
   // supply one.
   policyNumber       String?
   vehicleMake        String?
   vehicleModel       String?
+  // Nullable for backward compatibility only: every historical-import row
+  // and every Motor record created before this field existed has (and keeps)
+  // taxClass = null, shown as "Not specified" in the UI until someone edits
+  // that record. Never guessed/inferred from insuranceType or anything else
+  // (see this field's app-level validation in createMotorRecordAction /
+  // updateMotorOverviewAction, which requires a real value for every new
+  // manual/quotation-linked creation and every general policy edit going
+  // forward — the DB-level nullability only exists for the legacy rows that
+  // predate this field).
+  taxClass           MotorTaxClass?
 
   @@index([registrationNumber])
   @@index([insuranceType])
+}
+
+// Fixed set of Non-Motor insurance types on this business's quotation
+// template, excluding Motor (its own category), Bond, and Work Permit
+// (future categories). Mirrors QuotationSectionKind's non-Motor/non-Bond
+// values 1:1 for quotation-linkage section matching — see
+// createNonMotorRecordAction's doc comment.
+enum NonMotorCoverType {
+  CONTRACTORS_ALL_RISKS
+  WIBA
+  EMPLOYERS_LIABILITY
+  CONTRACTORS_PLANT_MACHINERY
+  PUBLIC_LIABILITY
+  FIRE_ALLIED_PERILS
+  BURGLARY
+  GOODS_IN_TRANSIT_SINGLE
+  GOODS_IN_TRANSIT_ANNUAL
+  MARINE
+  GROUP_PERSONAL_ACCIDENT
+  GROUP_MEDICAL
+}
+
+// Phase 3A: Non-Motor's *PolicyDetail model, following the same
+// PolicyRecord -> one-detail-model-per-category pattern as
+// MotorPolicyDetail above. Every shared/operational field (processing date,
+// customer, project, insurer, effective/expiry date, premiums, commission,
+// remarks, source quotation) stays on PolicyRecord — this model holds only
+// what's genuinely Non-Motor-specific, so it's deliberately much smaller
+// than MotorPolicyDetail.
+model NonMotorPolicyDetail {
+  id             String       @id @default(cuid())
+  policyRecordId String       @unique
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  insuranceType NonMotorCoverType
+  // Optional, same reasoning as MotorPolicyDetail.policyNumber — not every
+  // policy has one recorded yet at creation time.
+  policyNumber  String?
+
+  @@index([insuranceType])
+}
+
+// Fixed, small, closed classification — mirrors the four structured Bond
+// QuotationSectionKind values (TENDER_SECURITY, PERFORMANCE_BOND,
+// ADVANCE_PAYMENT_GUARANTEE, CUSTOMS_BOND) 1:1 in spirit, but named per the
+// business's requested Policy-side wording rather than reusing the
+// Quotation-side enum directly (Policy and Quotation are allowed to diverge
+// in naming; see createNonMotorRecordAction's own section-kind-to-cover-type
+// mapping precedent for why a translation layer, not a shared enum, is used
+// at the quotation-linkage boundary).
+enum BondType {
+  TENDER_BOND
+  PERFORMANCE_BOND
+  ADVANCE_PAYMENT_GUARANTEE
+  CUSTOM_BOND
+}
+
+// Phase 3B: Bond's *PolicyDetail model, following the same
+// PolicyRecord -> one-detail-model-per-category pattern as
+// MotorPolicyDetail/NonMotorPolicyDetail above. Every shared/operational
+// field (processing date, customer, project, insurer, effective/expiry
+// date, premiums, commission, remarks, source quotation) stays on
+// PolicyRecord — this model holds only what's genuinely Bond-specific.
+model BondPolicyDetail {
+  id             String       @id @default(cuid())
+  policyRecordId String       @unique
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  bondType       BondType
+  bondAmount     Decimal  @db.Decimal(16, 2)
+  // Required only when bondType = CUSTOM_BOND, enforced app-side (see
+  // createBondRecordAction / updateBondOverviewAction) — never set for any
+  // other bondType, mirroring MotorPolicyDetail.taxClass's app-level-only
+  // conditional-requirement precedent.
+  customBondType String?
+  // Optional, same reasoning as MotorPolicyDetail.policyNumber.
+  policyNumber   String?
+
+  @@index([bondType])
+}
+
+// Greenfield category (Phase 3B) — no existing Kenyan work-permit
+// terminology or QuotationSectionKind equivalent was found in this
+// repository to reuse (see Phase 3B research notes), so this is the
+// business's minimal practical set requested for this phase. Confirm with
+// the business before extending.
+enum WorkPermitType {
+  CLASS_D
+  CLASS_G
+  SPECIAL_PASS
+  DEPENDANT_PASS
+  OTHER
+}
+
+// Phase 3B: Work Permit's *PolicyDetail model, same pattern as the other
+// categories. Deliberately reuses PolicyRecord.insurerCost as the "Agent
+// Cost" internally (see createWorkPermitRecordAction's doc comment) rather
+// than adding a duplicate cost column, so the existing shared
+// PolicyProviderPayment architecture (Add Payment / payment history / Total
+// Paid / Balance) works unchanged — only the UI labels differ (Agent Cost /
+// Agent Payments / Agent Balance instead of Insurer *).
+model WorkPermitPolicyDetail {
+  id             String       @id @default(cuid())
+  policyRecordId String       @unique
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  permitType      WorkPermitType
+  agent           String
+  // Required only when permitType = OTHER, same conditional pattern as
+  // BondPolicyDetail.customBondType — enforced app-side.
+  otherPermitType String?
+  // Optional, same reasoning as MotorPolicyDetail.policyNumber.
+  permitNumber    String?
+
+  @@index([permitType])
 }
 
 // Reusable child transaction models — deliberately never a single "amount
@@ -1658,8 +1797,20 @@ model PolicyImportRow {
   insuranceType      String?
   registrationNumber String?
   insurerName        String?
+  // Phase 3B: added for Non-Motor import (Motor's historical workbook has no
+  // policy-number column, so this stays null for every Motor row). Same
+  // "not required, informational only" role as MotorPolicyDetail.policyNumber.
+  policyNumber       String?
   effectiveDate      DateTime?
   expiryDate         DateTime?
+
+  // Phase 3B: added for Non-Motor import's optional PROJECT column. Raw text
+  // preserved as-typed; matchedProjectId is set only when it resolves to an
+  // exact, unambiguous CustomerProject belonging to the matched customer —
+  // otherwise left null and the row still imports with project unset, same
+  // "never guess" principle as customer matching's UNMATCHED/POSSIBLE split.
+  projectNameRaw   String?
+  matchedProjectId String?
 
   insurerCost                 Decimal?                        @db.Decimal(16, 2)
   amountPaidToInsurer         Decimal?                        @db.Decimal(16, 2)

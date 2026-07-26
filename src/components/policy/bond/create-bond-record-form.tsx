@@ -12,23 +12,24 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
-import { createMotorRecordAction } from "@/app/(app)/policy/motor/actions";
-import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
-import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
-import type { CustomerOption } from "@/components/policy/types";
+import { createBondRecordAction } from "@/app/(app)/policy/bond/actions";
+import { BOND_TYPES } from "@/lib/policy/bondTypes";
+import type { CustomerOption, BondType } from "@/components/policy/types";
 
-// Phase 2A: passed only when this form is reached via the quotation detail
-// page's "Create Policy" action (see policy/motor/new/page.tsx's
-// "fromQuotationId" handling). insuranceType/customerPremium are prefilled
-// "where applicable" — null whenever the quotation doesn't have exactly one
-// Motor-kind section, leaving those two fields for the user to fill in same
-// as a fully manual creation.
-export type CreateMotorRecordPrefill = {
+// Passed only when this form is reached via the quotation detail page's
+// "Create Policy" action (see policy/bond/new/page.tsx's "fromQuotationId"
+// handling). bondType/customerPremium are prefilled "where reliable" — null
+// whenever the quotation doesn't have exactly one matching structured Bond
+// section, leaving those fields for the user to fill in same as a fully
+// manual creation. Bond Amount is never prefilled — no single uniform amount
+// field exists across the four structured Bond section-detail models (see
+// new/page.tsx's comment), so it always requires manual entry/confirmation.
+export type CreateBondRecordPrefill = {
   quotationId: string;
   quotationNumber: string;
   customerId: string;
   projectId: string | null;
-  insuranceType: string | null;
+  bondType: BondType | null;
   customerPremium: string | null;
 };
 
@@ -36,56 +37,48 @@ const ERROR_KEY: Record<string, string> = {
   CUSTOMER_REQUIRED: "customerRequired",
   CUSTOMER_NOT_FOUND: "genericError",
   PROJECT_NOT_BELONG_TO_CUSTOMER: "projectNotBelongToCustomer",
-  INSURANCE_TYPE_REQUIRED: "insuranceTypeRequired",
-  REGISTRATION_NUMBER_REQUIRED: "registrationNumberRequired",
+  BOND_TYPE_REQUIRED: "bondTypeRequired",
+  INVALID_BOND_TYPE: "bondTypeRequired",
+  CUSTOM_BOND_TYPE_REQUIRED: "typeOfCustomBondRequired",
+  BOND_AMOUNT_INVALID: "bondAmountInvalid",
   PROCESSING_DATE_REQUIRED: "processingDateRequired",
   DATES_REQUIRED: "datesRequired",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
   CLIENT_PREMIUM_INVALID: "clientPremiumInvalid",
   INSURER_COST_INVALID: "insurerCostInvalid",
-  TAX_CLASS_REQUIRED: "taxClassRequired",
-  INVALID_TAX_CLASS: "taxClassRequired",
   FORBIDDEN: "genericError",
   CREATE_FAILED: "createFailedError",
   QUOTATION_NOT_ELIGIBLE: "quotationNotEligibleError",
+  QUOTATION_CUSTOMER_MISMATCH: "genericError",
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function CreateMotorRecordForm({
+export function CreateBondRecordForm({
   customers,
   prefill = null,
   ineligibleQuotation = null,
 }: {
   customers: CustomerOption[];
-  prefill?: CreateMotorRecordPrefill | null;
-  // Phase 2B: set when ?fromQuotationId= pointed at a real quotation that is
-  // not in an eligible finalized state (ISSUED/ACCEPTED) — blocks the form
-  // entirely rather than silently falling back to a blank manual form, so
-  // the restriction can't be defeated by simply ignoring the failed prefill.
+  prefill?: CreateBondRecordPrefill | null;
   ineligibleQuotation?: { quotationId: string; quotationNumber: string } | null;
 }) {
   const { t } = useLocale();
   const router = useRouter();
 
-  const taxClassLabel: Record<string, string> = {
-    PRIVATE: t.policy.taxClassPrivate,
-    COMMERCIAL: t.policy.taxClassCommercial,
-    SPV: t.policy.taxClassSpv,
-    SPECIAL_USE: t.policy.taxClassSpecialUse,
+  const bondTypeLabel: Record<BondType, string> = {
+    TENDER_BOND: t.policy.bondTenderBond,
+    PERFORMANCE_BOND: t.policy.bondPerformanceBond,
+    ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
+    CUSTOM_BOND: t.policy.bondCustomBond,
   };
 
   const [processingDate, setProcessingDate] = useState(today());
   const [customerId, setCustomerId] = useState(prefill?.customerId ?? "");
   const [projectId, setProjectId] = useState(prefill?.projectId ?? "");
-  const [insuranceType, setInsuranceType] = useState(prefill?.insuranceType ?? "");
-  const [registrationNumber, setRegistrationNumber] = useState("");
-  // Phase 2B: never prefilled from a quotation — no quotation section has a
-  // directly equivalent, reliable Tax Class field (see
-  // CreateMotorRecordPrefill's doc comment) — always starts blank and the
-  // user must choose, for both manual and quotation-linked creation alike.
-  const [taxClass, setTaxClass] = useState("");
-  const [vehicleValue, setVehicleValue] = useState("");
+  const [bondType, setBondType] = useState<string>(prefill?.bondType ?? "");
+  const [customBondType, setCustomBondType] = useState("");
+  const [bondAmount, setBondAmount] = useState("");
   const [insurerName, setInsurerName] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(today());
@@ -102,6 +95,13 @@ export function CreateMotorRecordForm({
     [customers, customerId]
   );
 
+  const handleBondTypeChange = (value: string) => {
+    setBondType(value);
+    // Cleared whenever the user switches away from CUSTOM_BOND, per spec —
+    // never silently carried over to a different bond type.
+    if (value !== "CUSTOM_BOND") setCustomBondType("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -110,16 +110,16 @@ export function CreateMotorRecordForm({
       setError(t.policy.customerRequired);
       return;
     }
-    if (!insuranceType) {
-      setError(t.policy.insuranceTypeRequired);
+    if (!bondType) {
+      setError(t.policy.bondTypeRequired);
       return;
     }
-    if (!registrationNumber.trim()) {
-      setError(t.policy.registrationNumberRequired);
+    if (bondType === "CUSTOM_BOND" && !customBondType.trim()) {
+      setError(t.policy.typeOfCustomBondRequired);
       return;
     }
-    if (!taxClass) {
-      setError(t.policy.taxClassRequired);
+    if (!bondAmount || Number(bondAmount) <= 0) {
+      setError(t.policy.bondAmountInvalid);
       return;
     }
     if (!effectiveDate || !expiryDate) {
@@ -128,14 +128,13 @@ export function CreateMotorRecordForm({
     }
 
     setIsSubmitting(true);
-    const result = await createMotorRecordAction({
+    const result = await createBondRecordAction({
       processingDate,
       customerId,
       projectId: projectId || null,
-      insuranceType,
-      registrationNumber,
-      taxClass,
-      vehicleValue: vehicleValue || null,
+      bondType,
+      customBondType: bondType === "CUSTOM_BOND" ? customBondType : null,
+      bondAmount,
       insurerName: insurerName || null,
       policyNumber: policyNumber || null,
       effectiveDate,
@@ -152,13 +151,13 @@ export function CreateMotorRecordForm({
       setError(t.policy[key as keyof typeof t.policy]);
       return;
     }
-    router.push(`/policy/motor/${result.id}`);
+    router.push(`/policy/bond/${result.id}`);
   };
 
   if (ineligibleQuotation) {
     return (
       <div className="flex flex-col gap-section">
-        <PageHeader title={t.policy.createTitle} description={t.policy.createDescription} />
+        <PageHeader title={t.policy.createBondTitle} description={t.policy.createBondDescription} />
         <div className="rounded-control border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           {t.quotations.policyCreationIneligibleHint}
         </div>
@@ -173,7 +172,7 @@ export function CreateMotorRecordForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-section">
-      <PageHeader title={t.policy.createTitle} description={t.policy.createDescription} />
+      <PageHeader title={t.policy.createBondTitle} description={t.policy.createBondDescription} />
 
       {prefill && (
         <div className="rounded-control border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
@@ -217,53 +216,48 @@ export function CreateMotorRecordForm({
               ))}
             </Select>
           </FormField>
-          <FormField label={t.policy.typeOfCover}>
-            <Select value={insuranceType} onChange={(e) => setInsuranceType(e.target.value)} required>
-              <option value="">{t.policy.selectTypeOfCover}</option>
-              {MOTOR_COVER_TYPES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+          <FormField label={t.policy.typeOfBond}>
+            <Select value={bondType} onChange={(e) => handleBondTypeChange(e.target.value)} required>
+              <option value="">{t.policy.selectTypeOfBond}</option>
+              {BOND_TYPES.map((bt) => (
+                <option key={bt} value={bt}>{bondTypeLabel[bt]}</option>
               ))}
             </Select>
           </FormField>
 
-          {/* Row 3 */}
-          <FormField label={t.policy.registrationNumber}>
-            <Input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} required />
-          </FormField>
-          <FormField label={t.policy.taxClass}>
-            <Select value={taxClass} onChange={(e) => setTaxClass(e.target.value)} required>
-              <option value="">{t.policy.selectTaxClass}</option>
-              {MOTOR_TAX_CLASSES.map((c) => (
-                <option key={c} value={c}>{taxClassLabel[c]}</option>
-              ))}
-            </Select>
+          {/* Conditional row: Type of Custom Bond (only for CUSTOM_BOND) + Bond Amount.
+              When Type of Custom Bond is hidden, Bond Amount naturally flows into
+              the grid's next slot (form-grid is a plain 2-col auto-flow grid) —
+              no empty cell is left behind. */}
+          {bondType === "CUSTOM_BOND" && (
+            <FormField label={t.policy.typeOfCustomBond}>
+              <Input value={customBondType} onChange={(e) => setCustomBondType(e.target.value)} required />
+            </FormField>
+          )}
+          <FormField label={t.policy.bondAmount}>
+            <MoneyInput value={bondAmount} onChange={setBondAmount} required />
           </FormField>
 
-          {/* Row 4 */}
-          <FormField label={t.policy.vehicleValueOptional}>
-            <MoneyInput value={vehicleValue} onChange={setVehicleValue} />
+          {/* Insurer / Policy Number */}
+          <FormField label={t.policy.insurerOptional}>
+            <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
           </FormField>
           <FormField label={t.policy.policyNumberOptional}>
             <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} />
           </FormField>
 
-          {/* Row 5 */}
-          <FormField label={t.policy.insurerOptional}>
-            <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
-          </FormField>
+          {/* Effective / Expiry */}
           <FormField label={t.policy.effectiveDate}>
             <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
           </FormField>
-
-          {/* Row 6 */}
           <FormField label={t.policy.expiryDate}>
             <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
           </FormField>
+
+          {/* Client Premium / Insurer Cost */}
           <FormField label={t.policy.clientPremium}>
             <MoneyInput value={customerPremium} onChange={setCustomerPremium} required />
           </FormField>
-
-          {/* Row 7 */}
           <FormField label={t.policy.insurerCost}>
             <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
           </FormField>
@@ -283,7 +277,7 @@ export function CreateMotorRecordForm({
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/policy/motor")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push("/policy/bond")} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

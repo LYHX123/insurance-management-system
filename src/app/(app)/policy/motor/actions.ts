@@ -8,6 +8,7 @@ import { toDecimal, type DecimalInput } from "@/lib/money";
 import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
+import { isMotorTaxClass, type MotorTaxClass } from "@/lib/policy/motorTaxClasses";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -51,6 +52,7 @@ export type CreateMotorRecordInput = {
   projectId?: string | null;
   insuranceType: string;
   registrationNumber: string;
+  taxClass: string;
   vehicleValue?: number | string | null;
   insurerName?: string | null;
   policyNumber?: string | null;
@@ -58,9 +60,6 @@ export type CreateMotorRecordInput = {
   expiryDate: string;
   customerPremium: number | string;
   insurerCost: number | string;
-  commissionReceived: boolean;
-  commissionAmount?: number | string | null;
-  commissionReceivedDate?: string | null;
   remarks?: string | null;
   // Phase 2A: set only when this record is created via the quotation
   // detail page's "Create Policy" action (see
@@ -68,6 +67,12 @@ export type CreateMotorRecordInput = {
   // required — every other creation path (manual, historical import)
   // leaves this null forever.
   sourceQuotationId?: string | null;
+  // Commission is deliberately not part of Motor creation (Phase 2B form
+  // cleanup) — every new record always starts commissionReceived=false with
+  // null amount/date, set only afterward via the Financial tab's Edit
+  // Commission action (updateCommissionAction below). There is no
+  // commission* field here for a form to submit, so there is nothing for
+  // this action to accidentally read from a missing field.
 };
 
 export async function createMotorRecordAction(
@@ -89,18 +94,13 @@ export async function createMotorRecordAction(
   if (isBlank(data.insurerCost) || Number(data.insurerCost) < 0) {
     return { success: false, error: "INSURER_COST_INVALID" };
   }
-  // Commission business rule (Phase 1B, Section 1): received=false must never
-  // carry an amount/date; received=true must always carry both, amount >= 0.
-  // Enforced here (creation) and in updateCommissionAction — never at the DB
-  // level (see PolicyRecord.commissionAmount's schema comment).
-  if (data.commissionReceived) {
-    if (isBlank(data.commissionAmount) || Number(data.commissionAmount) < 0) {
-      return { success: false, error: "COMMISSION_AMOUNT_INVALID" };
-    }
-    if (!data.commissionReceivedDate) {
-      return { success: false, error: "COMMISSION_DATE_REQUIRED" };
-    }
-  }
+  // Phase 2B: required for every new manual/quotation-linked Motor record —
+  // never trusted from client-side validation alone (see
+  // CreateMotorRecordForm's own check, which this mirrors). Legacy records
+  // created before this field existed are the only ones ever left null (see
+  // MotorPolicyDetail.taxClass's schema comment) — never guessed here.
+  if (!data.taxClass) return { success: false, error: "TAX_CLASS_REQUIRED" };
+  if (!isMotorTaxClass(data.taxClass)) return { success: false, error: "INVALID_TAX_CLASS" };
 
   const effectiveDate = new Date(data.effectiveDate);
   const expiryDate = new Date(data.expiryDate);
@@ -154,10 +154,14 @@ export async function createMotorRecordAction(
           businessStatus,
           customerPremium: toDecimal(data.customerPremium),
           insurerCost: toDecimal(data.insurerCost),
-          commissionReceived: data.commissionReceived,
-          commissionAmount: data.commissionReceived ? toDecimal(data.commissionAmount as number | string) : null,
-          commissionReceivedDate:
-            data.commissionReceived && data.commissionReceivedDate ? new Date(data.commissionReceivedDate) : null,
+          // Phase 2B: commission is never set at creation — always starts
+          // "not received" with no amount/date, same as the schema default.
+          // The only way to record commission is the Financial tab's Edit
+          // Commission action (updateCommissionAction) after the policy
+          // already exists.
+          commissionReceived: false,
+          commissionAmount: null,
+          commissionReceivedDate: null,
           source: "MANUAL",
           remarks: data.remarks?.trim() || null,
           createdById: session.user.id,
@@ -176,6 +180,7 @@ export async function createMotorRecordAction(
             create: {
               insuranceType: data.insuranceType.trim(),
               registrationNumber: data.registrationNumber.trim().toUpperCase(),
+              taxClass: data.taxClass as MotorTaxClass,
               vehicleValue: isBlank(data.vehicleValue) ? null : toDecimal(data.vehicleValue as number | string),
               policyNumber: data.policyNumber?.trim() || null,
             },
@@ -232,6 +237,13 @@ export type UpdateMotorOverviewInput = {
   projectId?: string | null;
   insuranceType: string;
   registrationNumber: string;
+  // Required only when actually saving general policy edits (see this
+  // action's own validation below) — blank is tolerated only for the
+  // narrow "Cancel Policy" quick action (cancelled=true), submitted from
+  // the read-only overview without ever opening the edit form, so a legacy
+  // record with no Tax Class yet can still be cancelled without first being
+  // forced through a full edit.
+  taxClass: string;
   vehicleValue?: number | string | null;
   insurerName?: string | null;
   policyNumber?: string | null;
@@ -264,6 +276,18 @@ export async function updateMotorOverviewAction(
 
   if (!data.insuranceType?.trim()) return { success: false, error: "INSURANCE_TYPE_REQUIRED" };
   if (!data.registrationNumber?.trim()) return { success: false, error: "REGISTRATION_NUMBER_REQUIRED" };
+
+  // Phase 2B: required for every real general-edit save, including a
+  // legacy record whose Tax Class has never been set — but not for the
+  // narrow "Cancel Policy" action (see UpdateMotorOverviewInput's doc
+  // comment), which never touches this field either way.
+  const taxClassProvided = !isBlank(data.taxClass);
+  if (!data.cancelled) {
+    if (!taxClassProvided) return { success: false, error: "TAX_CLASS_REQUIRED" };
+    if (!isMotorTaxClass(data.taxClass)) return { success: false, error: "INVALID_TAX_CLASS" };
+  } else if (taxClassProvided && !isMotorTaxClass(data.taxClass)) {
+    return { success: false, error: "INVALID_TAX_CLASS" };
+  }
 
   const effectiveDate = new Date(data.effectiveDate);
   const expiryDate = new Date(data.expiryDate);
@@ -302,6 +326,11 @@ export async function updateMotorOverviewAction(
         data: {
           insuranceType: data.insuranceType.trim(),
           registrationNumber: data.registrationNumber.trim().toUpperCase(),
+          // undefined (not null) when not provided — e.g. the "Cancel
+          // Policy" quick action never sends a value for a still-null
+          // legacy record, and Prisma leaves an undefined field untouched
+          // rather than clearing it.
+          taxClass: taxClassProvided ? (data.taxClass as MotorTaxClass) : undefined,
           vehicleValue: isBlank(data.vehicleValue) ? null : toDecimal(data.vehicleValue as number | string),
           policyNumber: data.policyNumber?.trim() || null,
           vehicleMake: data.vehicleMake?.trim() || null,

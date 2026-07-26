@@ -12,18 +12,17 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
-import { createMotorRecordAction } from "@/app/(app)/policy/motor/actions";
-import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
-import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
+import { createNonMotorRecordAction } from "@/app/(app)/policy/non-motor/actions";
+import { NON_MOTOR_COVER_TYPES } from "@/lib/policy/nonMotorCoverTypes";
 import type { CustomerOption } from "@/components/policy/types";
 
-// Phase 2A: passed only when this form is reached via the quotation detail
-// page's "Create Policy" action (see policy/motor/new/page.tsx's
+// Phase 3A: passed only when this form is reached via the quotation detail
+// page's "Create Policy" action (see policy/non-motor/new/page.tsx's
 // "fromQuotationId" handling). insuranceType/customerPremium are prefilled
-// "where applicable" — null whenever the quotation doesn't have exactly one
-// Motor-kind section, leaving those two fields for the user to fill in same
-// as a fully manual creation.
-export type CreateMotorRecordPrefill = {
+// "where reliable" — null whenever the quotation doesn't have exactly one
+// matching Non-Motor section, leaving those two fields for the user to fill
+// in same as a fully manual creation.
+export type CreateNonMotorRecordPrefill = {
   quotationId: string;
   quotationNumber: string;
   customerId: string;
@@ -37,57 +36,55 @@ const ERROR_KEY: Record<string, string> = {
   CUSTOMER_NOT_FOUND: "genericError",
   PROJECT_NOT_BELONG_TO_CUSTOMER: "projectNotBelongToCustomer",
   INSURANCE_TYPE_REQUIRED: "insuranceTypeRequired",
-  REGISTRATION_NUMBER_REQUIRED: "registrationNumberRequired",
+  INVALID_INSURANCE_TYPE: "insuranceTypeRequired",
   PROCESSING_DATE_REQUIRED: "processingDateRequired",
   DATES_REQUIRED: "datesRequired",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
   CLIENT_PREMIUM_INVALID: "clientPremiumInvalid",
   INSURER_COST_INVALID: "insurerCostInvalid",
-  TAX_CLASS_REQUIRED: "taxClassRequired",
-  INVALID_TAX_CLASS: "taxClassRequired",
   FORBIDDEN: "genericError",
   CREATE_FAILED: "createFailedError",
   QUOTATION_NOT_ELIGIBLE: "quotationNotEligibleError",
+  QUOTATION_CUSTOMER_MISMATCH: "genericError",
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function CreateMotorRecordForm({
+export function CreateNonMotorRecordForm({
   customers,
   prefill = null,
   ineligibleQuotation = null,
 }: {
   customers: CustomerOption[];
-  prefill?: CreateMotorRecordPrefill | null;
-  // Phase 2B: set when ?fromQuotationId= pointed at a real quotation that is
+  prefill?: CreateNonMotorRecordPrefill | null;
+  // Phase 3A: set when ?fromQuotationId= pointed at a real quotation that is
   // not in an eligible finalized state (ISSUED/ACCEPTED) — blocks the form
-  // entirely rather than silently falling back to a blank manual form, so
-  // the restriction can't be defeated by simply ignoring the failed prefill.
+  // entirely, mirroring Motor's own ineligibleQuotation handling.
   ineligibleQuotation?: { quotationId: string; quotationNumber: string } | null;
 }) {
   const { t } = useLocale();
   const router = useRouter();
 
-  const taxClassLabel: Record<string, string> = {
-    PRIVATE: t.policy.taxClassPrivate,
-    COMMERCIAL: t.policy.taxClassCommercial,
-    SPV: t.policy.taxClassSpv,
-    SPECIAL_USE: t.policy.taxClassSpecialUse,
+  const coverTypeLabel: Record<string, string> = {
+    CONTRACTORS_ALL_RISKS: t.policy.coverContractorsAllRisks,
+    WIBA: t.policy.coverWiba,
+    EMPLOYERS_LIABILITY: t.policy.coverEmployersLiability,
+    CONTRACTORS_PLANT_MACHINERY: t.policy.coverContractorsPlantMachinery,
+    PUBLIC_LIABILITY: t.policy.coverPublicLiability,
+    FIRE_ALLIED_PERILS: t.policy.coverFireAlliedPerils,
+    BURGLARY: t.policy.coverBurglary,
+    GOODS_IN_TRANSIT_SINGLE: t.policy.coverGoodsInTransitSingle,
+    GOODS_IN_TRANSIT_ANNUAL: t.policy.coverGoodsInTransitAnnual,
+    MARINE: t.policy.coverMarine,
+    GROUP_PERSONAL_ACCIDENT: t.policy.coverGroupPersonalAccident,
+    GROUP_MEDICAL: t.policy.coverGroupMedical,
   };
 
   const [processingDate, setProcessingDate] = useState(today());
   const [customerId, setCustomerId] = useState(prefill?.customerId ?? "");
   const [projectId, setProjectId] = useState(prefill?.projectId ?? "");
   const [insuranceType, setInsuranceType] = useState(prefill?.insuranceType ?? "");
-  const [registrationNumber, setRegistrationNumber] = useState("");
-  // Phase 2B: never prefilled from a quotation — no quotation section has a
-  // directly equivalent, reliable Tax Class field (see
-  // CreateMotorRecordPrefill's doc comment) — always starts blank and the
-  // user must choose, for both manual and quotation-linked creation alike.
-  const [taxClass, setTaxClass] = useState("");
-  const [vehicleValue, setVehicleValue] = useState("");
   const [insurerName, setInsurerName] = useState("");
-  const [policyNumber, setPolicyNumber] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(today());
   const [expiryDate, setExpiryDate] = useState("");
   const [customerPremium, setCustomerPremium] = useState(prefill?.customerPremium ?? "");
@@ -114,30 +111,18 @@ export function CreateMotorRecordForm({
       setError(t.policy.insuranceTypeRequired);
       return;
     }
-    if (!registrationNumber.trim()) {
-      setError(t.policy.registrationNumberRequired);
-      return;
-    }
-    if (!taxClass) {
-      setError(t.policy.taxClassRequired);
-      return;
-    }
     if (!effectiveDate || !expiryDate) {
       setError(t.policy.datesRequired);
       return;
     }
 
     setIsSubmitting(true);
-    const result = await createMotorRecordAction({
+    const result = await createNonMotorRecordAction({
       processingDate,
       customerId,
       projectId: projectId || null,
       insuranceType,
-      registrationNumber,
-      taxClass,
-      vehicleValue: vehicleValue || null,
       insurerName: insurerName || null,
-      policyNumber: policyNumber || null,
       effectiveDate,
       expiryDate,
       customerPremium,
@@ -152,13 +137,13 @@ export function CreateMotorRecordForm({
       setError(t.policy[key as keyof typeof t.policy]);
       return;
     }
-    router.push(`/policy/motor/${result.id}`);
+    router.push(`/policy/non-motor/${result.id}`);
   };
 
   if (ineligibleQuotation) {
     return (
       <div className="flex flex-col gap-section">
-        <PageHeader title={t.policy.createTitle} description={t.policy.createDescription} />
+        <PageHeader title={t.policy.createNonMotorTitle} description={t.policy.createNonMotorDescription} />
         <div className="rounded-control border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           {t.quotations.policyCreationIneligibleHint}
         </div>
@@ -173,7 +158,7 @@ export function CreateMotorRecordForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-section">
-      <PageHeader title={t.policy.createTitle} description={t.policy.createDescription} />
+      <PageHeader title={t.policy.createNonMotorTitle} description={t.policy.createNonMotorDescription} />
 
       {prefill && (
         <div className="rounded-control border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
@@ -219,35 +204,14 @@ export function CreateMotorRecordForm({
           </FormField>
           <FormField label={t.policy.typeOfCover}>
             <Select value={insuranceType} onChange={(e) => setInsuranceType(e.target.value)} required>
-              <option value="">{t.policy.selectTypeOfCover}</option>
-              {MOTOR_COVER_TYPES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              <option value="">{t.policy.selectTypeOfCoverNonMotor}</option>
+              {NON_MOTOR_COVER_TYPES.map((c) => (
+                <option key={c} value={c}>{coverTypeLabel[c]}</option>
               ))}
             </Select>
           </FormField>
 
           {/* Row 3 */}
-          <FormField label={t.policy.registrationNumber}>
-            <Input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} required />
-          </FormField>
-          <FormField label={t.policy.taxClass}>
-            <Select value={taxClass} onChange={(e) => setTaxClass(e.target.value)} required>
-              <option value="">{t.policy.selectTaxClass}</option>
-              {MOTOR_TAX_CLASSES.map((c) => (
-                <option key={c} value={c}>{taxClassLabel[c]}</option>
-              ))}
-            </Select>
-          </FormField>
-
-          {/* Row 4 */}
-          <FormField label={t.policy.vehicleValueOptional}>
-            <MoneyInput value={vehicleValue} onChange={setVehicleValue} />
-          </FormField>
-          <FormField label={t.policy.policyNumberOptional}>
-            <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} />
-          </FormField>
-
-          {/* Row 5 */}
           <FormField label={t.policy.insurerOptional}>
             <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
           </FormField>
@@ -255,7 +219,7 @@ export function CreateMotorRecordForm({
             <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
           </FormField>
 
-          {/* Row 6 */}
+          {/* Row 4 */}
           <FormField label={t.policy.expiryDate}>
             <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
           </FormField>
@@ -263,7 +227,7 @@ export function CreateMotorRecordForm({
             <MoneyInput value={customerPremium} onChange={setCustomerPremium} required />
           </FormField>
 
-          {/* Row 7 */}
+          {/* Row 5 */}
           <FormField label={t.policy.insurerCost}>
             <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
           </FormField>
@@ -283,7 +247,7 @@ export function CreateMotorRecordForm({
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/policy/motor")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push("/policy/non-motor")} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

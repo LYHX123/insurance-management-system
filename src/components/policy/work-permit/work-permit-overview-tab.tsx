@@ -14,26 +14,30 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { updateMotorOverviewAction } from "@/app/(app)/policy/motor/actions";
-import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
-import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
-import type { MotorDetail, CustomerOption } from "@/components/policy/types";
+import { updateWorkPermitOverviewAction } from "@/app/(app)/policy/work-permit/actions";
+import { WORK_PERMIT_TYPES } from "@/lib/policy/workPermitTypes";
+import type { WorkPermitDetail, CustomerOption, WorkPermitType } from "@/components/policy/types";
 
 const ERROR_KEY: Record<string, string> = {
   CUSTOMER_REQUIRED: "customerRequired",
   CUSTOMER_NOT_FOUND: "genericError",
   PROJECT_NOT_BELONG_TO_CUSTOMER: "projectNotBelongToCustomer",
-  INSURANCE_TYPE_REQUIRED: "insuranceTypeRequired",
-  REGISTRATION_NUMBER_REQUIRED: "registrationNumberRequired",
+  PERMIT_TYPE_REQUIRED: "permitTypeRequired",
+  INVALID_PERMIT_TYPE: "permitTypeRequired",
+  OTHER_PERMIT_TYPE_REQUIRED: "otherPermitTypeRequired",
+  AGENT_REQUIRED: "agentRequired",
+  CLIENT_PREMIUM_INVALID: "clientPremiumInvalid",
+  AGENT_COST_INVALID: "agentCostInvalid",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
-  TAX_CLASS_REQUIRED: "taxClassRequired",
-  INVALID_TAX_CLASS: "taxClassRequired",
   RECORD_NOT_FOUND: "recordNotFound",
   FORBIDDEN: "genericError",
   UPDATE_FAILED: "updateFailedError",
 };
 
-export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; customers: CustomerOption[] }) {
+// Deliberately never shows Insurer or "Insurer Cost" wording anywhere in
+// this tab — see WorkPermitDetail's type comment. Agent Cost reads and
+// writes the shared PolicyRecord.insurerCost column under the hood.
+export function WorkPermitOverviewTab({ detail, customers }: { detail: WorkPermitDetail; customers: CustomerOption[] }) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -46,22 +50,14 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
   const [processingDate, setProcessingDate] = useState(detail.processingDate.slice(0, 10));
   const [customerId, setCustomerId] = useState(detail.customerId);
   const [projectId, setProjectId] = useState(detail.projectId ?? "");
-  const [insuranceType, setInsuranceType] = useState(detail.insuranceType);
-  const [registrationNumber, setRegistrationNumber] = useState(detail.registrationNumber);
-  // Phase 2B: blank ("") for a legacy record with no Tax Class yet — the
-  // user must choose one before a real edit-save succeeds (see
-  // updateMotorOverviewAction's validation), though the narrow "Cancel
-  // Policy" action below tolerates this staying blank.
-  const [taxClass, setTaxClass] = useState(detail.taxClass ?? "");
-  const [vehicleValue, setVehicleValue] = useState(detail.vehicleValue ?? "");
-  const [vehicleMake, setVehicleMake] = useState(detail.vehicleMake ?? "");
-  const [vehicleModel, setVehicleModel] = useState(detail.vehicleModel ?? "");
-  const [insurerName, setInsurerName] = useState(detail.insurerName ?? "");
-  const [policyNumber, setPolicyNumber] = useState(detail.policyNumber ?? "");
+  const [permitType, setPermitType] = useState<string>(detail.permitType);
+  const [otherPermitType, setOtherPermitType] = useState(detail.otherPermitType ?? "");
+  const [agent, setAgent] = useState(detail.agent);
+  const [permitNumber, setPermitNumber] = useState(detail.permitNumber ?? "");
   const [effectiveDate, setEffectiveDate] = useState(detail.effectiveDate.slice(0, 10));
   const [expiryDate, setExpiryDate] = useState(detail.expiryDate.slice(0, 10));
   const [customerPremium, setCustomerPremium] = useState(detail.customerPremium);
-  const [insurerCost, setInsurerCost] = useState(detail.insurerCost);
+  const [agentCost, setAgentCost] = useState(detail.insurerCost);
   const [remarks, setRemarks] = useState(detail.remarks ?? "");
 
   const availableProjects = useMemo(
@@ -69,11 +65,12 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
     [customers, customerId]
   );
 
-  const taxClassLabel: Record<string, string> = {
-    PRIVATE: t.policy.taxClassPrivate,
-    COMMERCIAL: t.policy.taxClassCommercial,
-    SPV: t.policy.taxClassSpv,
-    SPECIAL_USE: t.policy.taxClassSpecialUse,
+  const permitTypeLabel: Record<WorkPermitType, string> = {
+    CLASS_D: t.policy.permitClassD,
+    CLASS_G: t.policy.permitClassG,
+    SPECIAL_PASS: t.policy.permitSpecialPass,
+    DEPENDANT_PASS: t.policy.permitDependantPass,
+    OTHER: t.policy.permitOther,
   };
 
   const field = (label: string, value: React.ReactNode) => (
@@ -83,33 +80,30 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
     </div>
   );
 
+  const handlePermitTypeChange = (value: string) => {
+    setPermitType(value);
+    if (value !== "OTHER") setOtherPermitType("");
+  };
+
   const submit = async (cancelled: boolean) => {
     setError(null);
-    // Client-side mirror of updateMotorOverviewAction's own rule: required
-    // for a real edit-save, but the narrow "Cancel Policy" action (fired
-    // straight from the read-only view, never through the edit form) must
-    // still work for a legacy record that has no Tax Class yet.
-    if (!cancelled && !taxClass) {
-      setError(t.policy.taxClassRequired);
+    if (!cancelled && permitType === "OTHER" && !otherPermitType.trim()) {
+      setError(t.policy.otherPermitTypeRequired);
       return;
     }
     setIsSubmitting(true);
-    const result = await updateMotorOverviewAction(detail.id, {
+    const result = await updateWorkPermitOverviewAction(detail.id, {
       processingDate,
       customerId,
       projectId: projectId || null,
-      insuranceType,
-      registrationNumber,
-      taxClass,
-      vehicleValue: vehicleValue || null,
-      vehicleMake: vehicleMake || null,
-      vehicleModel: vehicleModel || null,
-      insurerName: insurerName || null,
-      policyNumber: policyNumber || null,
+      permitType,
+      otherPermitType: permitType === "OTHER" ? otherPermitType : null,
+      agent,
+      permitNumber: permitNumber || null,
       effectiveDate,
       expiryDate,
       customerPremium,
-      insurerCost,
+      agentCost,
       remarks: remarks || null,
       cancelled,
     });
@@ -139,14 +133,14 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
             {field(t.policy.processingDate, dateFormatter.format(new Date(detail.processingDate)))}
             {field(t.policy.customer, detail.customerName)}
             {field(t.policy.project, detail.projectName || "—")}
-            {field(t.policy.typeOfCover, detail.insuranceType)}
-            {field(t.policy.registrationNumber, detail.registrationNumber)}
-            {field(t.policy.taxClass, detail.taxClass ? taxClassLabel[detail.taxClass] : t.policy.notSpecified)}
-            {field(t.policy.vehicleValue, detail.vehicleValue ? formatMoney(detail.vehicleValue) : "—")}
-            {field(t.policy.insurer, detail.insurerName || "—")}
-            {field(t.policy.policyNumber, detail.policyNumber || "—")}
+            {field(t.policy.typeOfPermit, permitTypeLabel[detail.permitType])}
+            {detail.permitType === "OTHER" && field(t.policy.otherPermitType, detail.otherPermitType || "—")}
+            {field(t.policy.agent, detail.agent)}
+            {field(t.policy.permitNumber, detail.permitNumber || "—")}
             {field(t.policy.effectiveDate, dateFormatter.format(new Date(detail.effectiveDate)))}
             {field(t.policy.expiryDate, dateFormatter.format(new Date(detail.expiryDate)))}
+            {field(t.policy.clientPremium, formatMoney(detail.customerPremium))}
+            {field(t.policy.agentCost, formatMoney(detail.insurerCost))}
             {field(t.policy.source, detail.source === "MANUAL" ? t.policy.sourceManual : t.policy.sourceHistoricalImport)}
           </dl>
           {detail.remarks && (
@@ -250,65 +244,41 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
             ))}
           </Select>
         </FormField>
-        <FormField label={t.policy.typeOfCover}>
-          <Select value={insuranceType} onChange={(e) => setInsuranceType(e.target.value)} required>
-            {MOTOR_COVER_TYPES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-            {!MOTOR_COVER_TYPES.includes(insuranceType as (typeof MOTOR_COVER_TYPES)[number]) && (
-              <option value={insuranceType}>{insuranceType}</option>
-            )}
-          </Select>
-        </FormField>
-
-        {/* Row 3 */}
-        <FormField label={t.policy.registrationNumber}>
-          <Input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} required />
-        </FormField>
-        <FormField label={t.policy.taxClass}>
-          <Select value={taxClass} onChange={(e) => setTaxClass(e.target.value)} required>
-            <option value="">{t.policy.selectTaxClass}</option>
-            {MOTOR_TAX_CLASSES.map((c) => (
-              <option key={c} value={c}>{taxClassLabel[c]}</option>
+        <FormField label={t.policy.typeOfPermit}>
+          <Select value={permitType} onChange={(e) => handlePermitTypeChange(e.target.value)} required>
+            {WORK_PERMIT_TYPES.map((pt) => (
+              <option key={pt} value={pt}>{permitTypeLabel[pt]}</option>
             ))}
           </Select>
         </FormField>
 
-        {/* Row 4 */}
-        <FormField label={t.policy.vehicleValueOptional}>
-          <MoneyInput value={vehicleValue} onChange={setVehicleValue} />
+        {/* Row 3: Agent / Permit Number (Other Permit Type inserts when OTHER) */}
+        <FormField label={t.policy.agent}>
+          <Input value={agent} onChange={(e) => setAgent(e.target.value)} required />
         </FormField>
-        <FormField label={t.policy.policyNumberOptional}>
-          <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} />
-        </FormField>
-
-        {/* Row 5 */}
-        <FormField label={t.policy.insurerOptional}>
-          <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
-        </FormField>
-        <FormField label={t.policy.vehicleMake}>
-          <Input value={vehicleMake} onChange={(e) => setVehicleMake(e.target.value)} />
+        {permitType === "OTHER" && (
+          <FormField label={t.policy.otherPermitType}>
+            <Input value={otherPermitType} onChange={(e) => setOtherPermitType(e.target.value)} required />
+          </FormField>
+        )}
+        <FormField label={t.policy.permitNumberOptional}>
+          <Input value={permitNumber} onChange={(e) => setPermitNumber(e.target.value)} />
         </FormField>
 
-        {/* Row 6 */}
-        <FormField label={t.policy.vehicleModel}>
-          <Input value={vehicleModel} onChange={(e) => setVehicleModel(e.target.value)} />
-        </FormField>
+        {/* Effective / Expiry */}
         <FormField label={t.policy.effectiveDate}>
           <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
         </FormField>
-
-        {/* Row 7 */}
         <FormField label={t.policy.expiryDate}>
           <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
         </FormField>
+
+        {/* Client Premium / Agent Cost */}
         <FormField label={t.policy.clientPremium}>
           <MoneyInput value={customerPremium} onChange={setCustomerPremium} required />
         </FormField>
-
-        {/* Row 8 */}
-        <FormField label={t.policy.insurerCost}>
-          <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
+        <FormField label={t.policy.agentCost}>
+          <MoneyInput value={agentCost} onChange={setAgentCost} required />
         </FormField>
       </div>
 

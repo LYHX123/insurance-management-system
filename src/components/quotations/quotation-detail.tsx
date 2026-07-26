@@ -31,11 +31,13 @@ import type {
 } from "@/components/quotations/types";
 import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
 
-// Phase 2A: only Motor exists today (see PolicyCategory) — every other
-// category is shown disabled in the category selector below rather than
-// hidden, so the future roadmap is visible without offering a broken link.
+// Phase 3B: all four Policy categories now exist (see PolicyCategory) — the
+// selector below no longer shows any category as "coming soon".
 const POLICY_CATEGORY_ROUTE: Partial<Record<RelatedPolicyCategory, string>> = {
   MOTOR: "/policy/motor",
+  NON_MOTOR: "/policy/non-motor",
+  BOND: "/policy/bond",
+  WORK_PERMIT: "/policy/work-permit",
 };
 
 const POLICY_BUSINESS_STATUS_TONE: Record<RelatedPolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -441,23 +443,21 @@ export function QuotationDetailView({
           <div className="flex flex-col gap-2">
             <p className="text-secondary text-sm">{t.quotations.createPolicyModalDescription}</p>
 
-            <button
-              type="button"
-              onClick={() => router.push(`/policy/motor/new?fromQuotationId=${quotation.id}`)}
-              className="flex items-center justify-between rounded-control border border-zinc-200 p-3 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50"
-            >
-              <span className="font-medium text-zinc-800">{t.quotations.categoryMotor}</span>
-              <span className="text-emerald-700">{t.quotations.categorySelect}</span>
-            </button>
-
-            {[t.quotations.categoryNonMotor, t.quotations.categoryBond, t.quotations.categoryWorkPermit].map((label) => (
-              <div
-                key={label}
-                className="flex items-center justify-between rounded-control border border-zinc-100 bg-zinc-50 p-3 text-left text-sm text-zinc-400"
+            {[
+              { label: t.quotations.categoryMotor, route: "/policy/motor/new" },
+              { label: t.quotations.categoryNonMotor, route: "/policy/non-motor/new" },
+              { label: t.quotations.categoryBond, route: "/policy/bond/new" },
+              { label: t.quotations.categoryWorkPermit, route: "/policy/work-permit/new" },
+            ].map(({ label, route }) => (
+              <button
+                key={route}
+                type="button"
+                onClick={() => router.push(`${route}?fromQuotationId=${quotation.id}`)}
+                className="flex items-center justify-between rounded-control border border-zinc-200 p-3 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50"
               >
-                <span>{label}</span>
-                <span>{t.quotations.categoryComingSoon}</span>
-              </div>
+                <span className="font-medium text-zinc-800">{label}</span>
+                <span className="text-emerald-700">{t.quotations.categorySelect}</span>
+              </button>
             ))}
           </div>
           <div className="mt-6 flex justify-end">

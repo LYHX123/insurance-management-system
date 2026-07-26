@@ -8,8 +8,13 @@ import { toDecimal } from "@/lib/money";
 import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { normalizeCustomerNameStrict } from "@/lib/policy/normalize";
-import { parseMotorWorkbook, MOTOR_SHEET_NAME } from "@/lib/policy/motorImportParser";
-import { buildImportPreviewRows, deriveStatusAndWarnings, type StatusDerivationInput } from "@/lib/policy/importPreviewBuilder";
+import { parseNonMotorWorkbook } from "@/lib/policy/nonMotorImportParser";
+import {
+  buildNonMotorImportPreviewRows,
+  deriveNonMotorStatusAndWarnings,
+  type NonMotorStatusDerivationInput,
+} from "@/lib/policy/nonMotorImportPreviewBuilder";
+import { mapImportTextToNonMotorCoverType } from "@/lib/policy/nonMotorImportTypeMapping";
 import { detectExactDuplicates } from "@/lib/policy/exactDuplicateCheck";
 import { createHistoricalCustomer } from "@/lib/policy/historicalCustomer";
 import { computeImportBatchSummary } from "@/lib/policy/importBatchSummary";
@@ -17,54 +22,44 @@ import { recordPolicyActivity } from "@/lib/policy/activity";
 import { sha256Checksum } from "@/lib/quotationDocuments/storage";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PolicyImportRowModel } from "@/generated/prisma/models";
+import type { NonMotorCoverType } from "@/generated/prisma/enums";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
+// Phase 3B: self-contained per this project's existing convention (see
+// policy/motor/import/actions.ts's own requirePolicyPermission).
 async function requirePolicyPermission() {
   const session = await auth();
   if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) return null;
   return session;
 }
 
-// Rebuilds StatusDerivationInput from a persisted PolicyImportRow — used by
-// every action below that changes one facet of a row's resolution
+// Rebuilds NonMotorStatusDerivationInput from a persisted PolicyImportRow —
+// used by every action below that changes one facet of a row's resolution
 // (customer mapping, possible-match accept/reject, duplicate override) and
-// needs to recompute status/warnings/includeInImport for the CURRENT state
-// without re-parsing the workbook. commissionWasRateValue isn't persisted
-// (only matters at initial parse time — see importPreviewBuilder's doc
-// comment), so it's simply omitted here.
+// needs to recompute status/warnings/includeInImport without re-parsing.
 function toDerivationInput(
   row: PolicyImportRowModel,
-  overrides: Partial<Pick<StatusDerivationInput, "customerMatchStatus" | "duplicateOfPolicyRecordId">> = {}
-): StatusDerivationInput {
+  overrides: Partial<Pick<NonMotorStatusDerivationInput, "customerMatchStatus" | "duplicateOfPolicyRecordId">> = {}
+): NonMotorStatusDerivationInput {
   return {
     customerNameRaw: row.customerNameRaw,
-    customerMatchStatus: overrides.customerMatchStatus ?? row.customerMatchStatus,
-    registrationNumber: row.registrationNumber,
+    customerMatchStatus: (overrides.customerMatchStatus ?? row.customerMatchStatus) as NonMotorStatusDerivationInput["customerMatchStatus"],
+    insuranceTypeRaw: row.insuranceType,
+    resolvedInsuranceType: mapImportTextToNonMotorCoverType(row.insuranceType),
     effectiveDate: row.effectiveDate,
     expiryDate: row.expiryDate,
-    insurerName: row.insurerName,
-    insuranceType: row.insuranceType,
-    vehicleValue: row.vehicleValue ? Number(row.vehicleValue) : null,
-    commissionReceivedDate: row.commissionReceivedDate,
-    commissionReceived: row.commissionReceived,
-    insurerCost: row.insurerCost ? Number(row.insurerCost) : null,
-    amountPaidToInsurer: row.amountPaidToInsurer ? Number(row.amountPaidToInsurer) : null,
-    originalInsurerBalance: row.originalInsurerBalance ? Number(row.originalInsurerBalance) : null,
-    insurerBalanceWarningReason: row.insurerBalanceWarningReason,
     clientPremium: row.clientPremium ? Number(row.clientPremium) : null,
-    amountReceivedFromClient: row.amountReceivedFromClient ? Number(row.amountReceivedFromClient) : null,
-    originalClientBalance: row.originalClientBalance ? Number(row.originalClientBalance) : null,
-    clientBalanceWarningReason: row.clientBalanceWarningReason,
+    insurerCost: row.insurerCost ? Number(row.insurerCost) : null,
     duplicateOfRowNumbers: row.duplicateOfRowNumbers,
     duplicateOfPolicyRecordId: overrides.duplicateOfPolicyRecordId ?? row.duplicateOfPolicyRecordId,
   };
 }
 
 // --- Step 1: upload + parse + preview --------------------------------------
-export async function uploadMotorWorkbookAction(
+export async function uploadNonMotorWorkbookAction(
   formData: FormData
-): Promise<ActionResult<{ batchId: string; totalRows: number; sheetNames: string[]; headerMismatches: unknown[] }>> {
+): Promise<ActionResult<{ batchId: string; totalRows: number; sheetNames: string[]; missingRequiredColumns: string[] }>> {
   const session = await requirePolicyPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
@@ -75,60 +70,58 @@ export async function uploadMotorWorkbookAction(
   const buffer = Buffer.from(await file.arrayBuffer());
   const sourceFileHash = sha256Checksum(buffer);
 
-  let parsed: Awaited<ReturnType<typeof parseMotorWorkbook>>;
+  let parsed: Awaited<ReturnType<typeof parseNonMotorWorkbook>>;
   try {
-    parsed = await parseMotorWorkbook(buffer);
+    parsed = await parseNonMotorWorkbook(buffer);
   } catch (err) {
-    console.error("Failed to parse Motor workbook:", err);
+    console.error("Failed to parse Non-Motor workbook:", err);
     return { success: false, error: "PARSE_FAILED" };
   }
 
-  if (!parsed.motorSheetFound) {
-    return { success: false, error: "MOTOR_SHEET_NOT_FOUND" };
+  if (!parsed.usableSheetFound) {
+    return { success: false, error: "NON_MOTOR_SHEET_NOT_FOUND" };
   }
 
   const customers = await prisma.customer.findMany({
     where: { status: "ACTIVE" },
-    select: { id: true, companyName: true },
+    select: { id: true, companyName: true, projects: { select: { id: true, projectName: true } } },
   });
 
-  const preliminaryRows = buildImportPreviewRows(parsed.rows, customers);
+  const preliminaryRows = buildNonMotorImportPreviewRows(parsed.rows, customers, new Map(), customers);
 
-  // Best-effort exact-duplicate check at upload time, using whatever
-  // customer matches already resolved (most rows are UNMATCHED on first
-  // upload — this check is re-run, mandatorily, at confirm time once
-  // customer mapping is complete; see confirmMotorImportAction).
+  // Best-effort exact-duplicate check at upload time (mandatorily re-run at
+  // confirm time — see importSelectedNonMotorRowsAction).
   const exactDuplicates = await detectExactDuplicates(
     prisma,
-    "MOTOR",
+    "NON_MOTOR",
     preliminaryRows.map((r) => ({
       rowNumber: r.rowNumber,
-      sourceSheet: MOTOR_SHEET_NAME,
-      registrationNumber: r.registrationNumber,
-      insuranceType: r.insuranceType,
+      sourceSheet: parsed.sheetName!,
+      registrationNumber: null,
+      insuranceType: r.resolvedInsuranceType,
       effectiveDate: r.effectiveDate,
       expiryDate: r.expiryDate,
       matchedCustomerId: r.matchedCustomerId,
+      policyNumber: r.policyNumber,
     }))
   );
-  const previewRows = exactDuplicates.size > 0 ? buildImportPreviewRows(parsed.rows, customers, exactDuplicates) : preliminaryRows;
+  const previewRows =
+    exactDuplicates.size > 0 ? buildNonMotorImportPreviewRows(parsed.rows, customers, exactDuplicates, customers) : preliminaryRows;
 
   try {
     const batch = await prisma.$transaction(async (tx) => {
       const created = await tx.policyImportBatch.create({
         data: {
-          category: "MOTOR",
+          category: "NON_MOTOR",
           sourceFileName: file.name,
           sourceFileHash,
-          sourceSheet: MOTOR_SHEET_NAME,
+          sourceSheet: parsed.sheetName!,
           status: "PREVIEWED",
           totalRows: previewRows.length,
           createdById: session.user.id,
         },
       });
 
-      // createMany in one call — 1,436 rows is comfortably within a single
-      // statement, and this only ever runs once per uploaded workbook.
       await tx.policyImportRow.createMany({
         data: previewRows.map((row) => ({
           importBatchId: created.id,
@@ -137,39 +130,21 @@ export async function uploadMotorWorkbookAction(
           customerNameRaw: row.customerNameRaw,
           matchedCustomerId: row.matchedCustomerId,
           customerMatchStatus: row.customerMatchStatus,
-          insuranceType: row.insuranceType,
-          registrationNumber: row.registrationNumber,
+          insuranceType: row.insuranceTypeRaw,
           insurerName: row.insurerName,
+          policyNumber: row.policyNumber,
           effectiveDate: row.effectiveDate,
           expiryDate: row.expiryDate,
-          insurerCost: row.insurerCost !== null ? toDecimal(row.insurerCost) : null,
-          amountPaidToInsurer: row.amountPaidToInsurer !== null ? toDecimal(row.amountPaidToInsurer) : null,
-          insurerPaymentDate: row.insurerPaymentDate,
-          calculatedInsurerBalance: toDecimal(row.calculatedInsurerBalance),
-          originalInsurerBalance: row.originalInsurerBalance !== null ? toDecimal(row.originalInsurerBalance) : null,
-          originalInsurerBalanceRaw: row.originalInsurerBalanceRaw,
-          insurerBalanceVerification: row.insurerBalanceVerification,
-          insurerBalanceWarningReason: row.insurerBalanceWarningReason,
           clientPremium: row.clientPremium !== null ? toDecimal(row.clientPremium) : null,
-          amountReceivedFromClient: row.amountReceivedFromClient !== null ? toDecimal(row.amountReceivedFromClient) : null,
-          clientReceiptDate: row.clientReceiptDate,
-          calculatedClientBalance: toDecimal(row.calculatedClientBalance),
-          originalClientBalance: row.originalClientBalance !== null ? toDecimal(row.originalClientBalance) : null,
-          originalClientBalanceRaw: row.originalClientBalanceRaw,
-          clientBalanceVerification: row.clientBalanceVerification,
-          clientBalanceWarningReason: row.clientBalanceWarningReason,
-          vehicleValue: row.vehicleValue !== null ? toDecimal(row.vehicleValue) : null,
-          commissionReceived: row.commissionReceived,
-          commissionReceivedDate: row.commissionReceivedDate,
-          historicalNetProfit: row.historicalNetProfit !== null ? toDecimal(row.historicalNetProfit) : null,
-          // Column M ("RECEIPT") is a legacy Y/N flag, not a receipt number
-          // (see motorImportParser's doc comment) — only appended when a
-          // source value actually exists, kept in remarks for post-import
-          // audit visibility (also surfaced as a preview warning, see
-          // deriveStatusAndWarnings).
-          remarks: row.columnMReceiptFlag
-            ? `${row.remarks ? row.remarks + " | " : ""}Receipt flag (source column M): ${row.columnMReceiptFlag}`
-            : row.remarks,
+          insurerCost: row.insurerCost !== null ? toDecimal(row.insurerCost) : null,
+          // Non-Motor's standard format has no source balance columns at
+          // all, so there is nothing to ever mark UNVERIFIED — both stay at
+          // their schema default (VERIFIED, no reason).
+          calculatedInsurerBalance: toDecimal((row.insurerCost ?? 0) as number),
+          calculatedClientBalance: toDecimal((row.clientPremium ?? 0) as number),
+          projectNameRaw: row.projectNameRaw,
+          matchedProjectId: row.matchedProjectId,
+          remarks: row.remarks,
           duplicateOfRowNumbers: row.duplicateOfRowNumbers,
           duplicateOfPolicyRecordId: row.duplicateOfPolicyRecordId,
           status: row.status,
@@ -186,18 +161,16 @@ export async function uploadMotorWorkbookAction(
       batchId: batch.id,
       totalRows: previewRows.length,
       sheetNames: parsed.sheetNames,
-      headerMismatches: parsed.headerMismatches,
+      missingRequiredColumns: [],
     };
   } catch (err) {
-    console.error("Failed to persist Motor import preview:", err);
+    console.error("Failed to persist Non-Motor import preview:", err);
     return { success: false, error: "PREVIEW_SAVE_FAILED" };
   }
 }
 
-// --- Customer resolution: map to an existing customer -----------------------
-// Applies to every row in the batch sharing the same raw historical customer
-// name (normalized), per the Phase 1A spec — one mapping decision resolves
-// every repeated occurrence at once instead of row-by-row.
+// --- Customer resolution — identical shape to Motor's actions, reimplemented
+//     here per this project's per-category actions-file convention. ---------
 export async function applyManualCustomerMappingAction(
   batchId: string,
   customerNameRaw: string,
@@ -214,37 +187,24 @@ export async function applyManualCustomerMappingAction(
   const matchingRows = rows.filter((r) => normalizeCustomerNameStrict(r.customerNameRaw) === targetNorm && r.status !== "IMPORTED");
   if (matchingRows.length === 0) return { success: false, error: "NO_MATCHING_ROWS" };
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      for (const row of matchingRows) {
-        const derived = deriveStatusAndWarnings(toDerivationInput(row, { customerMatchStatus: "MANUAL" }));
-        await tx.policyImportRow.update({
-          where: { id: row.id },
-          data: {
-            matchedCustomerId: customerId,
-            customerMatchStatus: "MANUAL",
-            status: derived.status,
-            warnings: derived.warnings,
-            includeInImport: derived.includeInImport,
-          },
-        });
-      }
-    });
-    return { success: true, updatedCount: matchingRows.length };
-  } catch (err) {
-    console.error("Failed to apply manual customer mapping:", err);
-    return { success: false, error: "MAPPING_FAILED" };
-  }
+  await prisma.$transaction(async (tx) => {
+    for (const row of matchingRows) {
+      const derived = deriveNonMotorStatusAndWarnings(toDerivationInput(row, { customerMatchStatus: "MANUAL" }));
+      await tx.policyImportRow.update({
+        where: { id: row.id },
+        data: {
+          matchedCustomerId: customerId,
+          customerMatchStatus: "MANUAL",
+          status: derived.status,
+          warnings: derived.warnings,
+          includeInImport: derived.includeInImport,
+        },
+      });
+    }
+  });
+  return { success: true, updatedCount: matchingRows.length };
 }
 
-// --- Customer resolution: create a new Customer from historical name(s) ----
-// Handles all three UI actions from the Phase 1A.1 spec with one function:
-// "create one", "create all currently unmatched", and "create several
-// selected" are all just different-length `customerNames` arrays. Each
-// distinct name becomes exactly one new Customer (never one per row), and
-// every row sharing that normalized name gets mapped to it in the same
-// transaction — a failure partway through must not leave a customer created
-// with no rows mapped to it, or vice versa.
 export async function createCustomersFromHistoricalNamesAction(
   batchId: string,
   customerNames: string[]
@@ -268,10 +228,6 @@ export async function createCustomersFromHistoricalNamesAction(
     await prisma.$transaction(async (tx) => {
       for (const rawName of customerNames) {
         const targetNorm = normalizeCustomerNameStrict(rawName);
-        // A name that now exactly matches a real Customer (created by a
-        // concurrent action, or already resolved) is skipped rather than
-        // creating a duplicate company — the row should be mapped via
-        // applyManualCustomerMappingAction instead in that case.
         if (existingCompanyNames.has(targetNorm)) continue;
 
         const matchingRows = rows.filter(
@@ -290,7 +246,7 @@ export async function createCustomersFromHistoricalNamesAction(
         existingCompanyNames.add(targetNorm);
 
         for (const row of matchingRows) {
-          const derived = deriveStatusAndWarnings(toDerivationInput(row, { customerMatchStatus: "MANUAL" }));
+          const derived = deriveNonMotorStatusAndWarnings(toDerivationInput(row, { customerMatchStatus: "MANUAL" }));
           await tx.policyImportRow.update({
             where: { id: row.id },
             data: {
@@ -312,7 +268,6 @@ export async function createCustomersFromHistoricalNamesAction(
   }
 }
 
-// --- Customer resolution: skip every row for a historical name --------------
 export async function skipHistoricalCustomerGroupAction(
   batchId: string,
   customerNameRaw: string
@@ -332,7 +287,6 @@ export async function skipHistoricalCustomerGroupAction(
   return { success: true, updatedCount: matchingRows.length };
 }
 
-// --- Customer resolution: accept / reject a POSSIBLE match -----------------
 export async function acceptPossibleMatchAction(
   batchId: string,
   customerNameRaw: string
@@ -349,7 +303,7 @@ export async function acceptPossibleMatchAction(
 
   await prisma.$transaction(async (tx) => {
     for (const row of matchingRows) {
-      const derived = deriveStatusAndWarnings(toDerivationInput(row, { customerMatchStatus: "MANUAL" }));
+      const derived = deriveNonMotorStatusAndWarnings(toDerivationInput(row, { customerMatchStatus: "MANUAL" }));
       await tx.policyImportRow.update({
         where: { id: row.id },
         data: {
@@ -380,7 +334,7 @@ export async function rejectPossibleMatchAction(
 
   await prisma.$transaction(async (tx) => {
     for (const row of matchingRows) {
-      const derived = deriveStatusAndWarnings(toDerivationInput({ ...row, matchedCustomerId: null }, { customerMatchStatus: "UNMATCHED" }));
+      const derived = deriveNonMotorStatusAndWarnings(toDerivationInput({ ...row, matchedCustomerId: null }, { customerMatchStatus: "UNMATCHED" }));
       await tx.policyImportRow.update({
         where: { id: row.id },
         data: {
@@ -408,9 +362,6 @@ export async function toggleImportRowIncludeAction(rowId: string, include: boole
     return { success: false, error: "ROW_CANNOT_BE_INCLUDED" };
   }
 
-  // Excluding a row also drops any existing selection — a row that can no
-  // longer be imported at all must never stay selected (see
-  // isSelectedForImport's schema comment).
   await prisma.policyImportRow.update({
     where: { id: rowId },
     data: include ? { includeInImport: true } : { includeInImport: false, isSelectedForImport: false },
@@ -418,10 +369,6 @@ export async function toggleImportRowIncludeAction(rowId: string, include: boole
   return { success: true };
 }
 
-// Includes/excludes an entire POSSIBLE_DUPLICATE group at once (the row the
-// user is looking at, plus every row it lists in duplicateOfRowNumbers) —
-// EXACT_DUPLICATE rows are silently skipped since they can never be
-// overridden (see PolicyImportRowStatus's schema comment).
 export async function toggleDuplicateGroupIncludeAction(
   batchId: string,
   rowNumbers: number[],
@@ -443,12 +390,7 @@ export async function toggleDuplicateGroupIncludeAction(
   return { success: true, updatedCount: updatable.length };
 }
 
-// --- Phase 1A.2: row selection for the controlled "Import Selected"
-//     workflow. Selection is a real DB column (isSelectedForImport), never
-//     only React state — see that field's schema comment. Every action here
-//     only ever selects rows that are CURRENTLY eligible (includeInImport
-//     true, not ERROR/EXACT_DUPLICATE/IMPORTED, and not an unresolved
-//     POSSIBLE customer match); nothing here forces a row into eligibility.
+// --- Selection for the controlled "Import Selected" workflow ---------------
 function eligibleRowWhere(batchId: string): Prisma.PolicyImportRowWhereInput {
   return {
     importBatchId: batchId,
@@ -490,9 +432,6 @@ export async function clearSelectionAction(batchId: string): Promise<ActionResul
   return { success: true, updatedCount: result.count };
 }
 
-// Deterministic ordering per the spec: source sheet, then original row
-// number. Replaces the current selection rather than adding to it — this is
-// a "quick pick" preset, not an accumulator.
 export async function selectFirstNEligibleAction(batchId: string, n: number): Promise<ActionResult<{ selectedCount: number }>> {
   const session = await requirePolicyPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
@@ -526,10 +465,7 @@ export async function selectAllEligibleAction(batchId: string): Promise<ActionRe
   return { success: true, selectedCount: result.count };
 }
 
-// --- Batch summary — shared, category-agnostic counting logic lives in
-//     computeImportBatchSummary (see src/lib/policy/importBatchSummary.ts);
-//     this action only supplies the Motor-specific Prisma fetch. Used both
-//     as the pre-import summary and, after importing, to show what's left.
+// --- Batch summary -----------------------------------------------------------
 export type { ImportBatchSummary } from "@/lib/policy/importBatchSummary";
 
 export async function getImportBatchSummaryAction(
@@ -544,11 +480,7 @@ export async function getImportBatchSummaryAction(
   return { success: true, summary: computeImportBatchSummary(rows, newlyCreatedCustomers) };
 }
 
-// --- Import Selected (Phase 1A.2) --------------------------------------------
-// Replaces the earlier "confirm the whole batch" flow — only rows the user
-// explicitly selected (isSelectedForImport, a persisted DB column) are ever
-// imported; rows not selected simply stay in the batch, available for a
-// later selected-import run (see PolicyImportBatchStatus.PARTIALLY_IMPORTED).
+// --- Import Selected ---------------------------------------------------------
 const IMPORT_CHUNK_SIZE = 50;
 
 export type ImportResultReport = {
@@ -562,7 +494,7 @@ export type ImportResultReport = {
   warnings: string[];
 };
 
-export async function importSelectedRowsAction(
+export async function importSelectedNonMotorRowsAction(
   batchId: string,
   confirmedRowIds: string[]
 ): Promise<ActionResult<{ report: ImportResultReport }>> {
@@ -571,8 +503,6 @@ export async function importSelectedRowsAction(
 
   const batch = await prisma.policyImportBatch.findUnique({ where: { id: batchId } });
   if (!batch) return { success: false, error: "BATCH_NOT_FOUND" };
-  // A batch already fully COMPLETED has nothing left to import; PARTIALLY_IMPORTED,
-  // PREVIEWED, and UPLOADED can all still accept another selected-import run.
   if (batch.status === "COMPLETED") return { success: false, error: "ALREADY_COMPLETED" };
 
   const selectedRows = await prisma.policyImportRow.findMany({
@@ -581,40 +511,29 @@ export async function importSelectedRowsAction(
   });
   if (selectedRows.length === 0) return { success: false, error: "NO_ROWS_SELECTED" };
 
-  // Staleness gate: the confirmation dialog the user just reviewed was built
-  // from a specific set of row ids — if the persisted selection has since
-  // changed (another tab, a concurrent action), refuse rather than import
-  // a different set than what was actually confirmed.
   const actualIds = selectedRows.map((r) => r.id).sort();
   const expectedIds = [...confirmedRowIds].sort();
   if (actualIds.length !== expectedIds.length || actualIds.some((id, i) => id !== expectedIds[i])) {
     return { success: false, error: "SELECTION_CHANGED" };
   }
 
-  // Mandatory final gate: re-check EXACT_DUPLICATE against the database
-  // right before importing, not just at upload/preview time — customer
-  // mapping may have resolved rows since then, revealing collisions that
-  // weren't checkable before, and another import may have landed real
-  // PolicyRecords in the meantime.
+  // Mandatory final gate: re-check EXACT_DUPLICATE right before importing —
+  // same reasoning as Motor's importSelectedRowsAction.
   const freshExactDuplicates = await detectExactDuplicates(
     prisma,
-    "MOTOR",
+    "NON_MOTOR",
     selectedRows.map((r) => ({
       rowNumber: r.originalRowNumber,
       sourceSheet: batch.sourceSheet,
-      registrationNumber: r.registrationNumber,
-      insuranceType: r.insuranceType,
+      registrationNumber: null,
+      insuranceType: mapImportTextToNonMotorCoverType(r.insuranceType),
       effectiveDate: r.effectiveDate,
       expiryDate: r.expiryDate,
       matchedCustomerId: r.matchedCustomerId,
+      policyNumber: r.policyNumber,
     }))
   );
 
-  // Every selected row must currently be genuinely importable — refuse the
-  // whole action rather than silently dropping any (see this phase's spec:
-  // "must refuse to run when ... any selected row has ..."). Selection
-  // actions only ever select eligible rows, so this only fires if something
-  // changed the underlying row state after selection.
   const blocking: string[] = [];
   for (const row of selectedRows) {
     if (!row.matchedCustomerId || row.customerMatchStatus === "UNMATCHED" || row.customerMatchStatus === "POSSIBLE") {
@@ -623,7 +542,15 @@ export async function importSelectedRowsAction(
     if (row.status === "EXACT_DUPLICATE" || freshExactDuplicates.has(row.originalRowNumber)) {
       blocking.push(`Row ${row.originalRowNumber}: is an exact duplicate of an existing policy.`);
     }
-    if (!row.registrationNumber || !row.effectiveDate || !row.expiryDate || (row.expiryDate && row.effectiveDate && row.expiryDate < row.effectiveDate)) {
+    const resolvedType = mapImportTextToNonMotorCoverType(row.insuranceType);
+    if (
+      !resolvedType ||
+      !row.effectiveDate ||
+      !row.expiryDate ||
+      (row.expiryDate && row.effectiveDate && row.expiryDate < row.effectiveDate) ||
+      row.clientPremium === null ||
+      row.insurerCost === null
+    ) {
       blocking.push(`Row ${row.originalRowNumber}: has a blocking validation error.`);
     }
     if (row.status === "IMPORTED") {
@@ -635,12 +562,6 @@ export async function importSelectedRowsAction(
   }
 
   let policiesCreated = 0;
-  let customerReceiptsCreated = 0;
-  let providerPaymentsCreated = 0;
-  // Customers are created earlier, in the customer-resolution panel (see
-  // createCustomersFromHistoricalNamesAction) — never during this import
-  // step itself. Reported here as this batch's running total for context,
-  // not as "created by this specific click".
   const customersCreatedForBatch = await prisma.customer.count({ where: { importBatchId: batchId } });
 
   try {
@@ -648,10 +569,8 @@ export async function importSelectedRowsAction(
       const chunk = selectedRows.slice(i, i + IMPORT_CHUNK_SIZE);
       await prisma.$transaction(async (tx) => {
         for (const row of chunk) {
-          const created = await importOneRow(tx, batchId, row, session.user.id);
+          await importOneRow(tx, batchId, row, batch.sourceSheet, session.user.id);
           policiesCreated++;
-          if (created.receiptCreated) customerReceiptsCreated++;
-          if (created.paymentCreated) providerPaymentsCreated++;
           await tx.policyImportRow.update({
             where: { id: row.id },
             data: { status: "IMPORTED", isSelectedForImport: false },
@@ -660,9 +579,6 @@ export async function importSelectedRowsAction(
       });
     }
 
-    // Batch status: COMPLETED only once nothing eligible remains to import
-    // later — otherwise PARTIALLY_IMPORTED, so the batch stays reachable for
-    // another selected-import run (see this phase's spec).
     const remainingEligible = await prisma.policyImportRow.count({ where: eligibleRowWhere(batchId) });
     const totalRows = await prisma.policyImportRow.count({ where: { importBatchId: batchId } });
     const totalImported = await prisma.policyImportRow.count({ where: { importBatchId: batchId, status: "IMPORTED" } });
@@ -682,18 +598,23 @@ export async function importSelectedRowsAction(
     const report: ImportResultReport = {
       policiesCreated,
       customersCreated: customersCreatedForBatch,
-      customerReceiptsCreated,
-      providerPaymentsCreated,
+      // Non-Motor's standard import format has no amount-paid/amount-received
+      // columns (see nonMotorImportParser.ts) — no receipts/payments are ever
+      // created directly from an import row, only the PolicyRecord +
+      // NonMotorPolicyDetail. Receipts/payments are added afterward through
+      // the normal Financial tab, same as any manually-created record.
+      customerReceiptsCreated: 0,
+      providerPaymentsCreated: 0,
       rowsImported: policiesCreated,
       rowsRemaining: summaryResult.success ? summaryResult.summary.remainingAfterLatestSelectedImport : totalRows - totalImported,
       rowsSkippedOrBlocked: summaryResult.success ? summaryResult.summary.skippedRows + summaryResult.summary.errorRows : 0,
       warnings,
     };
 
-    revalidatePath("/policy/motor");
+    revalidatePath("/policy/non-motor");
     return { success: true, report };
   } catch (err) {
-    console.error(`Failed to import selected rows for Motor batch ${batchId}:`, err);
+    console.error(`Failed to import selected rows for Non-Motor batch ${batchId}:`, err);
     await prisma.policyImportBatch.update({ where: { id: batchId }, data: { status: "FAILED" } });
     return { success: false, error: "IMPORT_FAILED" };
   }
@@ -707,79 +628,51 @@ async function importOneRow(
     originalRowNumber: number;
     processingDate: Date | null;
     matchedCustomerId: string | null;
+    matchedProjectId: string | null;
     insuranceType: string | null;
-    registrationNumber: string | null;
     insurerName: string | null;
+    policyNumber: string | null;
     effectiveDate: Date | null;
     expiryDate: Date | null;
-    insurerCost: Prisma.Decimal | null;
-    amountPaidToInsurer: Prisma.Decimal | null;
-    insurerPaymentDate: Date | null;
     clientPremium: Prisma.Decimal | null;
-    amountReceivedFromClient: Prisma.Decimal | null;
-    clientReceiptDate: Date | null;
-    vehicleValue: Prisma.Decimal | null;
-    commissionReceived: boolean;
-    commissionReceivedDate: Date | null;
-    historicalNetProfit: Prisma.Decimal | null;
+    insurerCost: Prisma.Decimal | null;
     remarks: string | null;
-    insurerBalanceVerification: "VERIFIED" | "UNVERIFIED";
-    insurerBalanceWarningReason: "BROKEN_SOURCE_FORMULA" | "BLANK_SOURCE_BALANCE" | "OTHER_UNREADABLE_BALANCE" | null;
-    clientBalanceVerification: "VERIFIED" | "UNVERIFIED";
-    clientBalanceWarningReason: "BROKEN_SOURCE_FORMULA" | "BLANK_SOURCE_BALANCE" | "OTHER_UNREADABLE_BALANCE" | null;
   },
+  sourceSheet: string,
   createdById: string
-): Promise<{ receiptCreated: boolean; paymentCreated: boolean }> {
-  // Every ERROR-status row (missing customer/registration/dates) is already
-  // excluded by importSelectedRowsAction's validation gate — these are
-  // last-resort guards, not the primary validation path.
-  if (!row.matchedCustomerId || !row.registrationNumber || !row.effectiveDate || !row.expiryDate) {
+): Promise<void> {
+  const resolvedType = mapImportTextToNonMotorCoverType(row.insuranceType);
+  if (!row.matchedCustomerId || !resolvedType || !row.effectiveDate || !row.expiryDate || row.clientPremium === null || row.insurerCost === null) {
     throw new Error(`Row ${row.originalRowNumber} is missing required fields at import time`);
   }
 
   const processingDate = row.processingDate ?? row.effectiveDate;
   const businessStatus = computeBusinessStatus(row.effectiveDate, row.expiryDate, "DRAFT");
-  const recordNumber = await generatePolicyRecordNumber(tx, "MOTOR");
+  const recordNumber = await generatePolicyRecordNumber(tx, "NON_MOTOR");
 
   const created = await tx.policyRecord.create({
     data: {
       recordNumber,
-      category: "MOTOR",
+      category: "NON_MOTOR",
       processingDate,
       customerId: row.matchedCustomerId,
+      projectId: row.matchedProjectId,
       insurerName: row.insurerName,
       effectiveDate: row.effectiveDate,
       expiryDate: row.expiryDate,
       businessStatus,
-      customerPremium: row.clientPremium ?? toDecimal(0),
-      insurerCost: row.insurerCost ?? toDecimal(0),
-      commissionReceived: row.commissionReceived,
-      commissionReceivedDate: row.commissionReceivedDate,
-      historicalNetProfit: row.historicalNetProfit,
-      // Never silently "verified" — carried straight from the import row's
-      // own balance-verification fields (see this phase's spec).
-      insurerBalanceVerification: row.insurerBalanceVerification,
-      insurerBalanceWarningReason: row.insurerBalanceWarningReason,
-      clientBalanceVerification: row.clientBalanceVerification,
-      clientBalanceWarningReason: row.clientBalanceWarningReason,
+      customerPremium: row.clientPremium,
+      insurerCost: row.insurerCost,
       source: "HISTORICAL_IMPORT",
       importBatchId: batchId,
-      sourceSheet: MOTOR_SHEET_NAME,
+      sourceSheet,
       originalRowNumber: row.originalRowNumber,
       remarks: row.remarks,
       createdById,
-      motorDetail: {
+      nonMotorDetail: {
         create: {
-          insuranceType: row.insuranceType ?? "UNKNOWN",
-          registrationNumber: row.registrationNumber.toUpperCase(),
-          vehicleValue: row.vehicleValue,
-          // Phase 2B: taxClass intentionally omitted — the historical
-          // BUSINESS RECORD(MOTOR) workbook has no column that reliably maps
-          // to Private/Commercial/SPV/Special Use (see motorImportParser.ts's
-          // EXPECTED_HEADERS), so every imported row leaves this null rather
-          // than guessing from TYPE OF COVER or anything else. If a future
-          // workbook revision adds a real, unambiguous source column, map it
-          // here explicitly — never infer it.
+          insuranceType: resolvedType as NonMotorCoverType,
+          policyNumber: row.policyNumber,
         },
       },
     },
@@ -788,39 +681,7 @@ async function importOneRow(
   await recordPolicyActivity(tx, {
     policyRecordId: created.id,
     actionType: "HISTORICAL_POLICY_IMPORTED",
-    summary: `Motor policy ${recordNumber} imported from historical data`,
+    summary: `Non-Motor policy ${recordNumber} imported from historical data`,
     performedById: createdById,
   });
-
-  let paymentCreated = false;
-  if (row.amountPaidToInsurer && Number(row.amountPaidToInsurer) > 0) {
-    await tx.policyProviderPayment.create({
-      data: {
-        policyRecordId: created.id,
-        paymentDate: row.insurerPaymentDate ?? processingDate,
-        amount: row.amountPaidToInsurer,
-        source: "HISTORICAL_IMPORT",
-        originalRowNumber: row.originalRowNumber,
-        createdById,
-      },
-    });
-    paymentCreated = true;
-  }
-
-  let receiptCreated = false;
-  if (row.amountReceivedFromClient && Number(row.amountReceivedFromClient) > 0) {
-    await tx.policyCustomerReceipt.create({
-      data: {
-        policyRecordId: created.id,
-        receiptDate: row.clientReceiptDate ?? processingDate,
-        amount: row.amountReceivedFromClient,
-        source: "HISTORICAL_IMPORT",
-        originalRowNumber: row.originalRowNumber,
-        createdById,
-      },
-    });
-    receiptCreated = true;
-  }
-
-  return { receiptCreated, paymentCreated };
 }

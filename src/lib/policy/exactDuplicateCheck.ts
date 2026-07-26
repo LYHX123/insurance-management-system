@@ -25,13 +25,18 @@ export type ExactDuplicateCandidate = {
   effectiveDate: Date | null;
   expiryDate: Date | null;
   matchedCustomerId: string | null;
+  // Phase 3B: Non-Motor has no registration number — its identity instead
+  // uses customer + type + policyNumber (when available) + dates, per this
+  // phase's spec ("Customer + type + policy number + dates where
+  // available"). Ignored for MOTOR candidates.
+  policyNumber?: string | null;
 };
 
 function iso(d: Date | null): string | null {
   return d ? d.toISOString().slice(0, 10) : null;
 }
 
-function identityKey(
+function motorIdentityKey(
   customerId: string | null,
   registrationNumber: string | null,
   insuranceType: string | null,
@@ -42,18 +47,32 @@ function identityKey(
   return `${customerId}:${registrationNumber.trim().toUpperCase()}:${insuranceType.trim().toUpperCase()}:${iso(effectiveDate)}:${iso(expiryDate)}`;
 }
 
+// Non-Motor identity: policyNumber is included when present (a real
+// differentiator when a customer legitimately has two Non-Motor policies of
+// the same type back-to-back), but its absence never blocks the key from
+// forming — customer + type + dates alone is already a sensible Non-Motor
+// identity per this phase's spec.
+function nonMotorIdentityKey(
+  customerId: string | null,
+  insuranceType: string | null,
+  policyNumber: string | null | undefined,
+  effectiveDate: Date | null,
+  expiryDate: Date | null
+): string | null {
+  if (!customerId || !insuranceType || !effectiveDate || !expiryDate) return null;
+  const policyPart = policyNumber?.trim() ? policyNumber.trim().toUpperCase() : "";
+  return `${customerId}:${insuranceType.trim().toUpperCase()}:${policyPart}:${iso(effectiveDate)}:${iso(expiryDate)}`;
+}
+
 // Shared across every Policy category by design (see this phase's "Reusable
-// Policy import foundation" — category only changes the `where` filter and,
-// once Non-Motor/Bond/Work Permit exist, which *PolicyDetail relation is
-// selected for the identity key; the source-row check needs no per-category
-// change at all).
+// Policy import foundation" — category only changes the `where` filter and
+// which *PolicyDetail relation is selected for the identity key; the
+// source-row check needs no per-category change at all).
 export async function detectExactDuplicates(
   prisma: PrismaClient,
   category: PolicyCategory,
   candidates: ExactDuplicateCandidate[]
 ): Promise<Map<number, string>> {
-  // motorDetail is the only *PolicyDetail relation today — this select
-  // becomes category-conditional once a second category's import lands.
   const existing = await prisma.policyRecord.findMany({
     where: { category, deletedAt: null },
     select: {
@@ -64,6 +83,7 @@ export async function detectExactDuplicates(
       sourceSheet: true,
       originalRowNumber: true,
       motorDetail: { select: { registrationNumber: true, insuranceType: true } },
+      nonMotorDetail: { select: { policyNumber: true, insuranceType: true } },
     },
   });
 
@@ -73,13 +93,22 @@ export async function detectExactDuplicates(
     if (record.sourceSheet && record.originalRowNumber !== null) {
       bySourceRow.set(`${record.sourceSheet}:${record.originalRowNumber}`, record.id);
     }
-    const key = identityKey(
-      record.customerId,
-      record.motorDetail?.registrationNumber ?? null,
-      record.motorDetail?.insuranceType ?? null,
-      record.effectiveDate,
-      record.expiryDate
-    );
+    const key =
+      category === "NON_MOTOR"
+        ? nonMotorIdentityKey(
+            record.customerId,
+            record.nonMotorDetail?.insuranceType ?? null,
+            record.nonMotorDetail?.policyNumber ?? null,
+            record.effectiveDate,
+            record.expiryDate
+          )
+        : motorIdentityKey(
+            record.customerId,
+            record.motorDetail?.registrationNumber ?? null,
+            record.motorDetail?.insuranceType ?? null,
+            record.effectiveDate,
+            record.expiryDate
+          );
     if (key) byIdentity.set(key, record.id);
   }
 
@@ -90,7 +119,10 @@ export async function detectExactDuplicates(
       result.set(c.rowNumber, sourceRowMatch);
       continue;
     }
-    const key = identityKey(c.matchedCustomerId, c.registrationNumber, c.insuranceType, c.effectiveDate, c.expiryDate);
+    const key =
+      category === "NON_MOTOR"
+        ? nonMotorIdentityKey(c.matchedCustomerId, c.insuranceType, c.policyNumber, c.effectiveDate, c.expiryDate)
+        : motorIdentityKey(c.matchedCustomerId, c.registrationNumber, c.insuranceType, c.effectiveDate, c.expiryDate);
     const identityMatch = key ? byIdentity.get(key) : undefined;
     if (identityMatch) result.set(c.rowNumber, identityMatch);
   }

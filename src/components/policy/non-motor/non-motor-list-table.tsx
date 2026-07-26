@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Eye, Plus, Upload, Download } from "lucide-react";
+import { Eye, Plus, Upload } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   PolicyOutstandingBalanceCheckboxes,
   matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
-import type { MotorListRow, PolicyBusinessStatus } from "@/components/policy/types";
+import type { NonMotorListRow, NonMotorCoverType, PolicyBusinessStatus } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
   DRAFT: "neutral",
@@ -30,7 +30,7 @@ const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" 
 
 const PAGE_SIZE = 25;
 
-export function MotorListTable({ records }: { records: MotorListRow[] }) {
+export function NonMotorListTable({ records }: { records: NonMotorListRow[] }) {
   const { t, locale } = useLocale();
   const [search, setSearch] = useState("");
   const [customerFilter, setCustomerFilter] = useState("ALL");
@@ -50,6 +50,21 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
     RENEWED: t.policy.statusRenewed,
   };
 
+  const coverTypeLabel: Record<NonMotorCoverType, string> = {
+    CONTRACTORS_ALL_RISKS: t.policy.coverContractorsAllRisks,
+    WIBA: t.policy.coverWiba,
+    EMPLOYERS_LIABILITY: t.policy.coverEmployersLiability,
+    CONTRACTORS_PLANT_MACHINERY: t.policy.coverContractorsPlantMachinery,
+    PUBLIC_LIABILITY: t.policy.coverPublicLiability,
+    FIRE_ALLIED_PERILS: t.policy.coverFireAlliedPerils,
+    BURGLARY: t.policy.coverBurglary,
+    GOODS_IN_TRANSIT_SINGLE: t.policy.coverGoodsInTransitSingle,
+    GOODS_IN_TRANSIT_ANNUAL: t.policy.coverGoodsInTransitAnnual,
+    MARINE: t.policy.coverMarine,
+    GROUP_PERSONAL_ACCIDENT: t.policy.coverGroupPersonalAccident,
+    GROUP_MEDICAL: t.policy.coverGroupMedical,
+  };
+
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
 
   const customerOptions = useMemo(
@@ -57,7 +72,7 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
     [records]
   );
   const typeOptions = useMemo(
-    () => Array.from(new Set(records.map((r) => r.insuranceType))).sort(),
+    () => Array.from(new Set(records.map((r) => r.insuranceType))),
     [records]
   );
   const insurerOptions = useMemo(
@@ -72,7 +87,6 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
         !term ||
         r.recordNumber.toLowerCase().includes(term) ||
         r.customerName.toLowerCase().includes(term) ||
-        r.registrationNumber.toLowerCase().includes(term) ||
         (r.insurerName?.toLowerCase().includes(term) ?? false);
       const matchesCustomer = customerFilter === "ALL" || r.customerName === customerFilter;
       const matchesType = typeFilter === "ALL" || r.insuranceType === typeFilter;
@@ -119,22 +133,19 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
   return (
     <div className="flex flex-col gap-section">
       <PageHeader
-        title={t.policy.tabMotor}
+        title={t.policy.tabNonMotor}
         actions={
           <>
-            <Link href="/policy/motor/import">
+            <Link href="/policy/non-motor/import">
               <Button variant="secondary">
                 <Upload size={16} />
                 {t.policy.importHistorical}
               </Button>
             </Link>
-            <IconButton title={t.comingSoon.title} disabled>
-              <Download size={16} />
-            </IconButton>
-            <Link href="/policy/motor/new">
+            <Link href="/policy/non-motor/new">
               <Button>
                 <Plus size={16} />
-                {t.policy.addMotorRecord}
+                {t.policy.addNonMotorRecord}
               </Button>
             </Link>
           </>
@@ -145,7 +156,7 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
         <SearchBar
           value={search}
           onChange={resetToFirstPage(setSearch)}
-          placeholder={t.policy.searchPlaceholder}
+          placeholder={t.policy.searchPlaceholderNonMotor}
           className="w-full max-w-sm"
         />
         <Select value={customerFilter} onChange={(e) => resetToFirstPage(setCustomerFilter)(e.target.value)} className="w-auto max-w-[220px]">
@@ -154,10 +165,10 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
             <option key={c} value={c}>{c}</option>
           ))}
         </Select>
-        <Select value={typeFilter} onChange={(e) => resetToFirstPage(setTypeFilter)(e.target.value)} className="w-auto max-w-[180px]">
+        <Select value={typeFilter} onChange={(e) => resetToFirstPage(setTypeFilter)(e.target.value)} className="w-auto max-w-[200px]">
           <option value="ALL">{t.policy.allTypesOfCover}</option>
           {typeOptions.map((tOpt) => (
-            <option key={tOpt} value={tOpt}>{tOpt}</option>
+            <option key={tOpt} value={tOpt}>{coverTypeLabel[tOpt]}</option>
           ))}
         </Select>
         <Select value={insurerFilter} onChange={(e) => resetToFirstPage(setInsurerFilter)(e.target.value)} className="w-auto max-w-[180px]">
@@ -187,14 +198,13 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
       />
 
       <TableWrap scroll>
-        <Table className="min-w-[1200px]">
+        <Table className="min-w-[1100px]">
           <thead>
             <tr>
               <th>{t.policy.recordNumber}</th>
               <th>{t.policy.processingDate}</th>
               <th>{t.policy.customer}</th>
               <th>{t.policy.typeOfCover}</th>
-              <th>{t.policy.registrationNumber}</th>
               <th>{t.policy.insurer}</th>
               <th>{t.policy.expiryDate}</th>
               <th>{t.policy.clientPremium}</th>
@@ -204,18 +214,17 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
             </tr>
           </thead>
           <tbody>
-            {pageRows.length === 0 && <TableEmpty colSpan={11}>{t.policy.noRecords}</TableEmpty>}
+            {pageRows.length === 0 && <TableEmpty colSpan={10}>{t.policy.noRecordsNonMotor}</TableEmpty>}
             {pageRows.map((r) => (
               <tr key={r.id}>
                 <td className="font-medium text-zinc-800">
-                  <Link href={`/policy/motor/${r.id}`} className="text-emerald-700 hover:underline">
+                  <Link href={`/policy/non-motor/${r.id}`} className="text-emerald-700 hover:underline">
                     {r.recordNumber}
                   </Link>
                 </td>
                 <td className="text-zinc-500">{dateFormatter.format(new Date(r.processingDate))}</td>
                 <td>{r.customerName}</td>
-                <td className="text-zinc-500">{r.insuranceType}</td>
-                <td className="text-zinc-500">{r.registrationNumber}</td>
+                <td className="text-zinc-500">{coverTypeLabel[r.insuranceType]}</td>
                 <td className="text-zinc-500">{r.insurerName || "—"}</td>
                 <td className="text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
                 <td className="text-zinc-500">{formatMoney(r.clientPremium)}</td>
@@ -227,7 +236,7 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
                 </td>
                 <td>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Link href={`/policy/motor/${r.id}`}>
+                    <Link href={`/policy/non-motor/${r.id}`}>
                       <IconButton title={t.policy.view}>
                         <Eye size={16} />
                       </IconButton>
