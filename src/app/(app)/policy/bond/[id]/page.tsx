@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasModuleAccess } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
+import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
 import { BondDetailView } from "@/components/policy/bond/bond-detail-view";
 import type { BondDetail, TransactionRow, PolicyDocumentRow, PolicyActivityRow } from "@/components/policy/types";
 
@@ -32,6 +33,11 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
           grandTotal: true,
           customer: { select: { companyName: true } },
           project: { select: { projectName: true } },
+        },
+      },
+      invoiceItems: {
+        select: {
+          invoice: { select: { id: true, invoiceNumber: true, invoiceDate: true, status: true, totalPremium: true } },
         },
       },
     },
@@ -157,6 +163,7 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
           quotationDate: (record.sourceQuotationDateSnapshot ?? record.createdAt).toISOString(),
         }
       : null,
+    relatedInvoice: pickRelatedInvoiceForDisplay(record.invoiceItems),
   };
 
   const customers = await prisma.customer.findMany({

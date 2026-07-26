@@ -108,6 +108,7 @@ model Customer {
   quotations     Quotation[]
   quotationCases QuotationCase[]
   policyRecords  PolicyRecord[]
+  invoices       Invoice[]
 
   @@index([companyName])
   @@index([status])
@@ -1471,6 +1472,7 @@ model PolicyRecord {
   providerPayments PolicyProviderPayment[]
   documents        PolicyDocument[]
   activities       PolicyActivity[]
+  invoiceItems     InvoiceItem[]
 
   @@index([category])
   @@index([customerId])
@@ -1947,6 +1949,11 @@ enum PolicyActivityActionType {
   DOCUMENT_DELETED
   BALANCE_VERIFIED
   HISTORICAL_POLICY_IMPORTED
+  // Phase 4A: Invoice lifecycle events, logged onto every Policy linked to
+  // the Invoice — see recordPolicyActivity calls in
+  // src/app/(app)/invoice/actions.ts.
+  INVOICE_ISSUED
+  INVOICE_CANCELLED
 }
 
 model PolicyActivity {
@@ -1971,4 +1978,92 @@ model PolicyActivity {
 
   @@index([policyRecordId])
   @@index([createdAt])
+}
+
+// =============================================================================
+// Phase 4A: Invoice — a client-facing billing document generated from one or
+// more of that customer's Policy records. Deliberately minimal in this
+// phase (see Invoice.status's comment): no payment/outstanding-balance
+// tracking here — that is future Ledger integration's job, not Invoice's.
+// =============================================================================
+
+// Same per-yearMonth atomic-counter pattern as QuotationNumberCounter (see
+// generateQuotationNumber in src/lib/quotation-utils.ts) — a dedicated
+// counter table rather than reusing PolicyRecordNumberCounter, since an
+// Invoice is not a PolicyCategory and mixing an "INV" key into that
+// category-keyed table would be a confusing overload of its purpose.
+model InvoiceNumberCounter {
+  yearMonth    String @id
+  lastSequence Int    @default(0)
+}
+
+enum InvoiceStatus {
+  ISSUED
+  CANCELLED
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  invoiceDate   DateTime
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  status        InvoiceStatus @default(ISSUED)
+  totalPremium  Decimal       @db.Decimal(16, 2)
+
+  // Populated once the generated workbook is durably saved to
+  // InvoiceDocumentStorage (see src/lib/invoiceDocuments/storage.ts) — both
+  // null only in the narrow window inside createInvoiceAction between the
+  // Invoice row being created and the file save completing; if the file
+  // save fails, the whole Invoice row is rolled back rather than ever being
+  // left issued with no downloadable file (see that action's doc comment).
+  generatedFileName    String?
+  generatedStoragePath String?
+
+  // Plain unenforced id string, this project's existing convention for a
+  // single user reference (see PolicyActivity.performedById above).
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cancelledAt   DateTime?
+  cancelledById String?
+
+  items InvoiceItem[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([invoiceDate])
+}
+
+// One row per Policy included on an Invoice. Deliberately NOT a duplicate of
+// PolicyRecord — only the three fields that actually appear on the printed
+// invoice are snapshotted, frozen at generation time, so an issued Invoice
+// never silently changes if the source Policy is edited afterward (see
+// Invoice's own top-of-model comment). premiumSnapshot is copied from
+// PolicyRecord.customerPremium ("Client Premium") at creation time, never
+// recomputed.
+model InvoiceItem {
+  id             String       @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  policyRecordId String
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Restrict)
+
+  itemNumber           Int
+  policyClassSnapshot  String
+  policyNumberSnapshot String
+  premiumSnapshot      Decimal @db.Decimal(16, 2)
+
+  createdAt DateTime @default(now())
+
+  // A given Policy may appear at most once per Invoice — NOT a global
+  // uniqueness constraint (see getEligiblePoliciesForCustomer's doc comment
+  // in src/lib/invoice/eligibility.ts): a Policy can accumulate one
+  // InvoiceItem row per CANCELLED invoice attempt over time, plus at most
+  // one row belonging to a currently-ISSUED invoice, which is enforced at
+  // the application layer (see createInvoiceAction), not by a DB constraint,
+  // since the DB cannot see other rows' Invoice.status.
+  @@unique([invoiceId, policyRecordId])
+  @@index([policyRecordId])
 }

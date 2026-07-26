@@ -52,3 +52,6 @@ next-env.d.ts
 
 # Motor policy document uploads (local storage provider)
 /policy-documents
+
+# Generated Invoice workbooks (local storage provider)
+/invoice-documents

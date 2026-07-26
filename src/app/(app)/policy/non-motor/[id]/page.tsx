@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasModuleAccess } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
+import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
 import { NonMotorDetailView } from "@/components/policy/non-motor/non-motor-detail-view";
 import type { NonMotorDetail, TransactionRow, PolicyDocumentRow, PolicyActivityRow } from "@/components/policy/types";
 
@@ -32,6 +33,11 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
           grandTotal: true,
           customer: { select: { companyName: true } },
           project: { select: { projectName: true } },
+        },
+      },
+      invoiceItems: {
+        select: {
+          invoice: { select: { id: true, invoiceNumber: true, invoiceDate: true, status: true, totalPremium: true } },
         },
       },
     },
@@ -155,6 +161,7 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
           quotationDate: (record.sourceQuotationDateSnapshot ?? record.createdAt).toISOString(),
         }
       : null,
+    relatedInvoice: pickRelatedInvoiceForDisplay(record.invoiceItems),
   };
 
   const customers = await prisma.customer.findMany({

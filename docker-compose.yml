@@ -39,6 +39,7 @@ services:
       PORT: "3000"
       QUOTATION_DOCUMENT_STORAGE_ROOT: /app-data/quotation-documents
       POLICY_DOCUMENT_STORAGE_ROOT: /app-data/policy-documents
+      INVOICE_DOCUMENT_STORAGE_ROOT: /app-data/invoices
     ports:
       - "127.0.0.1:3001:3000"
     volumes:
@@ -52,6 +53,10 @@ services:
       # quotation_documents_data above. See Dockerfile and
       # src/lib/policyDocuments/storage.ts.
       - policy_documents_data:/app-data/policy-documents
+      # Phase 4A generated Invoice workbooks — same reasoning/pattern as
+      # quotation_documents_data/policy_documents_data above. See Dockerfile
+      # and src/lib/invoiceDocuments/storage.ts.
+      - invoice_documents_data:/app-data/invoices
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -83,3 +88,4 @@ volumes:
   insurance_db_data:
   quotation_documents_data:
   policy_documents_data:
+  invoice_documents_data:

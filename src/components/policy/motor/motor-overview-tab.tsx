@@ -14,6 +14,7 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
 import { updateMotorOverviewAction } from "@/app/(app)/policy/motor/actions";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
@@ -194,6 +195,13 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
             <p className="text-secondary text-sm">{t.policy.noLinkedQuotation}</p>
           )}
         </Card>
+
+        <RelatedInvoiceCard
+          policyRecordId={detail.id}
+          businessStatus={detail.businessStatus}
+          hasPolicyNumber={!!detail.policyNumber}
+          relatedInvoice={detail.relatedInvoice}
+        />
 
         {detail.businessStatus !== "CANCELLED" && (
           <div className="flex justify-end">

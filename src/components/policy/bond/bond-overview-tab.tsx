@@ -14,6 +14,7 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
 import { updateBondOverviewAction } from "@/app/(app)/policy/bond/actions";
 import { BOND_TYPES } from "@/lib/policy/bondTypes";
 import type { BondDetail, CustomerOption, BondType } from "@/components/policy/types";
@@ -185,6 +186,13 @@ export function BondOverviewTab({ detail, customers }: { detail: BondDetail; cus
             <p className="text-secondary text-sm">{t.policy.noLinkedQuotation}</p>
           )}
         </Card>
+
+        <RelatedInvoiceCard
+          policyRecordId={detail.id}
+          businessStatus={detail.businessStatus}
+          hasPolicyNumber={!!detail.policyNumber}
+          relatedInvoice={detail.relatedInvoice}
+        />
 
         {detail.businessStatus !== "CANCELLED" && (
           <div className="flex justify-end">

@@ -14,6 +14,7 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
 import { updateWorkPermitOverviewAction } from "@/app/(app)/policy/work-permit/actions";
 import { WORK_PERMIT_TYPES } from "@/lib/policy/workPermitTypes";
 import type { WorkPermitDetail, CustomerOption, WorkPermitType } from "@/components/policy/types";
@@ -188,6 +189,13 @@ export function WorkPermitOverviewTab({ detail, customers }: { detail: WorkPermi
             <p className="text-secondary text-sm">{t.policy.noLinkedQuotation}</p>
           )}
         </Card>
+
+        <RelatedInvoiceCard
+          policyRecordId={detail.id}
+          businessStatus={detail.businessStatus}
+          hasPolicyNumber={!!detail.permitNumber}
+          relatedInvoice={detail.relatedInvoice}
+        />
 
         {detail.businessStatus !== "CANCELLED" && (
           <div className="flex justify-end">

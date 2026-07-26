@@ -41,7 +41,9 @@ export type PolicyActivityActionType =
   | "DOCUMENT_UPLOADED"
   | "DOCUMENT_DELETED"
   | "BALANCE_VERIFIED"
-  | "HISTORICAL_POLICY_IMPORTED";
+  | "HISTORICAL_POLICY_IMPORTED"
+  | "INVOICE_ISSUED"
+  | "INVOICE_CANCELLED";
 
 export type CustomerOption = {
   id: string;
@@ -150,6 +152,7 @@ export type MotorDetail = {
   // this isn't (i.e. the quotation existed at creation time but its relation
   // later went away).
   sourceQuotationSnapshot: SourceQuotationSnapshot | null;
+  relatedInvoice: RelatedInvoiceInfo | null;
 };
 
 // One row per Non-Motor PolicyRecord — mirrors MotorListRow's shape minus
@@ -214,6 +217,7 @@ export type NonMotorDetail = {
   activities: PolicyActivityRow[];
   sourceQuotation: SourceQuotationInfo | null;
   sourceQuotationSnapshot: SourceQuotationSnapshot | null;
+  relatedInvoice: RelatedInvoiceInfo | null;
 };
 
 // One row per Bond PolicyRecord — mirrors NonMotorListRow's shape with
@@ -278,6 +282,7 @@ export type BondDetail = {
   activities: PolicyActivityRow[];
   sourceQuotation: SourceQuotationInfo | null;
   sourceQuotationSnapshot: SourceQuotationSnapshot | null;
+  relatedInvoice: RelatedInvoiceInfo | null;
 };
 
 // One row per Work Permit PolicyRecord. Deliberately omits insurerName,
@@ -346,6 +351,7 @@ export type WorkPermitDetail = {
   activities: PolicyActivityRow[];
   sourceQuotation: SourceQuotationInfo | null;
   sourceQuotationSnapshot: SourceQuotationSnapshot | null;
+  relatedInvoice: RelatedInvoiceInfo | null;
 };
 
 export type SourceQuotationInfo = {
@@ -362,6 +368,20 @@ export type SourceQuotationSnapshot = {
   quotationNumber: string;
   revisionCode: string | null;
   quotationDate: string;
+};
+
+// Phase 4A: the most relevant Invoice linked to this Policy, if any — an
+// ISSUED Invoice always wins over a CANCELLED one (at most one ISSUED
+// Invoice can reference a given Policy at a time, enforced by
+// createInvoiceAction), falling back to the most recent CANCELLED one so
+// the "Related Invoice" card never hides that history (see this phase's
+// spec: a cancelled Invoice's info must still display, not disappear).
+export type RelatedInvoiceInfo = {
+  id: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  status: "ISSUED" | "CANCELLED";
+  totalPremium: string;
 };
 
 export type PolicyDocumentRow = {

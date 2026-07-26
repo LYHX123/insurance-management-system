@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasModuleAccess } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
+import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
 import { WorkPermitDetailView } from "@/components/policy/work-permit/work-permit-detail-view";
 import type { WorkPermitDetail, TransactionRow, PolicyDocumentRow, PolicyActivityRow } from "@/components/policy/types";
 
@@ -32,6 +33,11 @@ export default async function WorkPermitRecordDetailPage({ params }: { params: P
           grandTotal: true,
           customer: { select: { companyName: true } },
           project: { select: { projectName: true } },
+        },
+      },
+      invoiceItems: {
+        select: {
+          invoice: { select: { id: true, invoiceNumber: true, invoiceDate: true, status: true, totalPremium: true } },
         },
       },
     },
@@ -156,6 +162,7 @@ export default async function WorkPermitRecordDetailPage({ params }: { params: P
           quotationDate: (record.sourceQuotationDateSnapshot ?? record.createdAt).toISOString(),
         }
       : null,
+    relatedInvoice: pickRelatedInvoiceForDisplay(record.invoiceItems),
   };
 
   const customers = await prisma.customer.findMany({

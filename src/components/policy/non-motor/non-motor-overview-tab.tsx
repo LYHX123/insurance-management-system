@@ -14,6 +14,7 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
 import { updateNonMotorOverviewAction } from "@/app/(app)/policy/non-motor/actions";
 import { NON_MOTOR_COVER_TYPES } from "@/lib/policy/nonMotorCoverTypes";
 import type { NonMotorDetail, CustomerOption } from "@/components/policy/types";
@@ -174,6 +175,13 @@ export function NonMotorOverviewTab({ detail, customers }: { detail: NonMotorDet
             <p className="text-secondary text-sm">{t.policy.noLinkedQuotation}</p>
           )}
         </Card>
+
+        <RelatedInvoiceCard
+          policyRecordId={detail.id}
+          businessStatus={detail.businessStatus}
+          hasPolicyNumber={!!detail.policyNumber}
+          relatedInvoice={detail.relatedInvoice}
+        />
 
         {detail.businessStatus !== "CANCELLED" && (
           <div className="flex justify-end">

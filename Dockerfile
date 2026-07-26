@@ -24,6 +24,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 
+# Both the Quotation (templates/quotation) and Invoice (templates/inovice)
+# Excel template engines read their template file at runtime via
+# path.join(process.cwd(), "templates/...") — a dynamic path Next.js's
+# standalone-output file tracer cannot always resolve statically, so this
+# directory is copied explicitly rather than relying on trace-based
+# inclusion alone.
+COPY --from=builder /app/templates ./templates
+
 RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 
 # Phase 2 underwriting documents — outside /app (the source tree) on
@@ -38,6 +46,12 @@ RUN mkdir -p /app-data/quotation-documents && chown -R nextjs:nodejs /app-data/q
 # mounted here in docker-compose.yml (policy_documents_data) takes over this
 # directory at container start.
 RUN mkdir -p /app-data/policy-documents && chown -R nextjs:nodejs /app-data/policy-documents
+
+# Phase 4A generated Invoice workbooks — same reasoning as the two
+# directories above (see src/lib/invoiceDocuments/storage.ts). The named
+# volume mounted here in docker-compose.yml (invoice_documents_data) takes
+# over this directory at container start.
+RUN mkdir -p /app-data/invoices && chown -R nextjs:nodejs /app-data/invoices
 
 USER nextjs
 
