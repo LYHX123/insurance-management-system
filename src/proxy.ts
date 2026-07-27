@@ -37,11 +37,9 @@ export default auth((req) => {
   if (isLoggedIn) {
     const moduleKey = moduleKeyFromPathname(pathname);
 
-    if (moduleKey === "users") {
-      if (!isAdmin(user)) {
-        return NextResponse.redirect(new URL(fallbackPath(), req.nextUrl));
-      }
-    } else if (moduleKey && !hasMenuAccess(user, moduleKey)) {
+    // hasMenuAccess already treats "users" and "settings" as admin-only
+    // (see src/lib/permissions.ts), so this single check covers both.
+    if (moduleKey && !hasMenuAccess(user, moduleKey)) {
       return NextResponse.redirect(new URL(fallbackPath(), req.nextUrl));
     } else if (moduleKey) {
       // Direct-URL guard for Policy/Ledger/Task & Claim sub-categories (e.g.

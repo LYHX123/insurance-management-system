@@ -1,0 +1,31 @@
+-- CreateTable
+CREATE TABLE "SystemSettings" (
+    "id" TEXT NOT NULL,
+    "companyName" TEXT,
+    "pinNumber" TEXT,
+    "phoneNumber" TEXT,
+    "email" TEXT,
+    "address" TEXT,
+    "website" TEXT,
+    "logoStorageKey" TEXT,
+    "logoMimeType" TEXT,
+    "defaultCurrency" TEXT NOT NULL DEFAULT 'KES',
+    "defaultTimezone" TEXT NOT NULL DEFAULT 'Africa/Nairobi',
+    "dateFormat" TEXT NOT NULL DEFAULT 'DD/MM/YYYY',
+    "timeFormat" TEXT NOT NULL DEFAULT '12H',
+    "defaultLanguage" "Locale" NOT NULL DEFAULT 'en',
+    "recordsPerPage" INTEGER NOT NULL DEFAULT 25,
+    "policyRemindersEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "motorPolicyReminderDays" INTEGER NOT NULL DEFAULT 7,
+    "otherPolicyReminderDays" INTEGER NOT NULL DEFAULT 15,
+    "dailyTaskRemindersEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "dailyTaskReminderDays" INTEGER NOT NULL DEFAULT 2,
+    "claimRemindersEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "claimReminderDays" INTEGER NOT NULL DEFAULT 3,
+    "loginReminderPopupEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "updatedById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SystemSettings_pkey" PRIMARY KEY ("id")
+);

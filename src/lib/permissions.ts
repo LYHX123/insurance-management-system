@@ -117,10 +117,18 @@ export const MENU_KEYS = [
 
 export type MenuKey = (typeof MENU_KEYS)[number];
 
-// Which detailed permission keys grant visibility for each menu item.
-// "users" has no entry: it is never satisfied via this map (isAdmin-only).
+// Menus that are never granted through the stored permissions array, no
+// matter what it contains — access is isAdmin-only. "users" always has
+// been; "settings" joined it in the reminders/Settings phase (the
+// `settings` permission key is kept in ALL_PERMISSION_KEYS purely for
+// database/back-compat with rows that already have it stored — it is
+// simply never consulted for access anymore, see hasMenuAccess below).
+const ADMIN_ONLY_MENU_KEYS = new Set<MenuKey>(["users", "settings"]);
+
+// Which detailed permission keys grant visibility for each non-admin-only
+// menu item.
 export const MENU_PERMISSION_KEYS: Record<
-  Exclude<MenuKey, "users">,
+  Exclude<MenuKey, "users" | "settings">,
   readonly PermissionKey[]
 > = {
   dashboard: ["dashboard"],
@@ -130,7 +138,6 @@ export const MENU_PERMISSION_KEYS: Record<
   policy: POLICY_PERMISSION_KEYS,
   ledger: LEDGER_PERMISSION_KEYS,
   task: TASK_PERMISSION_KEYS,
-  settings: ["settings"],
 };
 
 export function isMenuKey(value: string): value is MenuKey {
@@ -143,8 +150,9 @@ export function hasMenuAccess(
 ): boolean {
   if (!isActiveUser(user)) return false;
   if (isAdmin(user)) return true;
-  if (menuKey === "users") return false;
-  return MENU_PERMISSION_KEYS[menuKey].some((k) => user!.permissions.includes(k));
+  if (ADMIN_ONLY_MENU_KEYS.has(menuKey)) return false;
+  const keys = MENU_PERMISSION_KEYS[menuKey as Exclude<MenuKey, "users" | "settings">];
+  return keys.some((k) => user!.permissions.includes(k));
 }
 
 export function firstAccessibleMenu(
@@ -152,7 +160,7 @@ export function firstAccessibleMenu(
 ): MenuKey | null {
   if (isAdmin(user)) return "dashboard";
   return (
-    MENU_KEYS.find((key) => key !== "users" && hasMenuAccess(user, key)) ??
+    MENU_KEYS.find((key) => !ADMIN_ONLY_MENU_KEYS.has(key) && hasMenuAccess(user, key)) ??
     null
   );
 }
@@ -234,11 +242,14 @@ export function firstAccessibleCategorySlug(
 // ---------------------------------------------------------------------------
 
 export type PermissionGroupConfig = {
-  menuKey: Exclude<MenuKey, "users">;
+  menuKey: Exclude<MenuKey, "users" | "settings">;
   standalone: boolean;
   children: readonly PermissionKey[];
 };
 
+// "settings" is deliberately absent — Settings is ADMIN-only (see
+// ADMIN_ONLY_MENU_KEYS above); showing a checkbox for it here would imply a
+// non-admin selection could grant access, which it no longer can.
 export const PERMISSION_GROUPS: readonly PermissionGroupConfig[] = [
   { menuKey: "dashboard", standalone: true, children: ["dashboard"] },
   { menuKey: "customer", standalone: true, children: ["customer"] },
@@ -247,5 +258,4 @@ export const PERMISSION_GROUPS: readonly PermissionGroupConfig[] = [
   { menuKey: "policy", standalone: false, children: POLICY_PERMISSION_KEYS },
   { menuKey: "ledger", standalone: false, children: LEDGER_PERMISSION_KEYS },
   { menuKey: "task", standalone: false, children: TASK_PERMISSION_KEYS },
-  { menuKey: "settings", standalone: true, children: ["settings"] },
 ];

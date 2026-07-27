@@ -35,6 +35,56 @@ model User {
   updatedAt         DateTime   @updatedAt
 }
 
+// Singleton application configuration — Settings module (Company
+// Information / System Preferences / Reminder Settings), ADMIN-only.
+// Enforced as a true singleton by using a fixed, known id ("singleton")
+// rather than a generated one: every read/write targets
+// `where: { id: SYSTEM_SETTINGS_ID }`, so a second row can never be
+// accidentally created (see src/lib/settings/service.ts).
+model SystemSettings {
+  id String @id
+
+  // --- Company Information --------------------------------------------
+  companyName String?
+  pinNumber   String?
+  phoneNumber String?
+  email       String?
+  address     String?
+  website     String?
+  // Local-storage key under the existing uploads root (see
+  // src/lib/storage) — never a raw filesystem path, mirroring every other
+  // document/upload model in this schema (e.g. CustomerDocument.storageKey).
+  logoStorageKey String?
+  logoMimeType   String?
+
+  // --- System Preferences ------------------------------------------------
+  // Free-text (not enums) validated against a small allowlist at the app
+  // layer (see src/lib/settings/constants.ts) — consistent with this
+  // schema's existing convention for open-but-validated lists (see e.g.
+  // MotorPolicyDetail.insuranceType's doc comment) rather than forcing a
+  // migration for every future currency/format option.
+  defaultCurrency String @default("KES")
+  defaultTimezone String @default("Africa/Nairobi")
+  dateFormat      String @default("DD/MM/YYYY")
+  timeFormat      String @default("12H")
+  defaultLanguage Locale @default(en)
+  recordsPerPage  Int    @default(25)
+
+  // --- Reminder Settings ---------------------------------------------
+  policyRemindersEnabled    Boolean @default(true)
+  motorPolicyReminderDays   Int     @default(7)
+  otherPolicyReminderDays   Int     @default(15)
+  dailyTaskRemindersEnabled Boolean @default(true)
+  dailyTaskReminderDays     Int     @default(2)
+  claimRemindersEnabled     Boolean @default(true)
+  claimReminderDays         Int     @default(3)
+  loginReminderPopupEnabled Boolean @default(true)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 enum CustomerStatus {
   ACTIVE
   INACTIVE

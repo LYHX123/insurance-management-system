@@ -4,6 +4,7 @@ import { signOut } from "next-auth/react";
 import { LogOut } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { RemindersWidget } from "@/components/reminders/reminders-widget";
 
 export function Topbar({
   fullName,
@@ -21,6 +22,7 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-4">
+        <RemindersWidget />
         <div className="text-right">
           <p className="text-sm font-medium text-zinc-800">{fullName}</p>
           <p className="text-xs text-zinc-500">{role}</p>
