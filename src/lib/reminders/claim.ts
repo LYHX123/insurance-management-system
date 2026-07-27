@@ -4,18 +4,24 @@ import type { ReminderItem } from "./types";
 
 // Both Motor Claim and Non-Motor Claim are participant-scoped (see
 // src/lib/claims/access.ts) — reminders must retain that restriction in
-// addition to the claim.motor/claim.non_motor permission (Part 12.8).
+// addition to the claim.motor/claim.non_motor permission (Part 12.8). Pass
+// `null` for `participantUserId` to bypass this restriction (ADMIN sees
+// every qualifying claim regardless of personal participation).
 // ClaimStatus only has OPEN/CLOSED in this schema (no separate
 // SETTLED/REJECTED/WITHDRAWN values) — CLOSED is the only excluded status.
 
 export async function getMotorClaimReminders(
-  userId: string,
+  participantUserId: string | null,
   thresholdDays: number,
   timeZone: string,
   now: Date = new Date()
 ): Promise<ReminderItem[]> {
   const claims = await prisma.motorClaim.findMany({
-    where: { status: "OPEN", deletedAt: null, participants: { some: { userId } } },
+    where: {
+      status: "OPEN",
+      deletedAt: null,
+      ...(participantUserId ? { participants: { some: { userId: participantUserId } } } : {}),
+    },
     select: {
       id: true,
       claimNumber: true,
@@ -69,13 +75,17 @@ export async function getMotorClaimReminders(
 }
 
 export async function getNonMotorClaimReminders(
-  userId: string,
+  participantUserId: string | null,
   thresholdDays: number,
   timeZone: string,
   now: Date = new Date()
 ): Promise<ReminderItem[]> {
   const claims = await prisma.nonMotorClaim.findMany({
-    where: { status: "OPEN", deletedAt: null, participants: { some: { userId } } },
+    where: {
+      status: "OPEN",
+      deletedAt: null,
+      ...(participantUserId ? { participants: { some: { userId: participantUserId } } } : {}),
+    },
     select: {
       id: true,
       claimNumber: true,

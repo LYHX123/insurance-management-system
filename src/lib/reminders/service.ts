@@ -12,7 +12,10 @@ const SEVERITY_ORDER: Record<ReminderSeverity, number> = {
   inactivity: 3,
 };
 
-function sortReminders(items: ReminderItem[]): ReminderItem[] {
+// Exported so the Dashboard's Attention Required section (src/lib/dashboard)
+// can combine reminder arrays it fetches directly with the exact same
+// ordering, rather than re-implementing this sort a second time.
+export function sortReminders(items: ReminderItem[]): ReminderItem[] {
   return [...items].sort((a, b) => {
     const tierDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
     if (tierDiff !== 0) return tierDiff;
@@ -62,16 +65,21 @@ export async function getRemindersForUser(user: AuthzUser & { id: string }): Pro
     }
   }
 
+  // ADMIN bypasses participant scoping entirely (sees every qualifying
+  // task/claim, not just ones they personally participate in) — non-admin
+  // stays restricted to their own participant rows (Part 12.8).
+  const participantScope = admin ? null : user.id;
+
   if (settings.dailyTaskRemindersEnabled && (admin || hasPermission(user, "task.daily_task"))) {
-    tasks.push(getDailyTaskReminders(user.id, settings.dailyTaskReminderDays, timeZone, now));
+    tasks.push(getDailyTaskReminders(participantScope, settings.dailyTaskReminderDays, timeZone, now));
   }
 
   if (settings.claimRemindersEnabled) {
     if (admin || hasPermission(user, "claim.motor")) {
-      tasks.push(getMotorClaimReminders(user.id, settings.claimReminderDays, timeZone, now));
+      tasks.push(getMotorClaimReminders(participantScope, settings.claimReminderDays, timeZone, now));
     }
     if (admin || hasPermission(user, "claim.non_motor")) {
-      tasks.push(getNonMotorClaimReminders(user.id, settings.claimReminderDays, timeZone, now));
+      tasks.push(getNonMotorClaimReminders(participantScope, settings.claimReminderDays, timeZone, now));
     }
   }
 

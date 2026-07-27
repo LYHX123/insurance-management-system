@@ -5,9 +5,13 @@ import type { ReminderItem } from "./types";
 // Daily Task is participant-scoped (see src/lib/task/access.ts's
 // checkTaskAccess) — reminders must retain that restriction in addition to
 // the task.daily_task permission (Part 12.8), so the query itself is
-// already narrowed to tasks the given user participates in.
+// already narrowed to tasks the given user participates in. Pass `null` for
+// `participantUserId` to bypass this restriction entirely — used for ADMIN,
+// who sees every qualifying task regardless of personal participation (the
+// Dashboard/reminders spec's "ADMIN sees all" applies to participation
+// scoping too, not just the module permission itself).
 export async function getDailyTaskReminders(
-  userId: string,
+  participantUserId: string | null,
   thresholdDays: number,
   timeZone: string,
   now: Date = new Date()
@@ -17,7 +21,7 @@ export async function getDailyTaskReminders(
       category: "DAILY_TASK",
       status: "ACTIVE",
       deletedAt: null,
-      participants: { some: { userId } },
+      ...(participantUserId ? { participants: { some: { userId: participantUserId } } } : {}),
     },
     select: {
       id: true,
