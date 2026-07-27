@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import {
   POLICY_FOR_INVOICE_INCLUDE,
   checkPolicyInvoiceEligibility,
@@ -27,7 +27,7 @@ export default async function NewInvoicePage({
   searchParams: Promise<{ fromPolicyId?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "invoice")) {
+  if (!session?.user || !hasPermission(session.user, "invoice")) {
     redirect("/access-denied");
   }
 

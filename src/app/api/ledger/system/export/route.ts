@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { getSystemLedgerRecords, type SystemLedgerRecord } from "@/lib/ledger/systemRecords";
 
 const MONEY_FORMAT = '_ * #,##0.00_ ;_ * -#,##0.00_ ;_ * "-"??_ ;_ @_ ';
@@ -37,7 +37,7 @@ function rowTypeLabel(r: SystemLedgerRecord): string {
 // entirely in memory (ExcelJS buffer); nothing is ever written to disk.
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "ledger")) {
+  if (!session?.user || !hasPermission(session.user, "ledger.system_record")) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 

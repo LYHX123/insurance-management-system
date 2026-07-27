@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { checkMotorClaimAccess } from "@/lib/claims/access";
 import { generateMotorClaimNumber } from "@/lib/claims/motorClaimNumber";
 import { isMotorClaimNature, isMotorClaimProgress, type MotorClaimNatureValue, type MotorClaimProgressValue } from "@/lib/claims/enums";
@@ -18,7 +18,7 @@ const CONTENT_MAX_LENGTH = 4000;
 
 async function requireTaskPermission() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "task")) return null;
+  if (!session?.user || !hasPermission(session.user, "claim.motor")) return null;
   return session;
 }
 

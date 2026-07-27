@@ -19,7 +19,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import "dotenv/config";
-import { ALL_MODULE_KEYS } from "../src/lib/permissions";
+import { ALL_PERMISSION_KEYS } from "../src/lib/permissions";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -40,7 +40,7 @@ async function main() {
   const updated = await prisma.user.update({
     where: { username: "admin" },
     data: {
-      permissions: ALL_MODULE_KEYS,
+      permissions: [...ALL_PERMISSION_KEYS],
       status: "ACTIVE",
     },
   });

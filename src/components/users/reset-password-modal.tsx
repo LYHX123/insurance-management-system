@@ -19,15 +19,28 @@ export function ResetPasswordModal({
 }) {
   const { t } = useLocale();
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const MIN_PASSWORD_LENGTH = 8;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!newPassword) {
+    if (!newPassword || !confirmPassword) {
       setError(t.users.requiredField);
+      return;
+    }
+
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(t.users.passwordTooShort);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError(t.users.passwordMismatch);
       return;
     }
 
@@ -36,7 +49,11 @@ export function ResetPasswordModal({
     setIsSubmitting(false);
 
     if (!result.success) {
-      setError(t.login.genericError);
+      setError(
+        result.error === "PASSWORD_TOO_SHORT"
+          ? t.users.passwordTooShort
+          : t.login.genericError
+      );
       return;
     }
 
@@ -51,6 +68,15 @@ export function ResetPasswordModal({
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
+            required
+          />
+        </FormField>
+
+        <FormField label={t.users.confirmPassword}>
+          <Input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
             required
           />
         </FormField>

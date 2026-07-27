@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type ExcelJS from "exceljs";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import {
   exportQuotationExcel,
   type QuotationExportData,
@@ -18,7 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "quotation")) {
+  if (!session?.user || !hasPermission(session.user, "quotation")) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 

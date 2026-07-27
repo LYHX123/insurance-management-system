@@ -1,13 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { InvoiceDetailView } from "@/components/invoice/invoice-detail-view";
 import type { InvoiceDetail } from "@/components/invoice/types";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "invoice")) {
+  if (!session?.user || !hasPermission(session.user, "invoice")) {
     redirect("/access-denied");
   }
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
@@ -30,7 +30,7 @@ type ActionResult<T = object> = ({ success: true } & T) | { success: false; erro
 // policy/motor/import/actions.ts's own requirePolicyPermission).
 async function requirePolicyPermission() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) return null;
+  if (!session?.user || !hasPermission(session.user, "policy.non_motor")) return null;
   return session;
 }
 

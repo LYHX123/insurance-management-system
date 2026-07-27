@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { CustomerDetailView } from "@/components/customers/customer-detail";
 
 export default async function CustomerDetailPage({
@@ -10,7 +10,7 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "customer")) {
+  if (!session?.user || !hasPermission(session.user, "customer")) {
     redirect("/access-denied");
   }
 

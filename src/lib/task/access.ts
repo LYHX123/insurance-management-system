@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import type { TaskStatus } from "@/generated/prisma/enums";
 
 export type TaskAuthResult =
@@ -19,7 +19,7 @@ export type TaskAuthResult =
 // id even exists (see Part D.9 / Part N.45).
 export async function checkTaskAccess(taskId: string): Promise<TaskAuthResult> {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "task")) {
+  if (!session?.user || !hasPermission(session.user, "task.daily_task")) {
     return { kind: "no-module-access" };
   }
 

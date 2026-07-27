@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { NON_MOTOR_STANDARD_HEADERS } from "@/lib/policy/nonMotorImportParser";
 
 // Authenticated download of a blank standard-columns template for the
@@ -10,7 +10,7 @@ import { NON_MOTOR_STANDARD_HEADERS } from "@/lib/policy/nonMotorImportParser";
 // out of sync with nonMotorImportParser.ts's actual recognized columns.
 export async function GET() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.non_motor")) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 

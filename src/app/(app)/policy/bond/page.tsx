@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { BondListTable } from "@/components/policy/bond/bond-list-table";
 import type { BondListRow } from "@/components/policy/types";
 
 export default async function BondPolicyListPage() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.bond")) {
     redirect("/access-denied");
   }
 

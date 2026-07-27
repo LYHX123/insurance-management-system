@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { CreateMotorRecordForm } from "@/components/policy/motor/create-motor-record-form";
 import type { CreateMotorRecordPrefill } from "@/components/policy/motor/create-motor-record-form";
 
@@ -23,7 +23,7 @@ export default async function NewMotorRecordPage({
   searchParams: Promise<{ fromQuotationId?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.motor")) {
     redirect("/access-denied");
   }
 

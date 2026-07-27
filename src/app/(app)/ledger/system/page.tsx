@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { getSystemLedgerRecords } from "@/lib/ledger/systemRecords";
 import { SystemLedgerTable } from "@/components/ledger/system-ledger-table";
 
 export default async function LedgerSystemPage() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "ledger")) {
+  if (!session?.user || !hasPermission(session.user, "ledger.system_record")) {
     redirect("/access-denied");
   }
 

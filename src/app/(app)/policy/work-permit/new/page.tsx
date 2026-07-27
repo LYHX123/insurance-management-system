@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { CreateWorkPermitRecordForm } from "@/components/policy/work-permit/create-work-permit-record-form";
 import type { CreateWorkPermitRecordPrefill } from "@/components/policy/work-permit/create-work-permit-record-form";
 
@@ -11,7 +11,7 @@ export default async function NewWorkPermitRecordPage({
   searchParams: Promise<{ fromQuotationId?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.work_permit")) {
     redirect("/access-denied");
   }
 

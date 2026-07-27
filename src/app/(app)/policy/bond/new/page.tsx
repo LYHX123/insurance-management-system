@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { CreateBondRecordForm } from "@/components/policy/bond/create-bond-record-form";
 import type { CreateBondRecordPrefill } from "@/components/policy/bond/create-bond-record-form";
 import { BOND_QUOTATION_SECTION_KINDS, QUOTATION_SECTION_KIND_TO_BOND_TYPE } from "@/lib/policy/bondTypes";
@@ -12,7 +12,7 @@ export default async function NewBondRecordPage({
   searchParams: Promise<{ fromQuotationId?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.bond")) {
     redirect("/access-denied");
   }
 

@@ -14,6 +14,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { deleteUserAction, toggleUserStatusAction } from "@/app/(app)/users/actions";
 import { Badge } from "@/components/ui/badge";
+import { isAdminRole } from "@/lib/permissions";
+import { permissionLabel } from "@/components/users/permissionLabel";
 import type { UserRow } from "@/components/users/types";
 
 type ModalState =
@@ -39,6 +41,10 @@ export function UsersTable({
   const [isTogglingId, setIsTogglingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const activeAdminCount = users.filter(
+    (u) => u.status === "ACTIVE" && isAdminRole(u.role)
+  ).length;
+
   const dateFormatter = new Intl.DateTimeFormat(
     locale === "zh" ? "zh-CN" : "en-US",
     { dateStyle: "medium", timeStyle: "short" }
@@ -60,6 +66,8 @@ export function UsersTable({
     if (result.success) {
       setMessage(t.users.statusChangeSuccess);
       router.refresh();
+    } else if (result.error === "LAST_ADMIN_DISABLE_BLOCKED") {
+      setMessage(t.users.lastAdminDisableBlocked);
     }
   };
 
@@ -70,6 +78,9 @@ export function UsersTable({
     setIsDeleting(false);
     if (result.success) {
       handleSuccess(t.users.deleteSuccess);
+    } else if (result.error === "LAST_ADMIN_DELETE_BLOCKED") {
+      setModal(null);
+      setMessage(t.users.lastAdminDeleteBlocked);
     }
   };
 
@@ -98,7 +109,6 @@ export function UsersTable({
         <Table className="min-w-[1040px]">
           <thead>
             <tr>
-              <th>{t.users.username}</th>
               <th>{t.users.fullName}</th>
               <th>{t.users.role}</th>
               <th>{t.users.phoneNumber}</th>
@@ -111,10 +121,13 @@ export function UsersTable({
           </thead>
           <tbody>
             {users.length === 0 && (
-              <TableEmpty colSpan={9}>{t.users.noUsers}</TableEmpty>
+              <TableEmpty colSpan={8}>{t.users.noUsers}</TableEmpty>
             )}
             {users.map((user) => {
               const isSelf = user.id === currentUserId;
+              const isAdmin = isAdminRole(user.role);
+              const isLastActiveAdmin =
+                isAdmin && user.status === "ACTIVE" && activeAdminCount <= 1;
               const shownPermissions = user.permissions.slice(
                 0,
                 PERMISSIONS_PREVIEW_COUNT
@@ -124,25 +137,38 @@ export function UsersTable({
               return (
                 <tr key={user.id}>
                   <td className="font-medium text-zinc-800">
-                    {user.username}
+                    {user.fullName}
                   </td>
-                  <td>{user.fullName}</td>
                   <td>{user.role}</td>
                   <td className="text-zinc-500">
                     {user.phoneNumber || "—"}
                   </td>
                   <td>
                     <div className="flex flex-wrap items-center gap-1">
-                      {user.permissions.length === 0 && (
-                        <span className="text-zinc-400">—</span>
-                      )}
-                      {shownPermissions.map((key) => (
-                        <Badge key={key} tone="brand">
-                          {t.sidebar[key as keyof typeof t.sidebar] ?? key}
-                        </Badge>
-                      ))}
-                      {remainingCount > 0 && (
-                        <Badge tone="neutral">+{remainingCount}</Badge>
+                      {isAdmin ? (
+                        <Badge tone="brand">{t.users.fullAccess}</Badge>
+                      ) : (
+                        <>
+                          {user.permissions.length === 0 && (
+                            <span className="text-zinc-400">—</span>
+                          )}
+                          {shownPermissions.map((key) => (
+                            <Badge key={key} tone="brand">
+                              {permissionLabel(t, key)}
+                            </Badge>
+                          ))}
+                          {remainingCount > 0 && (
+                            <Badge
+                              tone="neutral"
+                              title={user.permissions
+                                .slice(PERMISSIONS_PREVIEW_COUNT)
+                                .map((key) => permissionLabel(t, key))
+                                .join(", ")}
+                            >
+                              +{remainingCount}
+                            </Badge>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>
@@ -183,7 +209,11 @@ export function UsersTable({
                             ? t.users.disable
                             : t.users.enable
                         }
-                        disabled={isSelf || isTogglingId === user.id}
+                        disabled={
+                          isSelf ||
+                          isTogglingId === user.id ||
+                          (user.status === "ACTIVE" && isLastActiveAdmin)
+                        }
                         onClick={() => handleToggleStatus(user)}
                       >
                         {user.status === "ACTIVE" ? (
@@ -195,7 +225,7 @@ export function UsersTable({
                       <IconButton
                         tone="danger"
                         title={t.common.delete}
-                        disabled={isSelf}
+                        disabled={isSelf || isLastActiveAdmin}
                         onClick={() => setModal({ type: "delete", user })}
                       >
                         <Trash2 size={16} />
@@ -212,7 +242,6 @@ export function UsersTable({
       {(modal?.type === "create" || modal?.type === "edit") && (
         <UserFormModal
           user={modal.type === "edit" ? modal.user : null}
-          isSelf={modal.type === "edit" && modal.user.id === currentUserId}
           onClose={() => setModal(null)}
           onSuccess={handleSuccess}
         />

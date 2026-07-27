@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { getQuotationDetailData } from "@/lib/quotationRevisions/getQuotationDetail";
 import { QuotationDetailView } from "@/components/quotations/quotation-detail";
@@ -11,7 +11,7 @@ export default async function QuotationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "quotation")) {
+  if (!session?.user || !hasPermission(session.user, "quotation")) {
     redirect("/access-denied");
   }
 

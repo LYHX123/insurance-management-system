@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { generateQuotationNumber } from "@/lib/quotation-utils";
 import {
   calculateCoverageItemPremium,
@@ -391,7 +391,7 @@ export type QuotationInput = {
 
 async function requireQuotationPermission() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "quotation")) {
+  if (!session?.user || !hasPermission(session.user, "quotation")) {
     return null;
   }
   return session;

@@ -1,14 +1,14 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { getImportBatchSummaryAction } from "@/app/(app)/policy/non-motor/import/actions";
 import { ImportPreviewTable } from "@/components/policy/non-motor/import-preview-table";
 import type { NonMotorImportPreviewRowData } from "@/components/policy/non-motor/import-preview-table";
 
 export default async function NonMotorImportPreviewPage({ params }: { params: Promise<{ batchId: string }> }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.non_motor")) {
     redirect("/access-denied");
   }
 

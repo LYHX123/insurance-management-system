@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { QuotationCaseView } from "@/components/quotations/quotation-case-view";
 
 export default async function QuotationCasePage({
@@ -10,7 +10,7 @@ export default async function QuotationCasePage({
   params: Promise<{ caseId: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "quotation")) {
+  if (!session?.user || !hasPermission(session.user, "quotation")) {
     redirect("/access-denied");
   }
 

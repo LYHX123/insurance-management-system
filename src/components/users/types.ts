@@ -1,6 +1,5 @@
 export type UserRow = {
   id: string;
-  username: string;
   fullName: string;
   role: string;
   phoneNumber: string | null;

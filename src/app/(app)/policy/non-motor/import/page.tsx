@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { ImportUploadForm } from "@/components/policy/non-motor/import-upload-form";
 
 export default async function NonMotorImportUploadPage() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.non_motor")) {
     redirect("/access-denied");
   }
 

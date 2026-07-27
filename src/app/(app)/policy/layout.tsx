@@ -1,45 +1,26 @@
-"use client";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
+import { PolicyTabs, type PolicyTabKey } from "@/components/policy/policy-tabs";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useLocale } from "@/i18n/locale-provider";
-import { PageHeader } from "@/components/ui/page-header";
-
-// Shared shell for every Policy category — only Motor has real content in
-// Phase 1A (see the Motor pages under ./motor); Non-Motor/Bond/Work Permit
-// render ComingSoon until their own phases land, but the tab bar itself is
-// built for all four now so adding a category later is just a new route.
-const CATEGORY_TABS = [
-  { href: "/policy/motor", key: "tabMotor" as const },
-  { href: "/policy/non-motor", key: "tabNonMotor" as const },
-  { href: "/policy/bond", key: "tabBond" as const },
-  { href: "/policy/work-permit", key: "tabWorkPermit" as const },
+// Only Motor has real content in Phase 1A (see the Motor pages under
+// ./motor); Non-Motor/Bond/Work Permit render ComingSoon until their own
+// phases land, but the tab bar itself is built for all four now so adding a
+// category later is just a new route. Each tab is additionally gated on the
+// viewer's detailed Policy permission (Part 6: "show only the sections the
+// user may access") — a server component so the filtering is never just
+// hidden client-side.
+const ALL_CATEGORY_TABS: { href: string; key: PolicyTabKey; permission: Parameters<typeof hasPermission>[1] }[] = [
+  { href: "/policy/motor", key: "tabMotor", permission: "policy.motor" },
+  { href: "/policy/non-motor", key: "tabNonMotor", permission: "policy.non_motor" },
+  { href: "/policy/bond", key: "tabBond", permission: "policy.bond" },
+  { href: "/policy/work-permit", key: "tabWorkPermit", permission: "policy.work_permit" },
 ];
 
-export default function PolicyLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const { t } = useLocale();
+export default async function PolicyLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+  const visibleTabs = ALL_CATEGORY_TABS.filter((tab) =>
+    hasPermission(session?.user, tab.permission)
+  ).map(({ href, key }) => ({ href, key }));
 
-  return (
-    <div className="flex flex-col gap-section">
-      <PageHeader title={t.policy.title} />
-      <div className="flex gap-6 border-b border-zinc-200">
-        {CATEGORY_TABS.map((tab) => {
-          const isActive = pathname === tab.href || pathname.startsWith(tab.href + "/");
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
-                isActive ? "border-emerald-700 text-emerald-800" : "border-transparent text-zinc-500 hover:text-zinc-800"
-              }`}
-            >
-              {t.policy[tab.key]}
-            </Link>
-          );
-        })}
-      </div>
-      {children}
-    </div>
-  );
+  return <PolicyTabs tabs={visibleTabs}>{children}</PolicyTabs>;
 }

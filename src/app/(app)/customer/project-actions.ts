@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { isValidKenyanPhone } from "@/lib/validators";
 import { storageService } from "@/lib/storage";
 import type { ProjectStatus } from "@/generated/prisma/enums";
@@ -19,7 +19,7 @@ export type ProjectInput = {
 
 async function requireCustomerPermission() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "customer")) {
+  if (!session?.user || !hasPermission(session.user, "customer")) {
     return null;
   }
   return session;

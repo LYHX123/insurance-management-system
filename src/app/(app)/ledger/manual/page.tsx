@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { ManualLedgerTable } from "@/components/ledger/manual-ledger-table";
 import type { ManualEntryRow, LedgerCategoryOption } from "@/components/ledger/types";
 
 export default async function LedgerManualPage() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "ledger")) {
+  if (!session?.user || !hasPermission(session.user, "ledger.manual_record")) {
     redirect("/access-denied");
   }
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { checkTaskAccess } from "@/lib/task/access";
 import { isTaskCategorySlug, SLUG_TO_CATEGORY, type TaskCategorySlug } from "@/lib/task/category";
 
@@ -35,7 +35,7 @@ export type CreateTaskInput = {
 
 export async function createTaskAction(input: CreateTaskInput): Promise<ActionResult<{ id: string; categorySlug: TaskCategorySlug }>> {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "task")) {
+  if (!session?.user || !hasPermission(session.user, "task.daily_task")) {
     return { success: false, error: "FORBIDDEN" };
   }
 

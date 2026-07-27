@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { policyDocumentStorage } from "@/lib/policyDocuments/storage";
 import { validateUploadedFile } from "@/lib/policyDocuments/validateUpload";
 import { generateStoredFileName } from "@/lib/policyDocuments/constants";
@@ -17,7 +17,7 @@ const DOCUMENT_TYPES = Object.values(PolicyDocumentType);
 
 async function requirePolicyPermission() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) return null;
+  if (!session?.user || !hasPermission(session.user, "policy.motor")) return null;
   return session;
 }
 

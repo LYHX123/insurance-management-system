@@ -40,7 +40,7 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="form-stack">
-      <FormField label={t.login.username} htmlFor="username">
+      <FormField label={t.login.fullName} htmlFor="username">
         <Input
           id="username"
           name="username"

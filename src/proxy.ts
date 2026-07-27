@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import {
-  firstAccessibleModule,
-  hasModuleAccess,
+  firstAccessibleMenu,
+  hasMenuAccess,
+  hasPermission,
+  isAdmin,
   moduleKeyFromPathname,
+  subPermissionForPathname,
 } from "@/lib/permissions";
 
 export default auth((req) => {
-  const isLoggedIn = !!req.auth;
+  const user = req.auth?.user;
+  const isLoggedIn = !!user;
   const { pathname } = req.nextUrl;
-  const permissions = req.auth?.user?.permissions ?? [];
 
   const isLoginPage = pathname === "/login";
 
@@ -17,19 +20,38 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/login", req.nextUrl));
   }
 
+  // Where to send a logged-in user who just hit a route they cannot access:
+  // Dashboard if they have it, otherwise their first accessible module,
+  // otherwise the terminal Unauthorized page. Never loops: /access-denied
+  // itself is not a recognized module key, so it is never re-redirected.
+  const fallbackPath = () => {
+    if (hasPermission(user, "dashboard") || isAdmin(user)) return "/dashboard";
+    const first = firstAccessibleMenu(user);
+    return first ? `/${first}` : "/access-denied";
+  };
+
   if (isLoggedIn && isLoginPage) {
-    const target = hasModuleAccess(permissions, "dashboard")
-      ? "dashboard"
-      : firstAccessibleModule(permissions);
-    return NextResponse.redirect(
-      new URL(target ? `/${target}` : "/access-denied", req.nextUrl)
-    );
+    return NextResponse.redirect(new URL(fallbackPath(), req.nextUrl));
   }
 
   if (isLoggedIn) {
     const moduleKey = moduleKeyFromPathname(pathname);
-    if (moduleKey && !hasModuleAccess(permissions, moduleKey)) {
-      return NextResponse.redirect(new URL("/access-denied", req.nextUrl));
+
+    if (moduleKey === "users") {
+      if (!isAdmin(user)) {
+        return NextResponse.redirect(new URL(fallbackPath(), req.nextUrl));
+      }
+    } else if (moduleKey && !hasMenuAccess(user, moduleKey)) {
+      return NextResponse.redirect(new URL(fallbackPath(), req.nextUrl));
+    } else if (moduleKey) {
+      // Direct-URL guard for Policy/Ledger/Task & Claim sub-categories (e.g.
+      // /policy/bond) — a user may have the parent module but only some of
+      // its detailed permissions. Page/action-level checks remain the
+      // authoritative backend gate; this just avoids a round-trip render.
+      const subKey = subPermissionForPathname(pathname);
+      if (subKey && !hasPermission(user, subKey)) {
+        return NextResponse.redirect(new URL(fallbackPath(), req.nextUrl));
+      }
     }
   }
 });

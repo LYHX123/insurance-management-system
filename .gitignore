@@ -55,3 +55,6 @@ next-env.d.ts
 
 # Generated Invoice workbooks (local storage provider)
 /invoice-documents
+
+# Local database backups (see backups/*.dump)
+/backups

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import type { LedgerTransactionType } from "@/generated/prisma/enums";
 
@@ -11,7 +11,7 @@ type ActionResult<T = object> = ({ success: true } & T) | { success: false; erro
 
 async function requireLedgerPermission() {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "ledger")) return null;
+  if (!session?.user || !hasPermission(session.user, "ledger.manual_record")) return null;
   return session;
 }
 

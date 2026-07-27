@@ -15,7 +15,13 @@ export default async function AppLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar permissions={session.user.permissions ?? []} />
+      <Sidebar
+        user={{
+          role: session.user.role,
+          status: session.user.status,
+          permissions: session.user.permissions ?? [],
+        }}
+      />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar fullName={session.user.name ?? session.user.username} role={session.user.role} />
         <main className="flex-1 overflow-y-auto bg-zinc-50 p-page">

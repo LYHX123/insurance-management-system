@@ -2,7 +2,7 @@ import { Readable } from "stream";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { documentStorageService } from "@/lib/quotationDocuments/storage";
 
 // Protected download/preview route. mode=download forces Content-Disposition:
@@ -12,7 +12,7 @@ import { documentStorageService } from "@/lib/quotationDocuments/storage";
 // download").
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "quotation")) {
+  if (!session?.user || !hasPermission(session.user, "quotation")) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 

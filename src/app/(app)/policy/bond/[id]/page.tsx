@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
@@ -10,7 +10,7 @@ import type { BondDetail, TransactionRow, PolicyDocumentRow, PolicyActivityRow }
 
 export default async function BondRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "policy")) {
+  if (!session?.user || !hasPermission(session.user, "policy.bond")) {
     redirect("/access-denied");
   }
 

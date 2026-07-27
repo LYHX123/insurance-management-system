@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasModuleAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import type { ClaimStatus } from "@/generated/prisma/enums";
 
 export type ClaimAuthResult =
@@ -18,7 +18,7 @@ export type ClaimAuthResult =
 // attempt can never learn whether a given Claim id even exists.
 export async function checkMotorClaimAccess(claimId: string): Promise<ClaimAuthResult> {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "task")) {
+  if (!session?.user || !hasPermission(session.user, "claim.motor")) {
     return { kind: "no-module-access" };
   }
 
@@ -40,7 +40,7 @@ export async function checkMotorClaimAccess(claimId: string): Promise<ClaimAuthR
 
 export async function checkNonMotorClaimAccess(claimId: string): Promise<ClaimAuthResult> {
   const session = await auth();
-  if (!session?.user || !hasModuleAccess(session.user.permissions ?? [], "task")) {
+  if (!session?.user || !hasPermission(session.user, "claim.non_motor")) {
     return { kind: "no-module-access" };
   }
 

@@ -14,6 +14,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
+import { hasMenuAccess, type AuthzUser } from "@/lib/permissions";
 
 const menuItems = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
@@ -27,12 +28,12 @@ const menuItems = [
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
 
-export function Sidebar({ permissions }: { permissions: string[] }) {
+export function Sidebar({ user }: { user: AuthzUser }) {
   const pathname = usePathname();
   const { t } = useLocale();
 
   const visibleMenuItems = menuItems.filter(({ key }) =>
-    permissions.includes(key)
+    hasMenuAccess(user, key)
   );
 
   return (
