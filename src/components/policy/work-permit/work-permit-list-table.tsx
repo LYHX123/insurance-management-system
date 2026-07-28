@@ -12,6 +12,7 @@ import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
+import { PolicyDeleteSuccessBanner } from "@/components/policy/policy-delete-success-banner";
 import { formatMoney } from "@/components/ui/money-input";
 import {
   PolicyExpiryDateFilter,
@@ -104,6 +105,7 @@ export function WorkPermitListTable({ records }: { records: WorkPermitListRow[] 
 
   return (
     <div className="flex flex-col gap-section">
+      <PolicyDeleteSuccessBanner listPath="/policy/work-permit" />
       <PageHeader
         title={t.policy.tabWorkPermit}
         actions={

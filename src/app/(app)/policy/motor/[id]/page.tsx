@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isAdmin } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { ensurePolicyCreatedActivityBackfilled } from "@/lib/policy/activity";
@@ -235,5 +235,5 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
     },
   });
 
-  return <MotorDetailView detail={detail} customers={customers} />;
+  return <MotorDetailView detail={detail} customers={customers} isAdmin={isAdmin(session.user)} />;
 }

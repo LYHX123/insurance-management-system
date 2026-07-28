@@ -9,6 +9,7 @@ import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isMotorTaxClass, type MotorTaxClass } from "@/lib/policy/motorTaxClasses";
+import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -586,4 +587,15 @@ export async function updateCommissionAction(
     console.error("Failed to update commission:", err);
     return { success: false, error: "UPDATE_FAILED" };
   }
+}
+
+// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
+// for the full relation/transaction breakdown. Deliberately its own action
+// (not folded into updateMotorOverviewAction like Cancel is), since it has
+// fundamentally different side effects (file cleanup, InvoiceItem guard,
+// admin-only gate) than a routine edit.
+export async function deleteMotorPolicyAction(id: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "MOTOR");
+  if (result.success) revalidatePath("/policy/motor");
+  return result;
 }

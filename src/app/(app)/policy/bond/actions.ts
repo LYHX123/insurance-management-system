@@ -10,6 +10,7 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isBondType } from "@/lib/policy/bondTypes";
 import type { BondType } from "@/generated/prisma/enums";
+import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -312,4 +313,12 @@ export async function updateBondOverviewAction(
     console.error("Failed to update Bond policy record:", err);
     return { success: false, error: "UPDATE_FAILED" };
   }
+}
+
+// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
+// for the full relation/transaction breakdown.
+export async function deleteBondPolicyAction(id: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "BOND");
+  if (result.success) revalidatePath("/policy/bond");
+  return result;
 }

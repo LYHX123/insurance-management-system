@@ -838,6 +838,14 @@ const zh: Dictionary = {
     cancelPolicy: "取消保单",
     cancelPolicyConfirmTitle: "取消保单",
     cancelPolicyConfirmMessage: "确定要将此保单标记为已取消吗？此操作在此页面无法撤销。",
+    deletePolicy: "删除保单",
+    deletePolicyConfirmTitle: "永久删除保单",
+    deletePolicyConfirmMessage: "永久删除该保单？此操作无法撤销，相关收付款、台账、发票关联、文件及操作记录也可能被删除。",
+    deletePolicyConfirmInstruction: "请输入保单编号 {recordNumber} 以确认。",
+    deletePolicyConfirmButton: "永久删除",
+    deletePolicySuccess: "保单 {recordNumber} 已被永久删除。",
+    deletePolicyInvoiceLinked: "该保单已关联发票（{invoiceNumbers}），无法删除。请先解除发票关联。",
+    deletePolicyDeleteFailedError: "保单删除失败，未做任何更改。",
 
     // --- Phase 2A: 报价单 -> 保单关联 ---
     sourceQuotationTitle: "来源报价单",

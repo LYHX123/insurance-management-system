@@ -14,8 +14,9 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
-import { updateMotorOverviewAction } from "@/app/(app)/policy/motor/actions";
+import { updateMotorOverviewAction, deleteMotorPolicyAction } from "@/app/(app)/policy/motor/actions";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
 import type { MotorDetail, CustomerOption } from "@/components/policy/types";
@@ -34,7 +35,15 @@ const ERROR_KEY: Record<string, string> = {
   UPDATE_FAILED: "updateFailedError",
 };
 
-export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; customers: CustomerOption[] }) {
+export function MotorOverviewTab({
+  detail,
+  customers,
+  isAdmin,
+}: {
+  detail: MotorDetail;
+  customers: CustomerOption[];
+  isAdmin: boolean;
+}) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -43,6 +52,9 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [processingDate, setProcessingDate] = useState(detail.processingDate.slice(0, 10));
   const [customerId, setCustomerId] = useState(detail.customerId);
@@ -125,6 +137,24 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
     router.refresh();
   };
 
+  const handleDelete = async () => {
+    setDeleteError(null);
+    setIsDeleting(true);
+    const result = await deleteMotorPolicyAction(detail.id);
+    setIsDeleting(false);
+    if (!result.success) {
+      if (result.error === "INVOICE_LINKED") {
+        setDeleteError(t.policy.deletePolicyInvoiceLinked.replace("{invoiceNumbers}", (result.invoiceNumbers ?? []).join(", ")));
+      } else if (result.error === "FORBIDDEN") {
+        setDeleteError(t.policy.genericError);
+      } else {
+        setDeleteError(t.policy.deletePolicyDeleteFailedError);
+      }
+      return;
+    }
+    router.push(`/policy/motor?deleted=${encodeURIComponent(result.recordNumber)}`);
+  };
+
   if (!editing) {
     return (
       <div className="flex flex-col gap-4">
@@ -203,11 +233,18 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
           relatedInvoice={detail.relatedInvoice}
         />
 
-        {detail.businessStatus !== "CANCELLED" && (
-          <div className="flex justify-end">
-            <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
-              {t.policy.cancelPolicy}
-            </Button>
+        {(detail.businessStatus !== "CANCELLED" || isAdmin) && (
+          <div className="flex justify-end gap-2">
+            {detail.businessStatus !== "CANCELLED" && (
+              <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
+                {t.policy.cancelPolicy}
+              </Button>
+            )}
+            {isAdmin && (
+              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+                {t.policy.deletePolicy}
+              </Button>
+            )}
           </div>
         )}
 
@@ -220,6 +257,21 @@ export function MotorOverviewTab({ detail, customers }: { detail: MotorDetail; c
             onClose={() => {
               setShowCancelConfirm(false);
               setError(null);
+            }}
+          />
+        )}
+
+        {showDeleteConfirm && (
+          <TypedConfirmDialog
+            title={t.policy.deletePolicyConfirmTitle}
+            message={`${deleteError ?? t.policy.deletePolicyConfirmMessage} ${t.policy.deletePolicyConfirmInstruction.replace("{recordNumber}", detail.recordNumber)}`}
+            confirmLabel={t.policy.deletePolicyConfirmButton}
+            confirmValue={detail.recordNumber}
+            isSubmitting={isDeleting}
+            onConfirm={handleDelete}
+            onClose={() => {
+              setShowDeleteConfirm(false);
+              setDeleteError(null);
             }}
           />
         )}

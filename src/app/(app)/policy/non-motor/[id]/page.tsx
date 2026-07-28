@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isAdmin } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
@@ -175,5 +175,5 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
     },
   });
 
-  return <NonMotorDetailView detail={detail} customers={customers} />;
+  return <NonMotorDetailView detail={detail} customers={customers} isAdmin={isAdmin(session.user)} />;
 }

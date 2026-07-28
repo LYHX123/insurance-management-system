@@ -27,7 +27,15 @@ const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" 
 type Tab = "overview" | "financial" | "documents" | "activity";
 const VALID_TABS: Tab[] = ["overview", "financial", "documents", "activity"];
 
-export function NonMotorDetailView({ detail, customers }: { detail: NonMotorDetail; customers: CustomerOption[] }) {
+export function NonMotorDetailView({
+  detail,
+  customers,
+  isAdmin,
+}: {
+  detail: NonMotorDetail;
+  customers: CustomerOption[];
+  isAdmin: boolean;
+}) {
   const { t } = useLocale();
   // Allows deep-linking straight to a tab (e.g. Ledger's "Open Source" link
   // to a Policy's Financial tab, see src/lib/ledger/systemRecords.ts) via
@@ -81,7 +89,7 @@ export function NonMotorDetailView({ detail, customers }: { detail: NonMotorDeta
         {tabButton("activity", t.policy.activityTab)}
       </div>
 
-      {tab === "overview" && <NonMotorOverviewTab detail={detail} customers={customers} />}
+      {tab === "overview" && <NonMotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} />}
       {tab === "financial" && <NonMotorFinancialTab detail={detail} />}
       {tab === "documents" && <MotorDocumentsTab policyRecordId={detail.id} documents={detail.documents} />}
       {tab === "activity" && <MotorActivityTab activities={detail.activities} />}

@@ -191,10 +191,24 @@ export function removeUnusedSections(
     }
   }
 
-  // Shrink the print area to the new last row.
+  // Shrink the print area to the new last row, and fit it to the page
+  // width instead of the template's flat 41% print scale (calibrated for
+  // the full 476-row template, and left untouched by this file before
+  // now) — a quotation with only a handful of surviving sections was
+  // otherwise printed at that same fixed zoom, rendering tiny in the
+  // upper-left of an A4 page. fitToHeight: 0 (rather than a fixed count)
+  // leaves height unconstrained so Excel/LibreOffice auto-paginate a
+  // genuinely long quotation instead of squeezing it onto one page.
   const lastRow = worksheet.lastRow?.number ?? worksheet.rowCount;
   if (worksheet.pageSetup?.printArea) {
     worksheet.pageSetup.printArea = `A1:E${lastRow}`;
+  }
+  if (worksheet.pageSetup) {
+    worksheet.pageSetup.fitToPage = true;
+    worksheet.pageSetup.fitToWidth = 1;
+    worksheet.pageSetup.fitToHeight = 0;
+    worksheet.pageSetup.horizontalCentered = true;
+    worksheet.pageSetup.verticalCentered = false;
   }
 
   return { layouts: layoutByKind, footerRowOffset };

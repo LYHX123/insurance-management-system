@@ -10,6 +10,7 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isWorkPermitType } from "@/lib/policy/workPermitTypes";
 import type { WorkPermitType } from "@/generated/prisma/enums";
+import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -298,4 +299,12 @@ export async function updateWorkPermitOverviewAction(
     console.error("Failed to update Work Permit policy record:", err);
     return { success: false, error: "UPDATE_FAILED" };
   }
+}
+
+// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
+// for the full relation/transaction breakdown.
+export async function deleteWorkPermitPolicyAction(id: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "WORK_PERMIT");
+  if (result.success) revalidatePath("/policy/work-permit");
+  return result;
 }

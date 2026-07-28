@@ -12,6 +12,7 @@ import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
+import { PolicyDeleteSuccessBanner } from "@/components/policy/policy-delete-success-banner";
 import { formatMoney } from "@/components/ui/money-input";
 import {
   PolicyExpiryDateFilter,
@@ -124,6 +125,7 @@ export function BondListTable({ records }: { records: BondListRow[] }) {
 
   return (
     <div className="flex flex-col gap-section">
+      <PolicyDeleteSuccessBanner listPath="/policy/bond" />
       <PageHeader
         title={t.policy.tabBond}
         actions={

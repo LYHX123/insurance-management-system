@@ -14,8 +14,9 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
-import { updateBondOverviewAction } from "@/app/(app)/policy/bond/actions";
+import { updateBondOverviewAction, deleteBondPolicyAction } from "@/app/(app)/policy/bond/actions";
 import { BOND_TYPES } from "@/lib/policy/bondTypes";
 import type { BondDetail, CustomerOption, BondType } from "@/components/policy/types";
 
@@ -33,7 +34,15 @@ const ERROR_KEY: Record<string, string> = {
   UPDATE_FAILED: "updateFailedError",
 };
 
-export function BondOverviewTab({ detail, customers }: { detail: BondDetail; customers: CustomerOption[] }) {
+export function BondOverviewTab({
+  detail,
+  customers,
+  isAdmin,
+}: {
+  detail: BondDetail;
+  customers: CustomerOption[];
+  isAdmin: boolean;
+}) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -42,6 +51,9 @@ export function BondOverviewTab({ detail, customers }: { detail: BondDetail; cus
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [processingDate, setProcessingDate] = useState(detail.processingDate.slice(0, 10));
   const [customerId, setCustomerId] = useState(detail.customerId);
@@ -113,6 +125,24 @@ export function BondOverviewTab({ detail, customers }: { detail: BondDetail; cus
     setShowCancelConfirm(false);
     setEditing(false);
     router.refresh();
+  };
+
+  const handleDelete = async () => {
+    setDeleteError(null);
+    setIsDeleting(true);
+    const result = await deleteBondPolicyAction(detail.id);
+    setIsDeleting(false);
+    if (!result.success) {
+      if (result.error === "INVOICE_LINKED") {
+        setDeleteError(t.policy.deletePolicyInvoiceLinked.replace("{invoiceNumbers}", (result.invoiceNumbers ?? []).join(", ")));
+      } else if (result.error === "FORBIDDEN") {
+        setDeleteError(t.policy.genericError);
+      } else {
+        setDeleteError(t.policy.deletePolicyDeleteFailedError);
+      }
+      return;
+    }
+    router.push(`/policy/bond?deleted=${encodeURIComponent(result.recordNumber)}`);
   };
 
   if (!editing) {
@@ -194,11 +224,18 @@ export function BondOverviewTab({ detail, customers }: { detail: BondDetail; cus
           relatedInvoice={detail.relatedInvoice}
         />
 
-        {detail.businessStatus !== "CANCELLED" && (
-          <div className="flex justify-end">
-            <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
-              {t.policy.cancelPolicy}
-            </Button>
+        {(detail.businessStatus !== "CANCELLED" || isAdmin) && (
+          <div className="flex justify-end gap-2">
+            {detail.businessStatus !== "CANCELLED" && (
+              <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
+                {t.policy.cancelPolicy}
+              </Button>
+            )}
+            {isAdmin && (
+              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+                {t.policy.deletePolicy}
+              </Button>
+            )}
           </div>
         )}
 
@@ -211,6 +248,21 @@ export function BondOverviewTab({ detail, customers }: { detail: BondDetail; cus
             onClose={() => {
               setShowCancelConfirm(false);
               setError(null);
+            }}
+          />
+        )}
+
+        {showDeleteConfirm && (
+          <TypedConfirmDialog
+            title={t.policy.deletePolicyConfirmTitle}
+            message={`${deleteError ?? t.policy.deletePolicyConfirmMessage} ${t.policy.deletePolicyConfirmInstruction.replace("{recordNumber}", detail.recordNumber)}`}
+            confirmLabel={t.policy.deletePolicyConfirmButton}
+            confirmValue={detail.recordNumber}
+            isSubmitting={isDeleting}
+            onConfirm={handleDelete}
+            onClose={() => {
+              setShowDeleteConfirm(false);
+              setDeleteError(null);
             }}
           />
         )}

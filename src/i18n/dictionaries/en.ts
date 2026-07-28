@@ -839,6 +839,15 @@ const en = {
     cancelPolicy: "Cancel Policy",
     cancelPolicyConfirmTitle: "Cancel Policy",
     cancelPolicyConfirmMessage: "Are you sure you want to mark this policy as cancelled? This cannot be undone from this screen.",
+    deletePolicy: "Delete Policy",
+    deletePolicyConfirmTitle: "Permanently Delete Policy",
+    deletePolicyConfirmMessage:
+      "Permanently delete this Policy? This action cannot be undone. Related payments, ledger records, invoice links, documents, and activity history may also be affected.",
+    deletePolicyConfirmInstruction: "Type the record number {recordNumber} to confirm.",
+    deletePolicyConfirmButton: "Delete Permanently",
+    deletePolicySuccess: "Policy {recordNumber} was permanently deleted.",
+    deletePolicyInvoiceLinked: "This policy cannot be deleted because it is linked to invoice(s): {invoiceNumbers}. Remove the invoice link first.",
+    deletePolicyDeleteFailedError: "The policy could not be deleted. No changes were made.",
 
     // --- Phase 2A: Quotation -> Policy relationship ---
     sourceQuotationTitle: "Source Quotation",

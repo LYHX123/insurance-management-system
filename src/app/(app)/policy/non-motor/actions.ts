@@ -10,6 +10,7 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isNonMotorCoverType } from "@/lib/policy/nonMotorCoverTypes";
 import type { NonMotorCoverType } from "@/generated/prisma/enums";
+import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -283,4 +284,12 @@ export async function updateNonMotorOverviewAction(
     console.error("Failed to update Non-Motor policy record:", err);
     return { success: false, error: "UPDATE_FAILED" };
   }
+}
+
+// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
+// for the full relation/transaction breakdown.
+export async function deleteNonMotorPolicyAction(id: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "NON_MOTOR");
+  if (result.success) revalidatePath("/policy/non-motor");
+  return result;
 }
