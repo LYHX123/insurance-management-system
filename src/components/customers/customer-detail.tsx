@@ -19,6 +19,7 @@ import { EditCustomerModal } from "@/components/customers/edit-customer-modal";
 import { ProjectFormModal } from "@/components/customers/project-form-modal";
 import { UploadDocumentModal } from "@/components/customers/upload-document-modal";
 import { CustomerDropboxCard, type CustomerDropboxFolderView } from "@/components/customers/customer-dropbox-card";
+import { DocumentDropboxStatus } from "@/components/customers/document-dropbox-status";
 import { deleteProjectAction } from "@/app/(app)/customer/project-actions";
 import { deleteDocumentAction } from "@/app/(app)/customer/document-actions";
 import type { CustomerDetail, ProjectRow, DocumentRow } from "@/components/customers/types";
@@ -118,7 +119,7 @@ export function CustomerDetailView({
 
   const renderDocumentTable = (rows: DocumentRow[], emptyMessage: string) => (
     <TableWrap scroll>
-      <Table className="min-w-[860px]">
+      <Table className="min-w-[1020px]">
         <thead>
           <tr>
             <th>{t.customers.documentType}</th>
@@ -127,11 +128,12 @@ export function CustomerDetailView({
             <th>{t.customers.fileSize}</th>
             <th>{t.customers.uploadedBy}</th>
             <th>{t.customers.uploadedDate}</th>
+            <th>{t.customers.dropboxDocumentStatusLabel}</th>
             <th className="text-right">{t.common.actions}</th>
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && <TableEmpty colSpan={7}>{emptyMessage}</TableEmpty>}
+          {rows.length === 0 && <TableEmpty colSpan={8}>{emptyMessage}</TableEmpty>}
           {rows.map((doc) => (
             <tr key={doc.id}>
               <td>{documentDisplayName(doc)}</td>
@@ -140,6 +142,14 @@ export function CustomerDetailView({
               <td className="text-zinc-500">{formatFileSize(doc.fileSize)}</td>
               <td className="text-zinc-500">{doc.uploadedByName}</td>
               <td className="text-zinc-500">{dateFormatter.format(new Date(doc.createdAt))}</td>
+              <td>
+                <DocumentDropboxStatus
+                  documentId={doc.id}
+                  dropboxSync={doc.dropboxSync}
+                  dropboxConnected={dropboxConnected}
+                  isAdmin={isAdmin}
+                />
+              </td>
               <td>
                 <div className="flex items-center justify-end gap-1.5">
                   <a href={`/api/customer-documents/${doc.id}?mode=view`} target="_blank" rel="noopener noreferrer">

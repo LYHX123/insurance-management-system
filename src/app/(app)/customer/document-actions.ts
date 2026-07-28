@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { requireAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { storageService } from "@/lib/storage";
@@ -13,10 +14,38 @@ import {
   isAllowedDocumentMimeType,
 } from "@/lib/customer-utils";
 import { CustomerDocumentType } from "@/generated/prisma/enums";
+import { buildStandardizedDropboxFilename } from "@/lib/integrations/dropbox/customerDocumentFilenames";
+import {
+  loadSiblingStandardizedNamesLower,
+  syncCustomerDocument,
+  verifyCustomerDocumentSync,
+  type DocumentSyncOutcomeStatus,
+  type DocumentSyncResult,
+} from "@/lib/integrations/dropbox/customerDocumentSync";
 
-type ActionResult = { success: true } | { success: false; error: string };
+type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
 const DOCUMENT_TYPES = Object.values(CustomerDocumentType);
+
+// Dropbox sync must never make a successful local upload depend on
+// third-party network availability (Phase 3 spec, Part 5, requirement 10) —
+// bounded so a hung Dropbox call can't hang the response; the local
+// CustomerDocument row is already committed regardless of how this
+// resolves. Same convention/value as customer/actions.ts's
+// syncCustomerFolderWithTimeout.
+const DROPBOX_SYNC_TIMEOUT_MS = 15_000;
+
+async function syncDocumentWithTimeout(customerDocumentId: string): Promise<DocumentSyncOutcomeStatus> {
+  try {
+    const result = await Promise.race([
+      syncCustomerDocument(customerDocumentId),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), DROPBOX_SYNC_TIMEOUT_MS)),
+    ]);
+    return result?.status ?? "PENDING";
+  } catch {
+    return "ERROR";
+  }
+}
 
 async function requireCustomerPermission() {
   const session = await auth();
@@ -26,7 +55,9 @@ async function requireCustomerPermission() {
   return session;
 }
 
-export async function uploadDocumentAction(formData: FormData): Promise<ActionResult> {
+export async function uploadDocumentAction(
+  formData: FormData
+): Promise<ActionResult<{ documentId: string; dropboxSyncStatus: DocumentSyncOutcomeStatus }>> {
   const session = await requireCustomerPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
@@ -85,22 +116,46 @@ export async function uploadDocumentAction(formData: FormData): Promise<ActionRe
     return { success: false, error: "UPLOAD_FAILED" };
   }
 
+  let documentId: string;
   try {
-    await prisma.customerDocument.create({
-      data: {
-        customerId,
-        projectId,
-        documentType: documentType as CustomerDocumentType,
-        customDocumentName: documentType === CustomerDocumentType.OTHER ? customDocumentName : null,
-        originalFileName: file.name,
-        storedFileName,
-        mimeType: file.type,
-        fileSize: file.size,
-        storageProvider: "local",
-        storageKey,
-        syncStatus: "pending",
-        uploadedBy: session.user.id,
-      },
+    documentId = await prisma.$transaction(async (tx) => {
+      const document = await tx.customerDocument.create({
+        data: {
+          customerId,
+          projectId,
+          documentType: documentType as CustomerDocumentType,
+          customDocumentName: documentType === CustomerDocumentType.OTHER ? customDocumentName : null,
+          originalFileName: file.name,
+          storedFileName,
+          mimeType: file.type,
+          fileSize: file.size,
+          storageProvider: "local",
+          storageKey,
+          syncStatus: "pending",
+          uploadedBy: session.user.id,
+        },
+      });
+
+      // Dropbox sync metadata row, PENDING until the post-transaction sync
+      // attempt below resolves — pure DB reads/writes only, no network call
+      // inside the transaction (Phase 3 spec, Part 5, requirements 3-5).
+      const existingNamesLower = await loadSiblingStandardizedNamesLower(customerId, projectId, document.id, tx);
+      const standardizedFileName = buildStandardizedDropboxFilename({
+        documentType: document.documentType,
+        originalFileName: document.originalFileName,
+        mimeType: document.mimeType,
+        existingStandardizedNamesLower: existingNamesLower,
+      });
+      await tx.customerDocumentDropboxSync.create({
+        data: {
+          customerDocumentId: document.id,
+          standardizedFileName,
+          originalFileName: document.originalFileName,
+          syncStatus: "PENDING",
+        },
+      });
+
+      return document.id;
     });
   } catch (err) {
     // Database write failed after the file was already written to disk —
@@ -110,8 +165,16 @@ export async function uploadDocumentAction(formData: FormData): Promise<ActionRe
     return { success: false, error: "SAVE_FAILED" };
   }
 
+  // The CustomerDocument row is committed at this point — nothing below
+  // this line may ever turn a successful upload into a reported failure.
+  // Dropbox sync is intentionally outside the transaction/try-catch above
+  // and has its own internal error handling (syncDocumentWithTimeout never
+  // throws) — Part 5, requirement 5/10.
   revalidatePath(`/customer/${customerId}`);
-  return { success: true };
+  const dropboxSyncStatus = await syncDocumentWithTimeout(documentId);
+  revalidatePath(`/customer/${customerId}`);
+
+  return { success: true, documentId, dropboxSyncStatus };
 }
 
 export async function deleteDocumentAction(id: string): Promise<ActionResult> {
@@ -121,6 +184,12 @@ export async function deleteDocumentAction(id: string): Promise<ActionResult> {
   const document = await prisma.customerDocument.findUnique({ where: { id } });
   if (!document) return { success: false, error: "DOCUMENT_NOT_FOUND" };
 
+  // Phase 3, Part 10: deleting a system document never deletes the
+  // corresponding Dropbox file — no Dropbox delete API is called anywhere
+  // in this action. The CustomerDocumentDropboxSync row cascades away with
+  // the CustomerDocument row (DB-level only); the actual file already
+  // uploaded to Dropbox is deliberately retained. Archive/move-on-delete
+  // behavior is out of scope for this phase.
   await prisma.customerDocument.delete({ where: { id } });
 
   await storageService.deleteFile(document.storageKey).catch((err) => {
@@ -129,4 +198,41 @@ export async function deleteDocumentAction(id: string): Promise<ActionResult> {
 
   revalidatePath(`/customer/${document.customerId}`);
   return { success: true };
+}
+
+// --- Dropbox document sync: ADMIN-only retry/verify/re-upload (Phase 3, Part 8) ---
+// Each action independently re-checks requireAdmin() regardless of UI
+// visibility, mirroring the existing Dropbox folder actions
+// (src/app/(app)/customer/dropboxActions.ts). None accept a Dropbox path
+// from the browser — the target is always re-derived server-side from the
+// document id.
+
+export type DocumentDropboxActionResult = DocumentSyncResult & { forbidden?: boolean };
+
+export async function retryDocumentSyncAction(customerDocumentId: string): Promise<DocumentDropboxActionResult> {
+  const session = await requireAdmin();
+  if (!session) return { success: false, status: "ERROR", forbidden: true };
+
+  const document = await prisma.customerDocument.findUnique({ where: { id: customerDocumentId }, select: { customerId: true } });
+  const result = await syncCustomerDocument(customerDocumentId);
+  if (document) revalidatePath(`/customer/${document.customerId}`);
+  return result;
+}
+
+// "Re-upload Current Local File to Dropbox" is the same underlying
+// operation as retry — syncCustomerDocument always re-reads the current
+// local file and targets the document's existing standardized name, so a
+// deliberate re-upload from a SYNCED state needs no separate code path.
+export async function reuploadDocumentToDropboxAction(customerDocumentId: string): Promise<DocumentDropboxActionResult> {
+  return retryDocumentSyncAction(customerDocumentId);
+}
+
+export async function verifyDocumentSyncAction(customerDocumentId: string): Promise<DocumentDropboxActionResult> {
+  const session = await requireAdmin();
+  if (!session) return { success: false, status: "ERROR", forbidden: true };
+
+  const document = await prisma.customerDocument.findUnique({ where: { id: customerDocumentId }, select: { customerId: true } });
+  const result = await verifyCustomerDocumentSync(customerDocumentId);
+  if (document) revalidatePath(`/customer/${document.customerId}`);
+  return result;
 }

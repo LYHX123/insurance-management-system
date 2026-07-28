@@ -35,6 +35,17 @@ export type DocumentType =
   | "CR12"
   | "OTHER";
 
+// Safe view model only — never dropboxFileId, dropboxDisplayPath,
+// dropboxPathLower, or any local storage path (Phase 3 Part 7/15: no raw
+// Dropbox IDs, no raw storage paths exposed to the client).
+export type DropboxDocumentSyncView = {
+  syncStatus: "PENDING" | "SYNCING" | "SYNCED" | "ERROR" | "CONFLICT" | "DISABLED";
+  standardizedFileName: string;
+  lastSyncedAt: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+} | null;
+
 export type DocumentRow = {
   id: string;
   customerId: string;
@@ -47,4 +58,5 @@ export type DocumentRow = {
   fileSize: number;
   uploadedByName: string;
   createdAt: string;
+  dropboxSync: DropboxDocumentSyncView;
 };

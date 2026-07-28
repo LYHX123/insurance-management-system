@@ -21,7 +21,7 @@ export default async function CustomerDetailPage({
       where: { id },
       include: {
         projects: { orderBy: { createdAt: "asc" } },
-        documents: { orderBy: { createdAt: "desc" } },
+        documents: { orderBy: { createdAt: "desc" }, include: { dropboxSync: true } },
         dropboxFolder: true,
       },
     }),
@@ -78,6 +78,15 @@ export default async function CustomerDetailPage({
     fileSize: d.fileSize,
     uploadedByName: uploaderNameById.get(d.uploadedBy) ?? "—",
     createdAt: d.createdAt.toISOString(),
+    dropboxSync: d.dropboxSync
+      ? {
+          syncStatus: d.dropboxSync.syncStatus,
+          standardizedFileName: d.dropboxSync.standardizedFileName,
+          lastSyncedAt: d.dropboxSync.lastSyncedAt?.toISOString() ?? null,
+          lastErrorCode: d.dropboxSync.lastErrorCode,
+          lastErrorMessage: d.dropboxSync.lastErrorMessage,
+        }
+      : null,
   }));
 
   // Safe view model only — never the raw dropboxFolderId (Phase 2 spec,

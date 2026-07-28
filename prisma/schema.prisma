@@ -270,6 +270,11 @@ model CustomerDocument {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  // Dropbox Integration Phase 3 — dedicated sync-status row, see
+  // CustomerDocumentDropboxSync below. Optional: existing documents have no
+  // row until backfilled.
+  dropboxSync CustomerDocumentDropboxSync?
+
   @@index([customerId])
   @@index([projectId])
 }
@@ -305,6 +310,54 @@ model CustomerDropboxFolder {
   lastSyncedAt      DateTime?
   lastErrorCode     String?
   lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+}
+
+enum DropboxDocumentSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  ERROR
+  CONFLICT
+  DISABLED
+}
+
+// Dropbox Integration Phase 3 — one row per CustomerDocument, same
+// dedicated-model convention as CustomerDropboxFolder above (the generic
+// dropboxFileId/dropboxPath/syncStatus columns already on CustomerDocument
+// predate this phase, are unwired, and are deliberately left untouched —
+// see that model's own fields). Never stores access/refresh tokens (those
+// live only in DropboxIntegration, encrypted). dropboxFileId (not the path)
+// is the long-term identity used for verify/overwrite decisions, since
+// Dropbox paths remain stable here (documents are never renamed) but the id
+// is still the authoritative source of truth for "is this the file we
+// uploaded" checks in Part 4's conflict policy.
+model CustomerDocumentDropboxSync {
+  id                 String           @id @default(cuid())
+  customerDocumentId String           @unique
+  customerDocument   CustomerDocument @relation(fields: [customerDocumentId], references: [id], onDelete: Cascade)
+
+  dropboxFileId      String?
+  dropboxRevision    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+
+  standardizedFileName String
+  originalFileName      String
+
+  syncStatus        DropboxDocumentSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+
+  lastErrorCode    String?
+  lastErrorMessage String?
+
+  contentHash  String?
+  uploadedSize BigInt?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -94,7 +94,7 @@ export function UploadDocumentModal({
       return;
     }
 
-    onSuccess(t.customers.documentUploadSuccess);
+    onSuccess(result.dropboxSyncStatus === "SYNCED" ? t.customers.documentUploadSuccessSynced : t.customers.documentUploadSuccessPending);
   };
 
   return (
