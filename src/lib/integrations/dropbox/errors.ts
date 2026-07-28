@@ -22,7 +22,17 @@ export type DropboxErrorCode =
   | "DEVELOPMENT_USER_RESTRICTED"
   | "FORBIDDEN"
   | "NOT_FOUND"
-  | "UNKNOWN_ERROR";
+  | "UNKNOWN_ERROR"
+  // --- Phase 2: Customer automatic filing ---
+  | "DROPBOX_NOT_CONNECTED"
+  | "CUSTOMER_NOT_FOUND"
+  | "CUSTOMER_FOLDER_CONFLICT"
+  | "CUSTOMER_FOLDER_CREATE_FAILED"
+  | "CUSTOMER_FOLDER_NOT_FOUND"
+  | "CUSTOMER_FOLDER_IS_FILE"
+  | "CUSTOMER_FOLDER_OUTSIDE_ROOT"
+  | "CUSTOMER_FOLDER_RENAME_FAILED"
+  | "STANDARD_FOLDER_CONFLICT";
 
 export class DropboxIntegrationError extends Error {
   readonly code: DropboxErrorCode;

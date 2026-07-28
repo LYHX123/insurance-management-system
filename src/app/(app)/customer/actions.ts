@@ -6,7 +6,27 @@ import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { isValidKenyanPhone } from "@/lib/validators";
 import { formatCustomerNumber } from "@/lib/customer-utils";
+import { buildCustomerFolderName } from "@/lib/integrations/dropbox/customer-folder-names";
+import { syncCustomerFolder, renameCustomerFolder, type SyncOutcomeStatus } from "@/lib/integrations/dropbox/customer-folders";
 import type { CustomerStatus } from "@/generated/prisma/enums";
+
+// Dropbox filing must never make Customer creation depend on third-party
+// network availability (Phase 2 spec, Part 5) — bounded so a hung Dropbox
+// call can't hang the response; the Customer row is already committed
+// regardless of how this resolves.
+const DROPBOX_SYNC_TIMEOUT_MS = 15_000;
+
+async function syncCustomerFolderWithTimeout(customerId: string): Promise<SyncOutcomeStatus> {
+  try {
+    const result = await Promise.race([
+      syncCustomerFolder(customerId),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), DROPBOX_SYNC_TIMEOUT_MS)),
+    ]);
+    return result?.status ?? "PENDING";
+  } catch {
+    return "ERROR";
+  }
+}
 
 type ActionResult<T = object> =
   | ({ success: true } & T)
@@ -81,7 +101,7 @@ function validateProjectInput(
 export async function createCustomerAction(data: {
   company: CompanyInput;
   projects: InitialProjectInput[];
-}): Promise<ActionResult<{ customerId: string; customerNumber: string }>> {
+}): Promise<ActionResult<{ customerId: string; customerNumber: string; dropboxSyncStatus: SyncOutcomeStatus }>> {
   const session = await requireCustomerPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
@@ -106,8 +126,9 @@ export async function createCustomerAction(data: {
   if (existingName) return { success: false, error: "COMPANY_NAME_TAKEN" };
   if (existingPin) return { success: false, error: "PIN_NUMBER_TAKEN" };
 
+  let result: { id: string; customerNumber: string };
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    result = await prisma.$transaction(async (tx) => {
       const [{ nextval }] = await tx.$queryRaw<{ nextval: bigint }[]>`
         SELECT nextval(pg_get_serial_sequence('"Customer"', 'sequenceNumber')) as nextval
       `;
@@ -122,21 +143,38 @@ export async function createCustomerAction(data: {
           projects: {
             create: validatedProjects,
           },
+          // Dropbox filing metadata row, PENDING until the post-transaction
+          // sync attempt below resolves — pure DB write, no network call
+          // inside the transaction (Phase 2 spec, Part 5, requirement 9).
+          dropboxFolder: {
+            create: {
+              folderName: buildCustomerFolderName({ customerNumber, companyName: company.companyName }),
+              syncStatus: "PENDING",
+            },
+          },
         },
       });
 
       return customer;
     });
-
-    revalidatePath("/customer");
-    return {
-      success: true,
-      customerId: result.id,
-      customerNumber: result.customerNumber,
-    };
   } catch {
     return { success: false, error: "CREATE_FAILED" };
   }
+
+  // The Customer row is committed at this point — nothing below this line
+  // may ever turn a successful creation into a reported failure. Dropbox
+  // filing is intentionally outside the try/catch above and has its own
+  // internal error handling (syncCustomerFolderWithTimeout never throws).
+  revalidatePath("/customer");
+  const dropboxSyncStatus = await syncCustomerFolderWithTimeout(result.id);
+  revalidatePath(`/customer/${result.id}`);
+
+  return {
+    success: true,
+    customerId: result.id,
+    customerNumber: result.customerNumber,
+    dropboxSyncStatus,
+  };
 }
 
 export async function updateCustomerAction(
@@ -166,10 +204,19 @@ export async function updateCustomerAction(
   if (existingName) return { success: false, error: "COMPANY_NAME_TAKEN" };
   if (existingPin) return { success: false, error: "PIN_NUMBER_TAKEN" };
 
+  const before = await prisma.customer.findUnique({ where: { id }, select: { companyName: true } });
   await prisma.customer.update({ where: { id }, data: company });
 
   revalidatePath("/customer");
   revalidatePath(`/customer/${id}`);
+
+  // Rename the Dropbox folder to match, best-effort — the Customer edit
+  // above has already succeeded regardless of how this resolves (Phase 2
+  // spec, Part 10, requirement 5).
+  if (before && before.companyName !== company.companyName) {
+    await renameCustomerFolder(id).catch(() => {});
+  }
+
   return { success: true };
 }
 
@@ -206,7 +253,18 @@ export async function deleteCustomerAction(
     return { success: true, deactivatedInstead: true };
   }
 
+  // The CustomerDropboxFolder metadata row cascades away with the Customer
+  // (onDelete: Cascade), but Dropbox itself is never touched — Phase 2
+  // spec, Part 11: Customer deletion and Dropbox archival stay separate.
+  const dropboxFolder = await prisma.customerDropboxFolder.findUnique({
+    where: { customerId: id },
+    select: { displayPath: true },
+  });
+
   await prisma.customer.delete({ where: { id } });
+  if (dropboxFolder?.displayPath) {
+    console.info(`[dropbox-customer-sync] customer=${id} deleted — Dropbox folder retained at "${dropboxFolder.displayPath}"`);
+  }
   revalidatePath("/customer");
   return { success: true, deactivatedInstead: false };
 }

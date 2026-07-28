@@ -209,6 +209,12 @@ model Customer {
   motorClaims    MotorClaim[]
   nonMotorClaims NonMotorClaim[]
 
+  // Dropbox Integration Phase 2 — see CustomerDropboxFolder below. A
+  // dedicated model rather than the storageFolder*/storageSyncStatus fields
+  // above: those are generic multi-provider placeholders (no enum, no error
+  // tracking, never wired to anything) and are left untouched.
+  dropboxFolder CustomerDropboxFolder?
+
   @@index([companyName])
   @@index([status])
   @@index([importBatchId])
@@ -266,6 +272,44 @@ model CustomerDocument {
 
   @@index([customerId])
   @@index([projectId])
+}
+
+enum DropboxFolderSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  ERROR
+  CONFLICT
+  DISABLED
+}
+
+// Dropbox Integration Phase 2 — one row per Customer, created alongside the
+// Customer row (status PENDING) and reconciled asynchronously against
+// Dropbox (see src/lib/integrations/dropbox/customer-folders.ts). Never
+// stores access/refresh tokens (those live only in DropboxIntegration,
+// encrypted) — only folder identity/status metadata. dropboxFolderId (not
+// the path) is the long-term identity used for verify/rename, since Dropbox
+// paths can change on rename but the folder id does not.
+model CustomerDropboxFolder {
+  id         String   @id @default(cuid())
+  customerId String   @unique
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  dropboxFolderId String?
+  folderName      String
+  displayPath     String?
+  pathLower       String?
+
+  syncStatus        DropboxFolderSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
 }
 
 enum QuotationStatus {

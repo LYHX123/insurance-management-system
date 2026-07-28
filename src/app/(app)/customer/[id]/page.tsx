@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isAdmin } from "@/lib/permissions";
+import { getDropboxIntegrationRow } from "@/lib/integrations/dropbox/service";
 import { CustomerDetailView } from "@/components/customers/customer-detail";
 
 export default async function CustomerDetailPage({
@@ -15,13 +16,17 @@ export default async function CustomerDetailPage({
   }
 
   const { id } = await params;
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-    include: {
-      projects: { orderBy: { createdAt: "asc" } },
-      documents: { orderBy: { createdAt: "desc" } },
-    },
-  });
+  const [customer, dropboxIntegration] = await Promise.all([
+    prisma.customer.findUnique({
+      where: { id },
+      include: {
+        projects: { orderBy: { createdAt: "asc" } },
+        documents: { orderBy: { createdAt: "desc" } },
+        dropboxFolder: true,
+      },
+    }),
+    getDropboxIntegrationRow(),
+  ]);
 
   if (!customer) notFound();
 
@@ -75,7 +80,27 @@ export default async function CustomerDetailPage({
     createdAt: d.createdAt.toISOString(),
   }));
 
+  // Safe view model only — never the raw dropboxFolderId (Phase 2 spec,
+  // Part 7: "do not show raw folder IDs unless partially masked").
+  const dropboxFolder = customer.dropboxFolder
+    ? {
+        syncStatus: customer.dropboxFolder.syncStatus,
+        folderName: customer.dropboxFolder.folderName,
+        displayPath: customer.dropboxFolder.displayPath,
+        lastSyncedAt: customer.dropboxFolder.lastSyncedAt?.toISOString() ?? null,
+        lastSyncAttemptAt: customer.dropboxFolder.lastSyncAttemptAt?.toISOString() ?? null,
+        lastErrorMessage: customer.dropboxFolder.lastErrorMessage,
+      }
+    : null;
+
   return (
-    <CustomerDetailView customer={customerDetail} projects={projects} documents={documents} />
+    <CustomerDetailView
+      customer={customerDetail}
+      projects={projects}
+      documents={documents}
+      dropboxFolder={dropboxFolder}
+      dropboxConnected={dropboxIntegration.status === "CONNECTED"}
+      isAdmin={isAdmin(session.user)}
+    />
   );
 }

@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditCustomerModal } from "@/components/customers/edit-customer-modal";
 import { ProjectFormModal } from "@/components/customers/project-form-modal";
 import { UploadDocumentModal } from "@/components/customers/upload-document-modal";
+import { CustomerDropboxCard, type CustomerDropboxFolderView } from "@/components/customers/customer-dropbox-card";
 import { deleteProjectAction } from "@/app/(app)/customer/project-actions";
 import { deleteDocumentAction } from "@/app/(app)/customer/document-actions";
 import type { CustomerDetail, ProjectRow, DocumentRow } from "@/components/customers/types";
@@ -44,10 +45,16 @@ export function CustomerDetailView({
   customer,
   projects,
   documents,
+  dropboxFolder,
+  dropboxConnected,
+  isAdmin,
 }: {
   customer: CustomerDetail;
   projects: ProjectRow[];
   documents: DocumentRow[];
+  dropboxFolder: CustomerDropboxFolderView;
+  dropboxConnected: boolean;
+  isAdmin: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -201,40 +208,49 @@ export function CustomerDetailView({
       />
 
       {tab === "overview" && (
-        <Card>
-          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-secondary">{t.customers.customerNumber}</dt>
-              <dd className="text-body font-medium">{customer.customerNumber}</dd>
-            </div>
-            <div>
-              <dt className="text-secondary">{t.customers.pinNumber}</dt>
-              <dd className="text-body font-medium">{customer.pinNumber}</dd>
-            </div>
-            <div>
-              <dt className="text-secondary">{t.customers.registeredAddress}</dt>
-              <dd className="text-body">{customer.registeredAddress || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-secondary">{t.customers.mainContactPerson}</dt>
-              <dd className="text-body">{customer.mainContactPerson || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-secondary">{t.customers.mainPhoneNumber}</dt>
-              <dd className="text-body">{customer.mainPhoneNumber || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-secondary">{t.common.status}</dt>
-              <dd>
-                <StatusBadge
-                  active={customer.status === "ACTIVE"}
-                  activeLabel={t.customers.active}
-                  inactiveLabel={t.customers.inactive}
-                />
-              </dd>
-            </div>
-          </dl>
-        </Card>
+        <div className="flex flex-col gap-4">
+          <Card>
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-secondary">{t.customers.customerNumber}</dt>
+                <dd className="text-body font-medium">{customer.customerNumber}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.customers.pinNumber}</dt>
+                <dd className="text-body font-medium">{customer.pinNumber}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.customers.registeredAddress}</dt>
+                <dd className="text-body">{customer.registeredAddress || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.customers.mainContactPerson}</dt>
+                <dd className="text-body">{customer.mainContactPerson || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.customers.mainPhoneNumber}</dt>
+                <dd className="text-body">{customer.mainPhoneNumber || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.common.status}</dt>
+                <dd>
+                  <StatusBadge
+                    active={customer.status === "ACTIVE"}
+                    activeLabel={t.customers.active}
+                    inactiveLabel={t.customers.inactive}
+                  />
+                </dd>
+              </div>
+            </dl>
+          </Card>
+
+          <CustomerDropboxCard
+            customerId={customer.id}
+            dropboxFolder={dropboxFolder}
+            dropboxConnected={dropboxConnected}
+            isAdmin={isAdmin}
+          />
+        </div>
       )}
 
       {tab === "projects" && (

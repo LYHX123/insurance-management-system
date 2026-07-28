@@ -60,6 +60,33 @@ function decryptStoredRefreshToken(row: DropboxIntegrationModel, env: DropboxEnv
   }
 }
 
+export type GetAuthenticatedClientResult =
+  | { ok: true; client: Dropbox; env: DropboxEnvConfig; row: DropboxIntegrationModel }
+  | { ok: false; code: DropboxErrorCode; message: string; row: DropboxIntegrationModel | null };
+
+// Shared "decrypt stored refresh token -> build an authenticated Dropbox
+// client" sequence — previously inlined separately in testDropboxConnection/
+// disconnectDropbox/saveDropboxRootFolder below (and now also used by
+// Phase 2's customer-folders.ts). `row` is returned even on failure (when
+// available) so callers that need to record a safe error on the stored row
+// don't have to re-fetch it.
+export async function getAuthenticatedDropboxClient(): Promise<GetAuthenticatedClientResult> {
+  const envResult = getDropboxEnv();
+  if (!envResult.ok) {
+    return { ok: false, code: "CONFIGURATION_MISSING", message: "Dropbox is not configured.", row: null };
+  }
+
+  const row = await getDropboxIntegrationRow();
+  try {
+    const refreshToken = decryptStoredRefreshToken(row, envResult.config);
+    const client = createDropboxClient(envResult.config, refreshToken);
+    return { ok: true, client, env: envResult.config, row };
+  } catch (err) {
+    const mapped = err instanceof DropboxIntegrationError ? err : mapDropboxError(err);
+    return { ok: false, code: mapped.code, message: mapped.message, row };
+  }
+}
+
 function isNotFoundError(err: unknown): boolean {
   if (!err || typeof err !== "object" || !("status" in err)) return false;
   const status = (err as { status: unknown }).status;
@@ -181,16 +208,24 @@ export type TestConnectionResult = { success: true } | { success: false; code: D
 // silently recreated (recreating is only appropriate right after a fresh
 // OAuth connection, in completeOAuthConnection above).
 export async function testDropboxConnection(): Promise<TestConnectionResult> {
-  const envResult = getDropboxEnv();
-  if (!envResult.ok) return { success: false, code: "CONFIGURATION_MISSING" };
-  const env = envResult.config;
-
-  const row = await getDropboxIntegrationRow();
+  const auth = await getAuthenticatedDropboxClient();
+  if (!auth.ok) {
+    if (auth.row) {
+      await prisma.dropboxIntegration.update({
+        where: { id: DROPBOX_INTEGRATION_ID },
+        data: {
+          status: auth.code === "TOKEN_REVOKED" || auth.code === "REFRESH_TOKEN_MISSING" ? "ERROR" : auth.row.status,
+          lastTestedAt: new Date(),
+          lastErrorCode: auth.code,
+          lastErrorMessage: auth.message,
+        },
+      });
+    }
+    return { success: false, code: auth.code };
+  }
+  const { client, row } = auth;
 
   try {
-    const refreshToken = decryptStoredRefreshToken(row, env);
-    const client = createDropboxClient(env, refreshToken);
-
     const accountResponse = await client.usersGetCurrentAccount();
     const account = accountResponse.result;
 
@@ -237,18 +272,18 @@ export type DisconnectResult = { success: true; warning?: string };
 // regardless of whether revoke succeeded — an already-invalid token must
 // still allow a local disconnect.
 export async function disconnectDropbox(): Promise<DisconnectResult> {
-  const envResult = getDropboxEnv();
-  const row = await getDropboxIntegrationRow();
-
   let warning: string | undefined;
-  if (envResult.ok && row.encryptedRefreshToken) {
+  const auth = await getAuthenticatedDropboxClient();
+  if (auth.ok) {
     try {
-      const refreshToken = decryptStoredRefreshToken(row, envResult.config);
-      const client = createDropboxClient(envResult.config, refreshToken);
-      await client.authTokenRevoke();
+      await auth.client.authTokenRevoke();
     } catch {
       warning = "Dropbox token revocation could not be confirmed; the local connection was cleared regardless.";
     }
+  } else if (auth.row?.encryptedRefreshToken) {
+    // A stored token existed but couldn't be turned into a working client
+    // (missing config / unreadable token) — still non-fatal, same warning.
+    warning = "Dropbox token revocation could not be confirmed; the local connection was cleared regardless.";
   }
 
   await prisma.dropboxIntegration.update({
@@ -287,12 +322,10 @@ export async function saveDropboxRootFolder(newRootFolder: string): Promise<Save
   const row = await getDropboxIntegrationRow();
 
   if (row.status === "CONNECTED" && row.encryptedRefreshToken) {
-    const envResult = getDropboxEnv();
-    if (!envResult.ok) return { success: false, code: "CONFIGURATION_MISSING" };
+    const auth = await getAuthenticatedDropboxClient();
+    if (!auth.ok) return { success: false, code: auth.code };
     try {
-      const refreshToken = decryptStoredRefreshToken(row, envResult.config);
-      const client = createDropboxClient(envResult.config, refreshToken);
-      const verification = await verifyOrCreateRootFolder(client, normalized);
+      const verification = await verifyOrCreateRootFolder(auth.client, normalized);
       await prisma.dropboxIntegration.update({
         where: { id: DROPBOX_INTEGRATION_ID },
         data: { rootFolder: verification.path, rootFolderVerifiedAt: new Date() },

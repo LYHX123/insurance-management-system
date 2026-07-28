@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CustomerFolderSyncSection } from "@/components/settings/customer-folder-sync-section";
 import {
   testDropboxConnectionAction,
   disconnectDropboxAction,
@@ -241,6 +242,8 @@ export function DropboxIntegrationForm({
           </Button>
         </div>
       </Card>
+
+      <CustomerFolderSyncSection isConnected={isConnected} />
 
       {showDisconnectConfirm && (
         <ConfirmDialog
