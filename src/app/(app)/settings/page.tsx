@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
 import { getSystemSettings } from "@/lib/settings/service";
+import { getDropboxIntegrationRow, toIntegrationView } from "@/lib/integrations/dropbox/service";
+import { getDropboxEnv } from "@/lib/integrations/dropbox/constants";
 import { SettingsContent } from "@/components/settings/settings-content";
 
 export default async function SettingsPage() {
@@ -10,6 +13,16 @@ export default async function SettingsPage() {
   }
 
   const settings = await getSystemSettings();
+
+  const dropboxRow = await getDropboxIntegrationRow();
+  const connectedByUser = dropboxRow.connectedById
+    ? await prisma.user.findUnique({ where: { id: dropboxRow.connectedById }, select: { fullName: true, username: true } })
+    : null;
+  const dropbox = toIntegrationView(
+    dropboxRow,
+    connectedByUser ? connectedByUser.fullName || connectedByUser.username : null,
+    !getDropboxEnv().ok
+  );
 
   const plainSettings = {
     companyName: settings.companyName,
@@ -35,5 +48,5 @@ export default async function SettingsPage() {
     loginReminderPopupEnabled: settings.loginReminderPopupEnabled,
   };
 
-  return <SettingsContent settings={plainSettings} />;
+  return <SettingsContent settings={plainSettings} dropbox={dropbox} />;
 }

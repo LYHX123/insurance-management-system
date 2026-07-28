@@ -1591,6 +1591,67 @@ const en = {
     fileTooLarge: "File is too large. Maximum size is 5MB.",
     unsupportedFileType: "Unsupported file type. Please use PNG, JPG, or WEBP.",
     adminOnlyNotice: "Settings is only available to administrators.",
+
+    // --- Dropbox Integration (Phase 1) ---------------------------------
+    tabDropbox: "Dropbox",
+    dropboxIntegrationTitle: "Dropbox Integration",
+    dropboxIntegrationDescription:
+      "Connect a Dropbox account so this system can store and organize files inside a single, dedicated root folder.",
+    dropboxStatusLabel: "Connection Status",
+    dropboxStatusConnected: "Connected",
+    dropboxStatusDisconnected: "Disconnected",
+    dropboxStatusError: "Connection Error",
+    dropboxStatusConfigMissing: "Configuration Missing",
+    dropboxConfigMissingHint:
+      "DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REDIRECT_URI, and DROPBOX_TOKEN_ENCRYPTION_KEY must be configured on the server before Dropbox can be connected.",
+
+    dropboxConnectedAccountTitle: "Connected Account",
+    dropboxAccountName: "Account Name",
+    dropboxAccountEmail: "Account Email",
+    dropboxAccountId: "Account ID",
+    dropboxConnectedDate: "Connected Date",
+    dropboxConnectedBy: "Connected By",
+    dropboxLastSuccessfulTest: "Last Successful Test",
+    dropboxNotConnectedYet: "Not connected yet.",
+
+    dropboxRootFolderTitle: "Root Folder",
+    dropboxRootFolderLabel: "Root Folder",
+    dropboxRootFolderExplanation:
+      "This system will only read and write files inside this Dropbox folder. It will never access files outside it.",
+    dropboxSaveRootFolder: "Save & Verify Root Folder",
+    dropboxRootFolderVerifiedAt: "Last Verified",
+
+    dropboxConnect: "Connect Dropbox",
+    dropboxReconnect: "Reconnect",
+    dropboxDisconnect: "Disconnect",
+    dropboxTestConnection: "Test Connection",
+    dropboxOpenFolder: "Open Dropbox Folder",
+    dropboxOpenFolderHint: "Opens Dropbox in a new tab. Navigate to the root folder path shown above.",
+
+    dropboxConnectedSuccessfully: "Dropbox connected successfully.",
+    dropboxConnectionWorking: "Dropbox connection is working.",
+    dropboxRootFolderVerifiedMessage: "Root folder verified.",
+    dropboxRootFolderCreatedMessage: "Root folder created.",
+    dropboxAuthFailed: "Dropbox authorization failed.",
+    dropboxAuthDenied: "Dropbox authorization was denied.",
+    dropboxAuthExpiredOrRevoked: "Dropbox authorization has expired or was revoked.",
+    dropboxConfigIncomplete: "Dropbox configuration is incomplete.",
+    dropboxRootPathInvalid: "Root path is invalid.",
+    dropboxRootPathIsFile: "A file already exists at this path in Dropbox. Choose a different root folder.",
+    dropboxInsufficientScope: "The Dropbox connection is missing a required permission. Please reconnect.",
+    dropboxDevUserRestricted:
+      "This Dropbox account is not enabled as a development user for this app yet. Ask the app owner to add it as a development user in the Dropbox App Console, or wait until the app is approved for production.",
+    dropboxRateLimited: "Too many Dropbox requests. Please try again shortly.",
+    dropboxNetworkError: "Could not reach Dropbox. Check your network connection and try again.",
+    dropboxUnknownError: "An unexpected Dropbox error occurred.",
+
+    dropboxDisconnectConfirmTitle: "Disconnect Dropbox",
+    dropboxDisconnectConfirmMessage:
+      "Disconnecting stops future synchronization but does not delete any files already in Dropbox.",
+    dropboxDisconnectWarning: "Dropbox token revocation could not be confirmed; the local connection was cleared regardless.",
+
+    dropboxSaveSuccess: "Dropbox settings saved successfully.",
+    dropboxUnauthorized: "You do not have permission to manage the Dropbox integration.",
   },
   reminders: {
     panelTitle: "Reminders",

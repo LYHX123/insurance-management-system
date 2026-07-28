@@ -85,6 +85,53 @@ model SystemSettings {
   updatedAt   DateTime @updatedAt
 }
 
+enum DropboxConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+// Singleton — Dropbox Integration (Settings, ADMIN-only), same fixed-id
+// pattern as SystemSettings above (see
+// src/lib/integrations/dropbox/constants.ts's DROPBOX_INTEGRATION_ID).
+// Phase 1 only: account connection + root-folder verification. No customer/
+// quotation/policy file sync yet — see src/lib/storage's "single swap
+// point for a future Dropbox provider" comments for where that will land.
+//
+// connectedById is a plain unenforced id string, not a Prisma relation —
+// matching this schema's existing convention for a single-user reference
+// (e.g. PolicyRecord.createdById, PolicyActivity.performedById) rather than
+// introducing the first enforced User relation of this kind.
+model DropboxIntegration {
+  id     String                  @id
+  status DropboxConnectionStatus @default(DISCONNECTED)
+
+  // AES-256-GCM, versioned payload (see encryption.ts) — never plaintext.
+  // The Dropbox App Secret and any short-lived access token are never
+  // persisted here; only the long-lived refresh token, and only encrypted.
+  encryptedRefreshToken String?
+
+  dropboxAccountId   String?
+  accountEmail       String?
+  accountDisplayName String?
+
+  rootFolder           String    @default("/Insurance Management System")
+  rootFolderVerifiedAt DateTime?
+
+  connectedAt     DateTime?
+  disconnectedAt  DateTime?
+  lastTestedAt    DateTime?
+  lastSuccessfulAt DateTime?
+  lastErrorCode    String?
+  lastErrorMessage String?
+
+  connectedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 enum CustomerStatus {
   ACTIVE
   INACTIVE
