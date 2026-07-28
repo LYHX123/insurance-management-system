@@ -15,6 +15,8 @@ const ERROR_KEY: Record<string, string> = {
   COMPANY_NAME_TAKEN: "companyNameTaken",
   PIN_NUMBER_TAKEN: "pinNumberTaken",
   INVALID_PHONE: "invalidPhone",
+  SHORT_NAME_INVALID_CHARACTERS: "shortNameInvalidCharacters",
+  SHORT_NAME_TOO_LONG: "shortNameTooLong",
 };
 
 export function EditCustomerModal({
@@ -32,6 +34,7 @@ export function EditCustomerModal({
   const [registeredAddress, setRegisteredAddress] = useState(customer.registeredAddress ?? "");
   const [mainContactPerson, setMainContactPerson] = useState(customer.mainContactPerson ?? "");
   const [mainPhoneNumber, setMainPhoneNumber] = useState(customer.mainPhoneNumber ?? "");
+  const [shortName, setShortName] = useState(customer.shortName ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -51,6 +54,7 @@ export function EditCustomerModal({
       registeredAddress,
       mainContactPerson,
       mainPhoneNumber,
+      shortName,
     });
     setIsSubmitting(false);
 
@@ -86,6 +90,9 @@ export function EditCustomerModal({
               value={mainPhoneNumber}
               onChange={(e) => setMainPhoneNumber(e.target.value)}
             />
+          </FormField>
+          <FormField label={t.customers.shortName} hint={t.customers.shortNameHint}>
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} />
           </FormField>
         </div>
 

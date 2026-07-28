@@ -48,6 +48,8 @@ const ERROR_KEY: Record<string, string> = {
   INVALID_PHONE: "invalidPhone",
   PROJECT_NAME_REQUIRED: "requiredField",
   PROJECT_CONTACT_REQUIRED: "requiredField",
+  SHORT_NAME_INVALID_CHARACTERS: "shortNameInvalidCharacters",
+  SHORT_NAME_TOO_LONG: "shortNameTooLong",
 };
 
 function emptyProject(): ProjectDraft {
@@ -78,6 +80,7 @@ export function NewCustomerForm() {
   const [registeredAddress, setRegisteredAddress] = useState("");
   const [mainContactPerson, setMainContactPerson] = useState("");
   const [mainPhoneNumber, setMainPhoneNumber] = useState("");
+  const [shortName, setShortName] = useState("");
   const [projects, setProjects] = useState<ProjectDraft[]>([]);
   const [documents, setDocuments] = useState<DocumentDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +130,7 @@ export function NewCustomerForm() {
         registeredAddress,
         mainContactPerson,
         mainPhoneNumber,
+        shortName,
       },
       projects: projects.map((p) => ({
         projectName: p.projectName,
@@ -184,6 +188,9 @@ export function NewCustomerForm() {
               value={mainPhoneNumber}
               onChange={(e) => setMainPhoneNumber(e.target.value)}
             />
+          </FormField>
+          <FormField label={t.customers.shortName} hint={t.customers.shortNameHint}>
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} />
           </FormField>
         </div>
       </Card>

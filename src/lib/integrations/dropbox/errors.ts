@@ -45,7 +45,14 @@ export type DropboxErrorCode =
   | "DROPBOX_FILE_OUTSIDE_ROOT"
   | "INVALID_STANDARD_FILENAME"
   | "UNSUPPORTED_FILE_TYPE"
-  | "FILE_TOO_LARGE";
+  | "FILE_TOO_LARGE"
+  // --- Phase 4: Insurance business file + Quotation version sync ---
+  | "QUOTATION_NOT_FOUND"
+  | "QUOTATION_HAS_NO_CASE"
+  | "BUSINESS_FOLDER_NOT_SYNCED"
+  | "BUSINESS_FOLDER_CONFLICT"
+  | "QUOTATION_VERSION_CONFLICT"
+  | "EXPORT_FAILED";
 
 export class DropboxIntegrationError extends Error {
   readonly code: DropboxErrorCode;

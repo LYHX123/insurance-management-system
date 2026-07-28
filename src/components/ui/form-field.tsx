@@ -1,10 +1,12 @@
 export function FormField({
   label,
   htmlFor,
+  hint,
   children,
 }: {
   label: string;
   htmlFor?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -13,6 +15,7 @@ export function FormField({
         {label}
       </label>
       {children}
+      {hint && <p className="text-xs text-secondary">{hint}</p>}
     </div>
   );
 }

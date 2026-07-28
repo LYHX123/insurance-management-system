@@ -26,6 +26,7 @@ export default async function CustomerPage() {
     registeredAddress: c.registeredAddress,
     mainContactPerson: c.mainContactPerson,
     mainPhoneNumber: c.mainPhoneNumber,
+    shortName: c.shortName,
     status: c.status,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),

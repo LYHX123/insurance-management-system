@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { isValidKenyanPhone } from "@/lib/validators";
-import { formatCustomerNumber } from "@/lib/customer-utils";
+import { formatCustomerNumber, validateCustomerShortName } from "@/lib/customer-utils";
 import { buildCustomerFolderName } from "@/lib/integrations/dropbox/customer-folder-names";
 import { syncCustomerFolder, renameCustomerFolder, type SyncOutcomeStatus } from "@/lib/integrations/dropbox/customer-folders";
 import type { CustomerStatus } from "@/generated/prisma/enums";
@@ -45,6 +45,7 @@ type CompanyInput = {
   registeredAddress?: string | null;
   mainContactPerson?: string | null;
   mainPhoneNumber?: string | null;
+  shortName?: string | null;
 };
 
 async function requireCustomerPermission() {
@@ -68,12 +69,16 @@ function validateCompanyInput(
     return { error: "INVALID_PHONE" };
   }
 
+  const shortNameResult = validateCustomerShortName(data.shortName ?? "");
+  if (!shortNameResult.ok) return { error: shortNameResult.error };
+
   return {
     companyName,
     pinNumber,
     registeredAddress: data.registeredAddress?.trim() || null,
     mainContactPerson: data.mainContactPerson?.trim() || null,
     mainPhoneNumber,
+    shortName: shortNameResult.value || null,
   };
 }
 

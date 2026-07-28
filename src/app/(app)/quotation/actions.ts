@@ -2618,6 +2618,13 @@ export async function deleteQuotationAction(id: string): Promise<ActionResult> {
   if (linkedPolicyCount > 0) return { success: false, error: "QUOTATION_HAS_LINKED_POLICIES" };
 
   try {
+    // Dropbox Integration Phase 4, Part 13: deleting a Quotation never
+    // deletes its Dropbox business folder/files — no Dropbox delete API is
+    // called anywhere in this action. QuotationDropboxBusinessFile and
+    // QuotationDropboxVersion cascade away with the Quotation row
+    // (DB-level only); any file already uploaded to Dropbox is
+    // deliberately retained. Archive/move-on-delete is out of scope for
+    // this phase.
     await prisma.quotation.delete({ where: { id } });
     revalidatePath("/quotation");
     return { success: true };

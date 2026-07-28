@@ -242,6 +242,10 @@ export function CustomerDetailView({
                 <dd className="text-body">{customer.mainPhoneNumber || "—"}</dd>
               </div>
               <div>
+                <dt className="text-secondary">{t.customers.shortName}</dt>
+                <dd className="text-body">{customer.shortName || "—"}</dd>
+              </div>
+              <div>
                 <dt className="text-secondary">{t.common.status}</dt>
                 <dd>
                   <StatusBadge

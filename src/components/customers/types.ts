@@ -6,6 +6,7 @@ export type CustomerDetail = {
   registeredAddress: string | null;
   mainContactPerson: string | null;
   mainPhoneNumber: string | null;
+  shortName: string | null;
   status: "ACTIVE" | "INACTIVE";
   createdAt: string;
   updatedAt: string;

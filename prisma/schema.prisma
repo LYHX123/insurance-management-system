@@ -45,12 +45,12 @@ model SystemSettings {
   id String @id
 
   // --- Company Information --------------------------------------------
-  companyName String?
-  pinNumber   String?
-  phoneNumber String?
-  email       String?
-  address     String?
-  website     String?
+  companyName    String?
+  pinNumber      String?
+  phoneNumber    String?
+  email          String?
+  address        String?
+  website        String?
   // Local-storage key under the existing uploads root (see
   // src/lib/storage) — never a raw filesystem path, mirroring every other
   // document/upload model in this schema (e.g. CustomerDocument.storageKey).
@@ -119,9 +119,9 @@ model DropboxIntegration {
   rootFolder           String    @default("/Insurance Management System")
   rootFolderVerifiedAt DateTime?
 
-  connectedAt     DateTime?
-  disconnectedAt  DateTime?
-  lastTestedAt    DateTime?
+  connectedAt      DateTime?
+  disconnectedAt   DateTime?
+  lastTestedAt     DateTime?
   lastSuccessfulAt DateTime?
   lastErrorCode    String?
   lastErrorMessage String?
@@ -176,6 +176,19 @@ model Customer {
   mainPhoneNumber   String?
   status            CustomerStatus @default(ACTIVE)
 
+  // Dropbox Integration Phase 4 — optional, user-editable short form of the
+  // company name used to build standardized Quotation business-file/version
+  // filenames (see src/lib/integrations/dropbox/customerShortName.ts).
+  // Nullable: every existing Customer is unaffected; a deterministic
+  // fallback (initials, then customer number) is derived at the point a
+  // business file is first created and snapshotted there — this column is
+  // never silently written by that fallback. Not unique: two customers
+  // legitimately deriving/choosing the same short form is not a conflict
+  // worth blocking on (only the immutable per-business-file snapshot needs
+  // to be distinguishable, and folder-naming collisions are handled at that
+  // layer, not here).
+  shortName String?
+
   // Storage abstraction (reserved for future Dropbox sync)
   storageFolderId     String?
   storageFolderPath   String?
@@ -218,6 +231,7 @@ model Customer {
   @@index([companyName])
   @@index([status])
   @@index([importBatchId])
+  @@index([shortName])
 }
 
 model CustomerProject {
@@ -347,7 +361,7 @@ model CustomerDocumentDropboxSync {
   dropboxPathLower   String?
 
   standardizedFileName String
-  originalFileName      String
+  originalFileName     String
 
   syncStatus        DropboxDocumentSyncStatus @default(PENDING)
   lastSyncAttemptAt DateTime?
@@ -581,6 +595,13 @@ model QuotationCase {
   documents  QuotationDocument[]
   activities QuotationCaseActivity[]
 
+  // Dropbox Integration Phase 4 (Correction 1) — the business folder
+  // belongs to the permanent Case, not any one revision, so R01/R02/R03
+  // all share exactly one folder and one version sequence. See
+  // QuotationDropboxBusinessFile's doc comment.
+  dropboxBusinessFile QuotationDropboxBusinessFile?
+  dropboxVersions     QuotationDropboxVersion[]
+
   @@index([customerId])
   @@index([projectId])
   @@index([status])
@@ -733,6 +754,12 @@ model Quotation {
   // insurance-type sections, each producing its own PolicyRecord.
   policyRecords PolicyRecord[]
 
+  // Dropbox Integration Phase 4 (Correction 1) — versions this SPECIFIC
+  // revision generated (a version's businessFile/case ownership lives on
+  // QuotationDropboxVersion itself; this is just "which versions did this
+  // exact revision's content produce", for traceability).
+  dropboxVersionsGenerated QuotationDropboxVersion[] @relation("QuotationDropboxVersionSource")
+
   @@unique([quotationCaseId, revisionNumber])
   @@index([quotationNumber])
   @@index([customerId])
@@ -741,6 +768,104 @@ model Quotation {
   @@index([quotationCaseId])
   @@index([isCurrentRevision])
   @@index([revisionStatus])
+}
+
+enum DropboxBusinessFileSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  ERROR
+  CONFLICT
+  DISABLED
+}
+
+// Dropbox Integration Phase 4 (Correction 1) — one row per QuotationCase
+// (the permanent insurance enquiry/business), NOT per revision. Created the
+// first time any revision under the case has an artifact
+// generated/synchronized. Stores an IMMUTABLE snapshot of everything that
+// goes into the business-folder name (date/insurance type/title/customer
+// short name) — never recomputed on later Customer/Quotation edits (Part
+// 4, requirement 6-7), and never renamed automatically once synchronized.
+// Exactly one folder per case is enforced at the database level by
+// `quotationCaseId @unique` — R01/R02/R03 all resolve to this same row via
+// their shared quotationCaseId, so ownership is direct, never inferred by
+// searching for sibling revisions. Never stores access/refresh tokens.
+model QuotationDropboxBusinessFile {
+  id              String        @id @default(cuid())
+  quotationCaseId String        @unique
+  quotationCase   QuotationCase @relation(fields: [quotationCaseId], references: [id], onDelete: Cascade)
+
+  businessDate       DateTime
+  insuranceTypeCode  String
+  customerShortName  String
+  businessTitle      String
+  businessFolderName String
+
+  dropboxFolderId    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+
+  syncStatus        DropboxBusinessFileSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions QuotationDropboxVersion[]
+
+  @@index([syncStatus])
+}
+
+// Dropbox Integration Phase 4 (Correction 1) — one row per generated
+// Quotation Excel/PDF version, belonging directly to the shared business
+// file (and, denormalized, its QuotationCase) — never to one revision.
+// sourceQuotationId records WHICH specific revision's content produced
+// this version, for traceability, without affecting ownership. Because
+// every revision of a case shares the same businessFileId, the single
+// @@unique([businessFileId, versionNumber]) constraint below is now
+// sufficient on its own to guarantee no duplicate V numbers, including
+// across different revisions of the same case (Correction 1, requirements
+// 3-5) — no service-layer sibling lookup is needed to achieve this.
+model QuotationDropboxVersion {
+  id                String @id @default(cuid())
+  businessFileId    String
+  quotationCaseId   String
+  sourceQuotationId String
+
+  versionNumber Int
+  baseFileName  String
+
+  excelLocalStorageKey String?
+  pdfLocalStorageKey   String?
+
+  excelDropboxFileId   String?
+  excelDropboxRevision String?
+  excelDropboxPath     String?
+  excelSyncStatus      DropboxBusinessFileSyncStatus @default(PENDING)
+
+  pdfDropboxFileId   String?
+  pdfDropboxRevision String?
+  pdfDropboxPath     String?
+  pdfSyncStatus      DropboxBusinessFileSyncStatus?
+
+  contentFingerprint String?
+  generatedAt        DateTime
+  lastSyncedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessFile     QuotationDropboxBusinessFile @relation(fields: [businessFileId], references: [id], onDelete: Cascade)
+  quotationCaseRef QuotationCase                @relation(fields: [quotationCaseId], references: [id], onDelete: Cascade)
+  sourceQuotation  Quotation                    @relation("QuotationDropboxVersionSource", fields: [sourceQuotationId], references: [id], onDelete: Cascade)
+
+  @@unique([businessFileId, versionNumber])
+  @@index([businessFileId])
+  @@index([quotationCaseId])
+  @@index([sourceQuotationId])
 }
 
 model QuotationInsuranceSection {

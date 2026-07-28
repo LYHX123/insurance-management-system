@@ -4,17 +4,20 @@
 // is the pre-existing generic exporter and must remain untouched and
 // functional per the Phase 3A instructions ("do not remove the old generic
 // Excel exporter yet").
+//
+// Dropbox Integration Phase 4: this is "the current existing workflow" Part
+// 8 hooks into — generation now also persists the Excel locally and
+// attempts a bounded Dropbox sync (business folder -> Quotation subfolder)
+// via generateAndSyncQuotationExcel. The browser-facing download filename
+// is deliberately unchanged (still buildRevisionExcelFilename); only the
+// Dropbox-stored copy uses the new standardized business-file naming.
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
-import {
-  generateQuotationExcel,
-  TemplateGenerationError,
-  type QuotationForExport,
-} from "@/lib/quotationTemplateEngine";
 import { buildRevisionExcelFilename } from "@/lib/quotationRevisions/excelFilename";
 import { buildContentDisposition } from "@/lib/http/contentDisposition";
+import { generateAndSyncQuotationExcel } from "@/lib/integrations/dropbox/quotationDropboxSync";
 
 export async function GET(
   req: NextRequest,
@@ -27,70 +30,44 @@ export async function GET(
 
   const { id } = await params;
 
-  const quotation: QuotationForExport | null = await prisma.quotation.findUnique({
+  const quotationSummary = await prisma.quotation.findUnique({
     where: { id },
-    include: {
+    select: {
+      quotationNumber: true,
+      revisionCode: true,
       customer: { select: { companyName: true } },
-      project: { select: { projectName: true } },
-      sections: {
-        orderBy: { sortOrder: "asc" },
-        include: {
-          items: true,
-          carDetail: true,
-          wibaDetail: { include: { payrollRows: true } },
-          elDetail: true,
-          cpmDetail: { include: { equipmentRows: true } },
-          publicLiabilityDetail: true,
-          fireDetail: true,
-          burglaryDetail: true,
-          gitSingleDetail: true,
-          gitAnnualDetail: true,
-          marineDetail: { include: { shipmentRows: true } },
-          motorCompPrivateDetail: true,
-          motorCompCommercialDetail: true,
-          motorTpoPrivateDetail: true,
-          motorTpoCommercialDetail: true,
-          gpaDetail: true,
-          medicalDetail: { include: { categoryRows: true } },
-          tenderSecurityDetail: true,
-          performanceBondDetail: true,
-          advancePaymentGuaranteeDetail: true,
-          customsBondDetail: { include: { itemRows: true } },
-        },
-      },
+      sections: { select: { insuranceTypeNameSnapshot: true } },
     },
   });
-
-  if (!quotation) {
+  if (!quotationSummary) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
-  try {
-    const { buffer } = await generateQuotationExcel(quotation);
-    const filename = buildRevisionExcelFilename({
-      quotationNumber: quotation.quotationNumber,
-      revisionCode: quotation.revisionCode,
-      customerName: quotation.customer.companyName,
-      insuranceTypeNames: quotation.sections.map((s) => s.insuranceTypeNameSnapshot),
-    });
-
-    return new NextResponse(new Uint8Array(buffer), {
-      headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": buildContentDisposition({
-          mode: "attachment",
-          filename,
-          fallbackFilename: "quotation.xlsx",
-        }),
-        "Cache-Control": "private, no-store",
-      },
-    });
-  } catch (err) {
-    if (err instanceof TemplateGenerationError) {
-      console.error(`Template Excel export failed for quotation ${id}: ${err.message}`, err.details);
-    } else {
-      console.error(`Template Excel export failed for quotation ${id}:`, err);
+  const result = await generateAndSyncQuotationExcel(id);
+  if (!result.success) {
+    if (result.error === "QUOTATION_NOT_FOUND") {
+      return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     }
+    console.error(`Excel generation/sync failed for quotation ${id}: ${result.error}`);
     return NextResponse.json({ error: "EXPORT_FAILED" }, { status: 500 });
   }
+
+  const filename = buildRevisionExcelFilename({
+    quotationNumber: quotationSummary.quotationNumber,
+    revisionCode: quotationSummary.revisionCode,
+    customerName: quotationSummary.customer.companyName,
+    insuranceTypeNames: quotationSummary.sections.map((s) => s.insuranceTypeNameSnapshot),
+  });
+
+  return new NextResponse(new Uint8Array(result.buffer), {
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": buildContentDisposition({
+        mode: "attachment",
+        filename,
+        fallbackFilename: "quotation.xlsx",
+      }),
+      "Cache-Control": "private, no-store",
+    },
+  });
 }

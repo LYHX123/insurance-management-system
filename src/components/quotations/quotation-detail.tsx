@@ -30,6 +30,7 @@ import type {
   RelatedPolicyBusinessStatus,
 } from "@/components/quotations/types";
 import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
+import { QuotationDropboxSection, type QuotationDropboxView } from "@/components/quotations/quotation-dropbox-status";
 
 // Phase 3B: all four Policy categories now exist (see PolicyCategory) — the
 // selector below no longer shows any category as "coming soon".
@@ -89,6 +90,9 @@ export function QuotationDetailView({
   quotation,
   embedded = false,
   caseStatus = null,
+  dropbox = null,
+  dropboxConnected = false,
+  isAdmin = false,
 }: {
   quotation: QuotationDetail;
   /** True when rendered inside the QuotationCase page's "Quotation Details"
@@ -102,6 +106,11 @@ export function QuotationDetailView({
    * of) this revision's own RevisionStatus — see statusTones.ts's doc
    * comment on why these must never be conflated. */
   caseStatus?: QuotationCaseStatus | null;
+  /** Dropbox Integration Phase 4 — safe view model of the business
+   * file/current version, or null when nothing has been generated yet. */
+  dropbox?: QuotationDropboxView;
+  dropboxConnected?: boolean;
+  isAdmin?: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -374,7 +383,8 @@ export function QuotationDetailView({
           title={t.quotations.confirmDeleteQuotation}
           message={
             deleteError ??
-            t.quotations.confirmDeleteQuotationMessage.replace("{number}", quotation.quotationNumber)
+            t.quotations.confirmDeleteQuotationMessage.replace("{number}", quotation.quotationNumber) +
+              (dropbox ? ` ${t.quotations.dropboxFilesRetainedAfterDelete}` : "")
           }
           isSubmitting={isDeleting}
           onConfirm={handleDelete}
@@ -622,6 +632,8 @@ export function QuotationDetailView({
           </div>
         </div>
       </Card>
+
+      <QuotationDropboxSection quotationId={quotation.id} dropbox={dropbox} dropboxConnected={dropboxConnected} isAdmin={isAdmin} />
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

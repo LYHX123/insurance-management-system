@@ -47,3 +47,27 @@ export function customerProjectFolder(
 ): string {
   return path.posix.join("customers", customerNumber, "projects", projectId);
 }
+
+// --- Customer Short Name (Dropbox Integration Phase 4, Part 2) ------------
+
+export const MAX_CUSTOMER_SHORT_NAME_LENGTH = 40;
+
+export type ShortNameValidationResult =
+  | { ok: true; value: string }
+  | { ok: false; error: "SHORT_NAME_INVALID_CHARACTERS" | "SHORT_NAME_TOO_LONG" };
+
+// Permissive by design (letters, numbers, hyphens, and — per Part 2,
+// requirement 10 — Chinese characters are all allowed unrestricted) but
+// structurally safe: no control characters, no path separators, and never
+// exactly "." or ".." once whitespace is collapsed. A blank value is valid
+// (the field is optional) and normalizes to "".
+export function validateCustomerShortName(raw: string): ShortNameValidationResult {
+  if (/[\x00-\x1F\x7F]/.test(raw)) return { ok: false, error: "SHORT_NAME_INVALID_CHARACTERS" };
+  if (/[/\\]/.test(raw)) return { ok: false, error: "SHORT_NAME_INVALID_CHARACTERS" };
+
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (collapsed === "." || collapsed === "..") return { ok: false, error: "SHORT_NAME_INVALID_CHARACTERS" };
+  if (collapsed.length > MAX_CUSTOMER_SHORT_NAME_LENGTH) return { ok: false, error: "SHORT_NAME_TOO_LONG" };
+
+  return { ok: true, value: collapsed };
+}
