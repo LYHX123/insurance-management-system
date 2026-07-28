@@ -62,10 +62,18 @@ app comes up. The `migrate` service is built from the same Dockerfile's
 `builder` stage (it has the full Prisma CLI, which is intentionally not
 part of the slim `app` runtime image). Run this once after every deployment
 that includes a schema change (safe to run even when there is nothing to
-apply):
+apply).
+
+`--build` is required here (not just on the `app` service's `up --build`):
+`docker compose run` does not rebuild an image that already exists under
+that service's tag, so without `--build` this command can silently run
+against a stale `migrate` image left over from a previous deployment —
+missing whatever dependency/code changes came in with the latest `git
+pull`. This is exactly how a fixed `package.json`/`prisma.config.ts` issue
+can still fail in production even after the fix has been pulled:
 
 ```bash
-docker compose --profile production run --rm migrate
+docker compose --profile production run --rm --build migrate
 ```
 
 This runs `npx prisma migrate deploy`, which only applies pending
@@ -79,7 +87,7 @@ The database starts with zero users. Seed the bootstrap admin once, using
 the same `migrate` image with the command overridden:
 
 ```bash
-docker compose --profile production run --rm migrate npx tsx prisma/seed.ts
+docker compose --profile production run --rm --build migrate npx tsx prisma/seed.ts
 ```
 
 This creates `admin` / `admin123` **only if no user named `admin` exists
@@ -94,7 +102,7 @@ public in the repository's seed script.
 cd /opt/insurance-management-system
 git pull origin master
 docker compose --profile production up -d --build
-docker compose --profile production run --rm migrate
+docker compose --profile production run --rm --build migrate
 ```
 
 Rebuilding and recreating the `app` container does not affect the `db`
