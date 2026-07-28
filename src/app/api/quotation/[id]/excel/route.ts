@@ -8,6 +8,7 @@ import {
   type QuotationExportData,
 } from "@/lib/excel/quotation-export";
 import { buildRevisionExcelFilename } from "@/lib/quotationRevisions/excelFilename";
+import { buildContentDisposition } from "@/lib/http/contentDisposition";
 
 function toNumber(value: { toNumber(): number } | null | undefined): number | null {
   return value ? value.toNumber() : null;
@@ -100,7 +101,11 @@ export async function GET(
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": buildContentDisposition({
+        mode: "attachment",
+        filename,
+        fallbackFilename: "quotation.xlsx",
+      }),
       "Cache-Control": "private, no-store",
     },
   });

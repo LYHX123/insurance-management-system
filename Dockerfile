@@ -16,8 +16,20 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Explicit, pinned app UID/GID — every ownership decision below (chown
+# statements, entrypoint self-heal, host deployment prep) must agree with
+# these two numbers. `-G nodejs` is required: without it, Alpine's adduser
+# gives nextjs its own auto-generated system group (observed as GID 65533,
+# "nogroup") instead of joining nodejs/1001, so the process's actual runtime
+# group silently didn't match what every `chown nextjs:nodejs` below
+# intended — the root cause of the production uploads permission failure.
 RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nextjs
+  && adduser --system --uid 1001 -G nodejs nextjs
+
+# su-exec: lets the entrypoint start as root just long enough to fix mount
+# ownership, then drop to the unprivileged nextjs user for the app's entire
+# actual runtime (never permanently root).
+RUN apk add --no-cache su-exec
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
@@ -53,7 +65,12 @@ RUN mkdir -p /app-data/policy-documents && chown -R nextjs:nodejs /app-data/poli
 # over this directory at container start.
 RUN mkdir -p /app-data/invoices && chown -R nextjs:nodejs /app-data/invoices
 
-USER nextjs
+COPY --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
+
+# Deliberately no `USER nextjs` here — the container starts as root so the
+# entrypoint can self-heal mount ownership (see docker-entrypoint.sh), then
+# immediately execs into nextjs via su-exec for the app's entire actual
+# runtime. The process that ends up serving traffic is never root.
 
 EXPOSE 3000
 ENV PORT=3000
@@ -62,4 +79,5 @@ ENV HOSTNAME=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:3000/api/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "server.js"]

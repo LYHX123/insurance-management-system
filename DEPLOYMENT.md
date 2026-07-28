@@ -43,6 +43,20 @@ nano .env.production
 mkdir -p uploads
 ```
 
+**Upload directory ownership:** the app container always runs as a fixed,
+non-root `nextjs` user/group, UID/GID `1001:1001`. The `./uploads` bind mount
+above will typically end up owned by whatever host user ran `mkdir` (e.g.
+`1000:1000` for a default `ubuntu`/`deploy` user) — that mismatch is exactly
+what broke uploads in production previously. This is no longer something you
+need to fix by hand: the container's entrypoint (`docker-entrypoint.sh`)
+checks ownership of `./uploads` and the three document-storage volumes on
+every container start and `chown`s them to `1001:1001` if they don't already
+match, before dropping privileges to run the app. It only touches ownership
+(never permissions, never `chmod 777`), so it's safe to run on every restart
+and preserves existing files. A server migration or a restore from backup
+that recreates `./uploads` with different host ownership will self-correct
+on the next `docker compose up`/restart — no manual `chown` step required.
+
 ## 2. First deployment command
 
 ```bash

@@ -12,14 +12,13 @@ import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from 
 import { buildCustomerFolderName } from "./customer-folder-names";
 import type { CustomerDropboxFolderModel } from "@/generated/prisma/models";
 
-export const STANDARD_CUSTOMER_SUBFOLDERS = [
-  "Customer Documents",
-  "General Documents",
-  "Motor",
-  "Non Motor",
-  "Bond",
-  "Work Permit",
-] as const;
+// Insurance-type folders (Motor/Non Motor/Bond/Work Permit) are deliberately
+// NOT created here — they're created lazily in the Quotation/Policy phases
+// only once corresponding business exists for that customer. Existing
+// insurance-type folders from before this change are left untouched: they
+// are simply outside this list, so sync/verify/rebuild never look for them,
+// never flag them missing, and never touch them.
+export const STANDARD_CUSTOMER_SUBFOLDERS = ["Customer Documents", "General Documents"] as const;
 
 // A row stuck in SYNCING past this age is treated as abandoned (e.g. a
 // crashed process) rather than genuinely in-progress — Part 16, requirement

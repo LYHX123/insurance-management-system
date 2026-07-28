@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { documentStorageService } from "@/lib/quotationDocuments/storage";
+import { buildContentDisposition } from "@/lib/http/contentDisposition";
 
 // Protected download/preview route. mode=download forces Content-Disposition:
 // attachment; anything else (the default) is inline, used by the PDF/image
@@ -39,13 +40,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const mode = req.nextUrl.searchParams.get("mode") === "download" ? "attachment" : "inline";
-  const safeName = document.originalFileName.replace(/["\r\n]/g, "");
   const webStream = Readable.toWeb(nodeStream) as ReadableStream;
 
   return new NextResponse(webStream, {
     headers: {
       "Content-Type": document.mimeType,
-      "Content-Disposition": `${mode}; filename="${safeName}"`,
+      "Content-Disposition": buildContentDisposition({ mode, filename: document.originalFileName }),
       "Content-Length": String(document.fileSize),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",

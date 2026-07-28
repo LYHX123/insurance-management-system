@@ -125,7 +125,11 @@ vi.mock("@/lib/prisma", () => ({
 // calls behave like a real Dropbox account (created folders are found by
 // later GetMetadata calls, moved folders resolve by id, etc.) rather than
 // stateless per-call mocks that don't remember earlier calls. ---------------
-type VfsEntry = { tag: "folder" | "file"; id: string };
+// displayPath preserves the real (mixed-case) path an item was created/moved
+// at, mirroring Dropbox's own path_display — separate from the map key,
+// which is always lowercased for lookup. Optional so pre-existing tests that
+// seed vfs entries directly (and never look them up by id) don't need it.
+type VfsEntry = { tag: "folder" | "file"; id: string; displayPath?: string };
 let vfs: Map<string, VfsEntry> = new Map();
 let idCounter = 0;
 
@@ -139,17 +143,30 @@ function notFoundError() {
 }
 
 const usersGetCurrentAccount = vi.fn();
+// Real Dropbox metadata lookups by id resolve to the item's actual current
+// path, not the id string itself — mirror that here so tests exercising
+// verify/rebuild (which look up by stored dropboxFolderId) see a realistic
+// path_display rather than the literal "id:..." token.
+function metadataFor(path: string): { entry: VfsEntry; displayPath: string } | null {
+  if (path.startsWith("id:")) {
+    const key = findKeyById(path);
+    const entry = key ? vfs.get(key) : undefined;
+    return key && entry ? { entry, displayPath: entry.displayPath ?? key } : null;
+  }
+  const entry = vfs.get(path.toLowerCase());
+  return entry ? { entry, displayPath: entry.displayPath ?? path } : null;
+}
 const filesGetMetadata = vi.fn(async ({ path }: { path: string }) => {
-  const entry = path.startsWith("id:") ? findById(path) : vfs.get(path.toLowerCase());
-  if (!entry) throw notFoundError();
-  return { result: { ".tag": entry.tag, id: entry.id, path_display: path } };
+  const found = metadataFor(path);
+  if (!found) throw notFoundError();
+  return { result: { ".tag": found.entry.tag, id: found.entry.id, path_display: found.displayPath } };
 });
 const filesCreateFolderV2 = vi.fn(async ({ path }: { path: string }) => {
   const key = path.toLowerCase();
   if (vfs.has(key)) throw { status: 409, error: { error_summary: "path/conflict/folder/.." } };
   idCounter += 1;
   const id = `id:folder${idCounter}`;
-  vfs.set(key, { tag: "folder", id });
+  vfs.set(key, { tag: "folder", id, displayPath: path });
   return { result: { metadata: { id, path_display: path } } };
 });
 const filesMoveV2 = vi.fn(async ({ from_path, to_path }: { from_path: string; to_path: string }) => {
@@ -159,7 +176,7 @@ const filesMoveV2 = vi.fn(async ({ from_path, to_path }: { from_path: string; to
   const destKey = to_path.toLowerCase();
   if (vfs.has(destKey)) throw { status: 409, error: { error_summary: "to/conflict/folder/.." } };
   vfs.delete(sourceKey);
-  vfs.set(destKey, sourceEntry);
+  vfs.set(destKey, { ...sourceEntry, displayPath: to_path });
   return { result: { metadata: { ".tag": sourceEntry.tag, id: sourceEntry.id, path_display: to_path } } };
 });
 const getAccessTokenFromCode = vi.fn();
@@ -168,10 +185,6 @@ const getAuthenticationUrl = vi.fn(async () => "https://www.dropbox.com/oauth2/a
 function findKeyById(id: string): string | undefined {
   for (const [k, v] of vfs.entries()) if (v.id === id) return k;
   return undefined;
-}
-function findById(id: string): VfsEntry | undefined {
-  const key = findKeyById(id);
-  return key ? vfs.get(key) : undefined;
 }
 
 vi.mock("dropbox", () => ({
@@ -195,16 +208,16 @@ describe("Customer Dropbox filing (Part 23.A/C/D/E/F)", () => {
     // clears mock implementations set via the factory's inline `vi.fn(impl)`
     // — re-declare them per test run).
     filesGetMetadata.mockImplementation(async ({ path }: { path: string }) => {
-      const entry = path.startsWith("id:") ? findById(path) : vfs.get(path.toLowerCase());
-      if (!entry) throw notFoundError();
-      return { result: { ".tag": entry.tag, id: entry.id, path_display: path } };
+      const found = metadataFor(path);
+      if (!found) throw notFoundError();
+      return { result: { ".tag": found.entry.tag, id: found.entry.id, path_display: found.displayPath } };
     });
     filesCreateFolderV2.mockImplementation(async ({ path }: { path: string }) => {
       const key = path.toLowerCase();
       if (vfs.has(key)) throw { status: 409, error: { error_summary: "path/conflict/folder/.." } };
       idCounter += 1;
       const id = `id:folder${idCounter}`;
-      vfs.set(key, { tag: "folder", id });
+      vfs.set(key, { tag: "folder", id, displayPath: path });
       return { result: { metadata: { id, path_display: path } } };
     });
     filesMoveV2.mockImplementation(async ({ from_path, to_path }: { from_path: string; to_path: string }) => {
@@ -214,7 +227,7 @@ describe("Customer Dropbox filing (Part 23.A/C/D/E/F)", () => {
       const destKey = to_path.toLowerCase();
       if (vfs.has(destKey)) throw { status: 409, error: { error_summary: "to/conflict/folder/.." } };
       vfs.delete(sourceKey);
-      vfs.set(destKey, sourceEntry);
+      vfs.set(destKey, { ...sourceEntry, displayPath: to_path });
       return { result: { metadata: { ".tag": sourceEntry.tag, id: sourceEntry.id, path_display: to_path } } };
     });
   });
@@ -236,8 +249,68 @@ describe("Customer Dropbox filing (Part 23.A/C/D/E/F)", () => {
     expect(row.syncStatus).toBe("SYNCED");
     expect(row.dropboxFolderId).not.toBeNull();
     expect(row.displayPath).toContain("CUST-0001");
-    // Customers + customer folder + 6 standard subfolders = 8 create calls.
+    // Customers + customer folder + STANDARD_CUSTOMER_SUBFOLDERS create calls
+    // (Customer Documents, General Documents only — insurance-type folders
+    // are created lazily elsewhere, not during Customer sync).
     expect(filesCreateFolderV2).toHaveBeenCalledTimes(2 + STANDARD_CUSTOMER_SUBFOLDERS.length);
+  });
+
+  it("Phase 2 correction: only Customer Documents + General Documents are created on Customer sync", async () => {
+    await connectIntegration();
+    const { syncCustomerFolder, STANDARD_CUSTOMER_SUBFOLDERS } = await import("../customer-folders");
+
+    expect(STANDARD_CUSTOMER_SUBFOLDERS).toEqual(["Customer Documents", "General Documents"]);
+
+    await syncCustomerFolder("cust-1");
+
+    const created = filesCreateFolderV2.mock.calls.map(([args]) => args.path.toLowerCase());
+    expect(created.some((p) => p.endsWith("/motor"))).toBe(false);
+    expect(created.some((p) => p.endsWith("/non motor"))).toBe(false);
+    expect(created.some((p) => p.endsWith("/bond"))).toBe(false);
+    expect(created.some((p) => p.endsWith("/work permit"))).toBe(false);
+    expect(created.some((p) => p.endsWith("/customer documents"))).toBe(true);
+    expect(created.some((p) => p.endsWith("/general documents"))).toBe(true);
+  });
+
+  it("Phase 2 correction: pre-existing insurance-type folders are preserved, untouched, and not required by verify", async () => {
+    await connectIntegration();
+    const { syncCustomerFolder, verifyCustomerFolder } = await import("../customer-folders");
+
+    await syncCustomerFolder("cust-1");
+    const customerPath = "/insurance management system/customers/cust-0001 - acme ltd";
+    // Simulate legacy insurance-type folders that already exist from before
+    // this correction — sync must never have created them, but they must
+    // still be recognized as present and left alone.
+    vfs.set(`${customerPath}/motor`, { tag: "folder", id: "id:legacy-motor" });
+    vfs.set(`${customerPath}/non motor`, { tag: "folder", id: "id:legacy-nonmotor" });
+    vfs.set(`${customerPath}/bond`, { tag: "folder", id: "id:legacy-bond" });
+    vfs.set(`${customerPath}/work permit`, { tag: "folder", id: "id:legacy-workpermit" });
+
+    const result = await verifyCustomerFolder("cust-1");
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("SYNCED");
+    expect(result.missingSubfolders).toBeUndefined();
+    // Nothing about the legacy folders was moved or deleted.
+    expect(filesMoveV2).not.toHaveBeenCalled();
+    expect(vfs.get(`${customerPath}/motor`)?.id).toBe("id:legacy-motor");
+    expect(vfs.get(`${customerPath}/non motor`)?.id).toBe("id:legacy-nonmotor");
+    expect(vfs.get(`${customerPath}/bond`)?.id).toBe("id:legacy-bond");
+    expect(vfs.get(`${customerPath}/work permit`)?.id).toBe("id:legacy-workpermit");
+  });
+
+  it("Phase 2 correction: rebuild only fills Customer Documents/General Documents, never insurance-type folders", async () => {
+    await connectIntegration();
+    const { syncCustomerFolder, rebuildCustomerSubfolders } = await import("../customer-folders");
+
+    await syncCustomerFolder("cust-1");
+    filesCreateFolderV2.mockClear();
+
+    const result = await rebuildCustomerSubfolders("cust-1");
+
+    expect(result.success).toBe(true);
+    // Everything already existed from the initial sync, so rebuild creates nothing new.
+    expect(filesCreateFolderV2).not.toHaveBeenCalled();
   });
 
   it("A2: customer created while Dropbox disconnected -> Customer remains, status pending/error, never throws", async () => {
@@ -430,9 +503,9 @@ describe("Customer Dropbox filing (Part 23.A/C/D/E/F)", () => {
     expect(folders.get("cust-1")!.syncStatus).toBe("ERROR");
 
     filesGetMetadata.mockImplementation(async ({ path }: { path: string }) => {
-      const entry = path.startsWith("id:") ? findById(path) : vfs.get(path.toLowerCase());
-      if (!entry) throw notFoundError();
-      return { result: { ".tag": entry.tag, id: entry.id, path_display: path } };
+      const found = metadataFor(path);
+      if (!found) throw notFoundError();
+      return { result: { ".tag": found.entry.tag, id: found.entry.id, path_display: found.displayPath } };
     });
     filesCreateFolderV2.mockImplementation(async ({ path }: { path: string }) => {
       const key = path.toLowerCase();

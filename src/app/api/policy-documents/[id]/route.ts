@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission, POLICY_CATEGORY_PERMISSION } from "@/lib/permissions";
 import { policyDocumentStorage } from "@/lib/policyDocuments/storage";
+import { buildContentDisposition } from "@/lib/http/contentDisposition";
 
 // Protected download route — mode=download forces Content-Disposition:
 // attachment; anything else (the default) is inline. PolicyDocument rows are
@@ -48,13 +49,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const mode = req.nextUrl.searchParams.get("mode") === "download" ? "attachment" : "inline";
-  const safeName = document.originalFileName.replace(/["\r\n]/g, "");
   const webStream = Readable.toWeb(nodeStream) as ReadableStream;
 
   return new NextResponse(webStream, {
     headers: {
       "Content-Type": document.mimeType,
-      "Content-Disposition": `${mode}; filename="${safeName}"`,
+      "Content-Disposition": buildContentDisposition({ mode, filename: document.originalFileName }),
       "Content-Length": String(document.fileSize),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",

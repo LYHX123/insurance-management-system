@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { storageService } from "@/lib/storage";
+import { buildContentDisposition } from "@/lib/http/contentDisposition";
 
 export async function GET(
   req: NextRequest,
@@ -26,12 +27,11 @@ export async function GET(
   }
 
   const mode = req.nextUrl.searchParams.get("mode") === "download" ? "attachment" : "inline";
-  const safeName = document.originalFileName.replace(/["\r\n]/g, "");
 
   return new NextResponse(new Uint8Array(file.buffer), {
     headers: {
       "Content-Type": document.mimeType,
-      "Content-Disposition": `${mode}; filename="${safeName}"`,
+      "Content-Disposition": buildContentDisposition({ mode, filename: document.originalFileName }),
       "Content-Length": String(document.fileSize),
       "Cache-Control": "private, no-store",
     },
