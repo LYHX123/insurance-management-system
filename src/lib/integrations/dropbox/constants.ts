@@ -23,6 +23,18 @@ export const DROPBOX_SCOPES = [
 export const DROPBOX_OAUTH_STATE_COOKIE = "dropbox_oauth_state";
 export const DROPBOX_OAUTH_STATE_MAX_AGE_SECONDS = 600; // ~10 minutes
 
+// Dropbox Root Migration — fixed-id singleton, same convention as
+// DROPBOX_INTEGRATION_ID above.
+export const DROPBOX_NAMESPACE_CONFIG_ID = "singleton";
+
+// Confirmed via a live read-only diagnostic (Stage A) — the real API-visible
+// name of the Team Folder is NOT the literal string "ENFB SYSTEM FILE" (that
+// is only the Dropbox Team's display name); it has a " Team Folder" suffix.
+// Never assume the Dropbox web UI label matches the API path.
+export const MIGRATION_TARGET_TEAM_FOLDER_NAME = "ENFB SYSTEM FILE Team Folder";
+export const MIGRATION_SAFE_DESTINATION_LABEL = "Team Folder — ENFB SYSTEM FILE Team Folder";
+export const DEFAULT_DESTINATION_ROOT_FOLDER = "/Insurance Management System";
+
 export type DropboxEnvConfig = {
   appKey: string;
   appSecret: string;

@@ -9,8 +9,10 @@ import { CompanyInfoForm } from "./company-info-form";
 import { SystemPreferencesForm } from "./system-preferences-form";
 import { ReminderSettingsForm } from "./reminder-settings-form";
 import { DropboxIntegrationForm } from "./dropbox-integration-form";
+import { DropboxMigrationPanel } from "./dropbox-migration-panel";
 import type { Locale } from "@/generated/prisma/enums";
 import type { DropboxIntegrationView } from "@/lib/integrations/dropbox/types";
+import type { DropboxMigrationPageData } from "@/lib/integrations/dropbox/migration/view";
 
 export type SettingsData = {
   companyName: string | null;
@@ -39,7 +41,15 @@ export type SettingsData = {
 type TabKey = "companyInfo" | "systemPreferences" | "reminderSettings" | "dropbox";
 const VALID_TABS: TabKey[] = ["companyInfo", "systemPreferences", "reminderSettings", "dropbox"];
 
-export function SettingsContent({ settings, dropbox }: { settings: SettingsData; dropbox: DropboxIntegrationView }) {
+export function SettingsContent({
+  settings,
+  dropbox,
+  dropboxMigration,
+}: {
+  settings: SettingsData;
+  dropbox: DropboxIntegrationView;
+  dropboxMigration: DropboxMigrationPageData;
+}) {
   const { t } = useLocale();
   // Deep-link support for the OAuth callback redirect
   // (/settings?tab=dropbox&dropbox=connected|error&code=...), same pattern
@@ -65,11 +75,14 @@ export function SettingsContent({ settings, dropbox }: { settings: SettingsData;
       {tab === "systemPreferences" && <SystemPreferencesForm settings={settings} />}
       {tab === "reminderSettings" && <ReminderSettingsForm settings={settings} />}
       {tab === "dropbox" && (
-        <DropboxIntegrationForm
-          dropbox={dropbox}
-          callbackResult={searchParams.get("dropbox")}
-          callbackErrorCode={searchParams.get("code")}
-        />
+        <div className="flex flex-col gap-4">
+          <DropboxIntegrationForm
+            dropbox={dropbox}
+            callbackResult={searchParams.get("dropbox")}
+            callbackErrorCode={searchParams.get("code")}
+          />
+          <DropboxMigrationPanel namespace={dropboxMigration.namespace} latestJob={dropboxMigration.latestJob} />
+        </div>
       )}
     </div>
   );

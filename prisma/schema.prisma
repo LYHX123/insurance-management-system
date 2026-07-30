@@ -3312,3 +3312,239 @@ model NonMotorClaimDocumentDropboxSync {
   @@index([syncStatus])
   @@index([businessFileId])
 }
+
+// ============================================================
+// Dropbox Root Migration (Home namespace -> ENFB SYSTEM FILE Team
+// Folder namespace). Additive-only; see backups/ for the pg_dump taken
+// immediately before this migration was applied.
+//
+// Namespaces are NOT interchangeable path prefixes — a Team Folder is its
+// own distinct Dropbox namespace (confirmed via a live read-only diagnostic:
+// the Team Folder's own namespace id was resolved from its
+// sharing_info/shared_folder_id, and files/list_folder("") against that
+// namespace id directly returns its own root, with no
+// "ENFB SYSTEM FILE Team Folder" path prefix needed). So every existing
+// Dropbox-backed model's stored path/id fields are namespace-scoped, and
+// this section exists to migrate between namespaces without ever
+// reinterpreting an old id/path in the new namespace.
+// ============================================================
+
+enum DropboxNamespaceMode {
+  HOME
+  TEAM_FOLDER_NAMESPACE
+}
+
+enum DropboxMigrationStatus {
+  NOT_STARTED
+  DIAGNOSTIC_COMPLETE
+  WRITE_TEST_REQUIRED
+  WRITE_TEST_PASSED
+  PREVIEW_READY
+  READY_FOR_COPY
+  COPYING
+  COPY_PAUSED
+  COPY_FAILED
+  COPY_COMPLETE
+  VERIFYING
+  VERIFICATION_FAILED
+  VERIFIED
+  READY_TO_ACTIVATE
+  ACTIVATING
+  ACTIVE
+  COMPLETED
+}
+
+enum DropboxMigrationPreviewResult {
+  SAFE_TO_CONTINUE
+  BLOCKED_BY_CONFLICT
+  BLOCKED_BY_PERMISSION
+  BLOCKED_BY_STRUCTURE
+  MANUAL_REVIEW_REQUIRED
+}
+
+enum DropboxMigrationObjectKind {
+  ROOT
+  CUSTOMER_FOLDER
+  CUSTOMER_STANDARD_SUBFOLDER
+  CUSTOMER_DOCUMENT
+  QUOTATION_BUSINESS_FOLDER
+  QUOTATION_VERSION_FILE
+  POLICY_BUSINESS_FOLDER
+  POLICY_DOCUMENT
+  INVOICE_BUSINESS_FOLDER
+  INVOICE_DOCUMENT
+  MOTOR_CLAIM_BUSINESS_FOLDER
+  MOTOR_CLAIM_DOCUMENT
+  NON_MOTOR_CLAIM_BUSINESS_FOLDER
+  NON_MOTOR_CLAIM_DOCUMENT
+  UNCLASSIFIED
+}
+
+enum DropboxMigrationObjectType {
+  FILE
+  FOLDER
+}
+
+enum DropboxMigrationObjectStatus {
+  DISCOVERED
+  PENDING
+  COPYING
+  COPIED
+  VERIFYING
+  VERIFIED
+  SKIPPED_IDENTICAL
+  CONFLICT
+  MISSING_SOURCE
+  FAILED
+}
+
+// Singleton (fixed id, same convention as DropboxIntegration/SystemSettings
+// above) — the ONE place "which namespace is active right now" is recorded.
+// src/lib/integrations/dropbox/service.ts's getAuthenticatedDropboxClient()
+// reads this row to decide whether to build a Home-namespace client (the
+// unchanged, pre-migration behavior) or a destination-namespace client, and
+// to substitute the effective root folder accordingly — every existing sync
+// module reads root folder only through that one function's return value,
+// so this is the single choke point the whole app's Dropbox writes route
+// through post-activation.
+model DropboxNamespaceConfig {
+  id String @id
+
+  activeNamespaceMode DropboxNamespaceMode @default(HOME)
+  activeRootFolder    String               @default("/Insurance Management System")
+
+  // AES-256-GCM, same encryption scheme/key as
+  // DropboxIntegration.encryptedRefreshToken (see encryption.ts) — the
+  // destination namespace id is not a credential, but it is namespace
+  // identity data this project's own migration spec requires be kept out of
+  // logs/UI/tests, so it gets the same at-rest protection as the refresh
+  // token rather than being stored as plaintext.
+  encryptedDestinationNamespaceId String?
+  // Safe, human-readable label only — e.g. "Team Folder — ENFB SYSTEM FILE
+  // Team Folder" — never the raw id. Shown directly in Settings.
+  destinationNamespaceDisplayName String?
+  destinationRootFolder           String    @default("/Insurance Management System")
+  destinationResolvedAt           DateTime?
+
+  // While true, getAuthenticatedDropboxClient() refuses every normal sync
+  // call with MIGRATION_LOCKED (safe, transient) rather than ERROR — every
+  // existing sync module already retries ERROR-status rows via its
+  // preview/backfill "retry-failed" action, so lifting the lock and
+  // re-running those existing actions is exactly the "replay pending sync"
+  // step (Part 7/Part 10) with no new replay-queue machinery required.
+  migrationLocked   Boolean   @default(false)
+  migrationLockedAt DateTime?
+
+  lastErrorCode    String?
+  lastErrorMessage String?
+
+  activatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One row per migration attempt (a fresh diagnostic/preview/copy cycle
+// creates a new row rather than reusing an old one, so history of prior
+// attempts — including abandoned ones — is preserved for audit).
+model DropboxMigrationJob {
+  id String @id @default(cuid())
+
+  status       DropboxMigrationStatus @default(NOT_STARTED)
+  currentPhase String?
+
+  sourceNamespaceMode      DropboxNamespaceMode @default(HOME)
+  destinationNamespaceMode DropboxNamespaceMode @default(TEAM_FOLDER_NAMESPACE)
+
+  sourceRootPath      String
+  destinationRootPath String
+
+  sourceRootFolderId      String?
+  destinationRootFolderId String?
+
+  // Flat typed counters rather than a JSON blob — this schema's existing
+  // convention (see PolicyActivity's comment above) is no model anywhere
+  // uses a Json column.
+  previewResult                      DropboxMigrationPreviewResult?
+  previewSummary                     String?
+  previewTotalFolders                Int?
+  previewTotalFiles                  Int?
+  previewTotalBytes                  BigInt?
+  previewCustomerFolders             Int?
+  previewCustomerDocuments           Int?
+  previewQuotationFolders            Int?
+  previewQuotationFiles              Int?
+  previewPolicyFolders               Int?
+  previewPolicyFiles                 Int?
+  previewInvoiceFolders              Int?
+  previewInvoiceFiles                Int?
+  previewMotorClaimFolders           Int?
+  previewMotorClaimFiles             Int?
+  previewNonMotorClaimFolders        Int?
+  previewNonMotorClaimFiles          Int?
+  previewUnexpectedObjects           Int?
+  previewIdenticalDestinationObjects Int?
+  previewConflictObjects             Int?
+  previewedAt                        DateTime?
+
+  safeErrorCode    String?
+  safeErrorMessage String?
+
+  // Plain unenforced id string — same convention as
+  // DropboxIntegration.connectedById above.
+  initiatedById String?
+
+  startedAt   DateTime?
+  copiedAt    DateTime?
+  verifiedAt  DateTime?
+  activatedAt DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  objects DropboxMigrationObjectLedger[]
+
+  @@index([status])
+}
+
+// Per-object copy/verify ledger — one row per Dropbox folder or file the
+// migration touches. Deliberately keyed on (migrationJobId, sourcePath),
+// not on source Dropbox id alone: a source id is only known once the object
+// has actually been discovered/looked up, whereas the deterministic path is
+// known up front from the owning DB record, and must stay stable across
+// resumed runs for idempotency.
+model DropboxMigrationObjectLedger {
+  id String @id @default(cuid())
+
+  migrationJobId String
+  migrationJob   DropboxMigrationJob @relation(fields: [migrationJobId], references: [id])
+
+  objectKind DropboxMigrationObjectKind
+  objectType DropboxMigrationObjectType
+
+  sourcePath     String
+  sourceId       String?
+  sourceRevision String?
+
+  destinationPath String
+  destinationId   String?
+
+  expectedContentHash String?
+  expectedFileSize    BigInt?
+
+  status       DropboxMigrationObjectStatus @default(DISCOVERED)
+  attemptCount Int                          @default(0)
+
+  copiedAt   DateTime?
+  verifiedAt DateTime?
+
+  safeErrorCode    String?
+  safeErrorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([migrationJobId, sourcePath])
+  @@index([migrationJobId, status])
+}

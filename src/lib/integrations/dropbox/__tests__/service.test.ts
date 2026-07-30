@@ -43,6 +43,27 @@ vi.mock("@/lib/prisma", () => ({
         return store;
       }),
     },
+    // Migration namespace config — defaults to unlocked HOME mode, i.e. the
+    // unchanged pre-migration behavior these tests all assume.
+    dropboxNamespaceConfig: {
+      upsert: vi.fn(async () => ({
+        id: "singleton",
+        activeNamespaceMode: "HOME",
+        activeRootFolder: "/Insurance Management System",
+        encryptedDestinationNamespaceId: null,
+        destinationNamespaceDisplayName: null,
+        destinationRootFolder: "/Insurance Management System",
+        destinationResolvedAt: null,
+        migrationLocked: false,
+        migrationLockedAt: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        activatedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      update: vi.fn(async () => ({})),
+    },
   },
 }));
 

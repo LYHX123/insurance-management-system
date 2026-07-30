@@ -9,6 +9,7 @@ import { exchangeCodeForToken } from "./auth";
 import { createDropboxClient } from "./client";
 import { normalizeRootFolder, assertInsideRoot } from "./paths";
 import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from "./errors";
+import { getActiveClient } from "./migration/config";
 import type { DropboxIntegrationModel } from "@/generated/prisma/models";
 import type { DropboxIntegrationView } from "./types";
 
@@ -70,6 +71,17 @@ export type GetAuthenticatedClientResult =
 // Phase 2's customer-folders.ts). `row` is returned even on failure (when
 // available) so callers that need to record a safe error on the stored row
 // don't have to re-fetch it.
+//
+// Dropbox Root Migration: this is the single choke point every existing
+// sync module reads its client AND root folder from (via `row.rootFolder`)
+// — it never returns a bare Home-namespace client anymore. getActiveClient()
+// (migration/config.ts) decides, based on the stored DropboxNamespaceConfig,
+// whether to hand back the unchanged Home-namespace client (pre-migration
+// behavior, and still the default), the destination Team Folder namespace
+// client post-activation, or a safe MIGRATION_LOCKED failure while a
+// migration is in progress — so every caller of this function automatically
+// follows the active namespace and automatically pauses during the lock
+// with no changes required in the caller itself.
 export async function getAuthenticatedDropboxClient(): Promise<GetAuthenticatedClientResult> {
   const envResult = getDropboxEnv();
   if (!envResult.ok) {
@@ -79,8 +91,12 @@ export async function getAuthenticatedDropboxClient(): Promise<GetAuthenticatedC
   const row = await getDropboxIntegrationRow();
   try {
     const refreshToken = decryptStoredRefreshToken(row, envResult.config);
-    const client = createDropboxClient(envResult.config, refreshToken);
-    return { ok: true, client, env: envResult.config, row };
+    const active = await getActiveClient(envResult.config, refreshToken, row.rootFolder);
+    if (!active.ok) {
+      return { ok: false, code: active.code, message: active.message, row };
+    }
+    const effectiveRow = active.effectiveRootFolder === row.rootFolder ? row : { ...row, rootFolder: active.effectiveRootFolder };
+    return { ok: true, client: active.client, env: envResult.config, row: effectiveRow };
   } catch (err) {
     const mapped = err instanceof DropboxIntegrationError ? err : mapDropboxError(err);
     return { ok: false, code: mapped.code, message: mapped.message, row };

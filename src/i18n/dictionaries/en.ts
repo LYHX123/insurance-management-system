@@ -2045,6 +2045,54 @@ const en = {
 
     dropboxSaveSuccess: "Dropbox settings saved successfully.",
     dropboxUnauthorized: "You do not have permission to manage the Dropbox integration.",
+
+    dropboxMigrationSectionTitle: "Storage Migration",
+    dropboxMigrationSectionDescription:
+      "Move the Dropbox root from the member Home folder into the ENFB SYSTEM FILE Team Folder. Nothing in the legacy folder is deleted or moved automatically at any step.",
+    dropboxMigrationCurrentLocationLabel: "Current location",
+    dropboxMigrationCurrentLocationValue: "Member Folder — LI YONG",
+    dropboxMigrationTargetLocationLabel: "Target location",
+    dropboxMigrationTargetLocationValue: "Team Folder — ENFB SYSTEM FILE Team Folder",
+    dropboxMigrationStatusLabel: "Migration status",
+    dropboxMigrationNotStarted: "Not started yet.",
+    dropboxMigrationDestinationNotResolved: "Destination not resolved yet — run the diagnostic first.",
+
+    dropboxMigrationRunDiagnostic: "Run Diagnostic",
+    dropboxMigrationDiagnosticSuccess: "Diagnostic complete — destination namespace resolved.",
+
+    dropboxMigrationTestWriteAccess: "Test Destination Write Access",
+    dropboxMigrationWriteTestSuccess: "Write-access test passed — temporary folder created, verified, and removed.",
+    dropboxMigrationWriteTestConfirmTitle: "Test Destination Write Access",
+    dropboxMigrationWriteTestConfirmMessage:
+      "This creates one uniquely named temporary folder in the destination Team Folder, verifies it, then deletes only that exact folder. No existing content is touched.",
+    dropboxMigrationWriteTestConfirmInputLabel: "Type TEST WRITE ACCESS to confirm",
+
+    dropboxMigrationPreviewCopy: "Preview Copy",
+    dropboxMigrationPreviewSafe: "Preview complete — safe to continue.",
+    dropboxMigrationPreviewBlockedConflict: "Preview blocked — destination conflicts were found.",
+    dropboxMigrationPreviewBlockedPermission: "Preview blocked — destination could not be reached with the current connection.",
+    dropboxMigrationPreviewBlockedStructure: "Preview blocked — the source or destination folder structure is not as expected.",
+    dropboxMigrationPreviewManualReview: "Preview complete — untracked objects were found in the source and need manual review.",
+
+    dropboxMigrationStartCopy: "Start Copy",
+    dropboxMigrationPauseCopy: "Pause Copy",
+    dropboxMigrationResumeCopy: "Resume Copy",
+    dropboxMigrationCopyProgress: "Copy progress",
+
+    dropboxMigrationVerifyCopy: "Verify Copy",
+    dropboxMigrationVerifyProgress: "Verification progress",
+
+    dropboxMigrationActivate: "Activate Destination",
+    dropboxMigrationActivateConfirmTitle: "Activate New Dropbox Storage Location",
+    dropboxMigrationActivateBackupCheckboxLabel: "I have created and verified a database backup before activating.",
+    dropboxMigrationActivateInputLabel: "Type ACTIVATE ENFB SYSTEM FILE to confirm",
+    dropboxMigrationActivateSuccess: "Activation complete. The destination Team Folder is now the active Dropbox storage location.",
+
+    dropboxMigrationVerifyActive: "Verify Active Storage",
+
+    dropboxMigrationLegacySourceLabel: "Legacy source retained (read-only)",
+    dropboxMigrationLockedNotice:
+      "Dropbox storage migration is in progress. Business data has been saved, and Dropbox synchronization will resume automatically after migration.",
   },
   reminders: {
     panelTitle: "Reminders",

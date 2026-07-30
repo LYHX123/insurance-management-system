@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSystemSettings } from "@/lib/settings/service";
 import { getDropboxIntegrationRow, toIntegrationView } from "@/lib/integrations/dropbox/service";
 import { getDropboxEnv } from "@/lib/integrations/dropbox/constants";
+import { getMigrationPageData } from "@/lib/integrations/dropbox/migration/view";
 import { SettingsContent } from "@/components/settings/settings-content";
 
 export default async function SettingsPage() {
@@ -23,6 +24,7 @@ export default async function SettingsPage() {
     connectedByUser ? connectedByUser.fullName || connectedByUser.username : null,
     !getDropboxEnv().ok
   );
+  const dropboxMigration = await getMigrationPageData();
 
   const plainSettings = {
     companyName: settings.companyName,
@@ -48,5 +50,5 @@ export default async function SettingsPage() {
     loginReminderPopupEnabled: settings.loginReminderPopupEnabled,
   };
 
-  return <SettingsContent settings={plainSettings} dropbox={dropbox} />;
+  return <SettingsContent settings={plainSettings} dropbox={dropbox} dropboxMigration={dropboxMigration} />;
 }

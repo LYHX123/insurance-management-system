@@ -2028,6 +2028,53 @@ const zh: Dictionary = {
 
     dropboxSaveSuccess: "Dropbox 设置已保存。",
     dropboxUnauthorized: "您没有权限管理 Dropbox 集成。",
+
+    dropboxMigrationSectionTitle: "存储位置迁移",
+    dropboxMigrationSectionDescription:
+      "将 Dropbox 根目录从成员主文件夹迁移到 ENFB SYSTEM FILE 团队文件夹。任何步骤都不会自动删除或移动旧目录中的文件。",
+    dropboxMigrationCurrentLocationLabel: "当前位置",
+    dropboxMigrationCurrentLocationValue: "成员文件夹 — LI YONG",
+    dropboxMigrationTargetLocationLabel: "目标位置",
+    dropboxMigrationTargetLocationValue: "团队文件夹 — ENFB SYSTEM FILE Team Folder",
+    dropboxMigrationStatusLabel: "迁移状态",
+    dropboxMigrationNotStarted: "尚未开始。",
+    dropboxMigrationDestinationNotResolved: "目标命名空间尚未解析——请先运行诊断。",
+
+    dropboxMigrationRunDiagnostic: "运行诊断",
+    dropboxMigrationDiagnosticSuccess: "诊断完成——目标命名空间已解析。",
+
+    dropboxMigrationTestWriteAccess: "测试目标写入权限",
+    dropboxMigrationWriteTestSuccess: "写入权限测试通过——临时文件夹已创建、验证并删除。",
+    dropboxMigrationWriteTestConfirmTitle: "测试目标写入权限",
+    dropboxMigrationWriteTestConfirmMessage:
+      "此操作会在目标团队文件夹中创建一个唯一命名的临时文件夹，验证后删除该文件夹，不会影响任何现有内容。",
+    dropboxMigrationWriteTestConfirmInputLabel: "请输入 TEST WRITE ACCESS 以确认",
+
+    dropboxMigrationPreviewCopy: "预览迁移",
+    dropboxMigrationPreviewSafe: "预览完成——可以安全继续。",
+    dropboxMigrationPreviewBlockedConflict: "预览被阻止——发现目标位置存在冲突。",
+    dropboxMigrationPreviewBlockedPermission: "预览被阻止——当前连接无法访问目标位置。",
+    dropboxMigrationPreviewBlockedStructure: "预览被阻止——源目录或目标目录结构不符合预期。",
+    dropboxMigrationPreviewManualReview: "预览完成——在源目录中发现未纳入追踪的对象，需要人工复核。",
+
+    dropboxMigrationStartCopy: "开始复制",
+    dropboxMigrationPauseCopy: "暂停复制",
+    dropboxMigrationResumeCopy: "继续复制",
+    dropboxMigrationCopyProgress: "复制进度",
+
+    dropboxMigrationVerifyCopy: "验证复制",
+    dropboxMigrationVerifyProgress: "验证进度",
+
+    dropboxMigrationActivate: "启用新存储位置",
+    dropboxMigrationActivateConfirmTitle: "启用新的 Dropbox 存储位置",
+    dropboxMigrationActivateBackupCheckboxLabel: "我确认已在启用前创建并核实数据库备份。",
+    dropboxMigrationActivateInputLabel: "请输入 ACTIVATE ENFB SYSTEM FILE 以确认",
+    dropboxMigrationActivateSuccess: "启用完成。目标团队文件夹现已成为当前使用的 Dropbox 存储位置。",
+
+    dropboxMigrationVerifyActive: "验证当前存储状态",
+
+    dropboxMigrationLegacySourceLabel: "旧目录保留中（只读）",
+    dropboxMigrationLockedNotice: "Dropbox 存储位置正在迁移。业务数据已保存，Dropbox 同步将在迁移完成后自动恢复。",
   },
   reminders: {
     panelTitle: "系统提醒",
