@@ -14,7 +14,10 @@ import { useLocale } from "@/i18n/locale-provider";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import type { DropboxPathView, DropboxPathState } from "@/lib/integrations/dropbox/pathDisplay";
 
-const STATE_TONE: Record<DropboxPathState, BadgeTone> = {
+// Exported so compact status badges elsewhere (e.g. the Policy documents
+// table's collapsed row, policy-document-dropbox-status.tsx) can reuse the
+// exact same state->tone mapping instead of redefining it.
+export const STATE_TONE: Record<DropboxPathState, BadgeTone> = {
   synced: "success",
   planned: "neutral",
   pending: "neutral",
@@ -68,7 +71,14 @@ export function DropboxPathDisplay({ label, view, className = "" }: { label: str
 
       {view.path ? (
         <div className="flex flex-wrap items-start gap-2">
-          <code className="min-w-0 flex-1 break-all rounded-md bg-zinc-50 px-2 py-1 font-mono text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+          {/* Correction 3: wrap by path segment/word first (CSS
+              overflow-wrap: break-word) — the previous word-break: break-
+              everything rule wrapped this one character at a time once
+              squeezed into a narrow container (e.g. a table cell),
+              producing an extremely tall row. This is the single shared
+              implementation every consumer (Customer/Quotation/Policy)
+              renders through, so the fix applies everywhere at once. */}
+          <code className="min-w-0 w-full flex-1 break-words rounded-md bg-zinc-50 px-2 py-1 font-mono text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
             {view.path}
           </code>
           <div className="flex shrink-0 gap-1">

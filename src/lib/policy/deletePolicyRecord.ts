@@ -5,7 +5,11 @@ import type { PolicyCategory } from "@/generated/prisma/enums";
 
 export type DeletePolicyResult =
   | { success: true; recordNumber: string }
-  | { success: false; error: "FORBIDDEN" | "NOT_FOUND" | "INVOICE_LINKED" | "DELETE_FAILED"; invoiceNumbers?: string[] };
+  | {
+      success: false;
+      error: "FORBIDDEN" | "NOT_FOUND" | "CONFIRMATION_MISMATCH" | "INVOICE_LINKED" | "DELETE_FAILED";
+      invoiceNumbers?: string[];
+    };
 
 // Permanent, admin-only Policy delete (all 4 categories share this one
 // implementation — see src/app/(app)/policy/{motor,non-motor,bond,
@@ -42,7 +46,12 @@ export type DeletePolicyResult =
 //   PolicyProviderPayment/commission fields, not a stored table) — they
 //   simply stop appearing once the source rows are gone; manual entries are
 //   never touched.
-export async function deletePolicyRecord(id: string, category: PolicyCategory): Promise<DeletePolicyResult> {
+// confirmedRecordNumber is whatever the user actually typed into the
+// TypedConfirmDialog (trimmed client-side, see typed-confirm-dialog.tsx) —
+// re-verified here independently rather than trusted, so a caller that
+// changes/omits the client-side gate (a modified request, a bypassed UI)
+// still cannot delete a record without supplying its real recordNumber.
+export async function deletePolicyRecord(id: string, category: PolicyCategory, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
   const session = await requireAdmin();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
@@ -51,6 +60,10 @@ export async function deletePolicyRecord(id: string, category: PolicyCategory): 
     include: { documents: { select: { storagePath: true } } },
   });
   if (!record) return { success: false, error: "NOT_FOUND" };
+
+  if (confirmedRecordNumber.trim() !== record.recordNumber) {
+    return { success: false, error: "CONFIRMATION_MISMATCH" };
+  }
 
   const linkedInvoiceItems = await prisma.invoiceItem.findMany({
     where: { policyRecordId: id },

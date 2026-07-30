@@ -469,6 +469,17 @@ const zh: Dictionary = {
     confirmDeleteQuotation: "删除报价单",
     confirmDeleteQuotationMessage: "确定要删除报价单 {number} 吗？此操作将永久删除该报价单及其全部保险险种，且无法撤销。",
     deleteQuotationFailed: "删除报价单失败，请重试。",
+
+    // --- 报价单列表页删除（案例级，见 deleteQuotationCaseAction） ---
+    deleteQuotationListConfirmMessage: "确定要删除此报价单吗？此操作将删除该报价单及其修订版本。已经同步到 Dropbox 的文件不会被删除。",
+    deleteQuotationListConfirmInstruction: "请输入报价单编号 {number} 以确认。",
+    deleteQuotationListConfirmButton: "删除",
+    deleteQuotationListSuccess: "报价单 {number} 已删除。",
+    deleteQuotationListForbidden: "您没有权限删除报价单。",
+    deleteQuotationListNotFound: "未找到该报价单。",
+    deleteQuotationListConfirmationMismatch: "输入的报价单编号不匹配，未做任何更改。",
+    deleteQuotationListBlockedByPolicy: "该报价单已关联保单，不能直接删除。请先处理关联保单。",
+    deleteQuotationListDeleteFailed: "删除报价单失败，请重试。",
     requiredField: "此字段为必填项。",
     customerRequired: "请选择客户。",
     projectNotBelongToCustomer: "所选项目不属于所选客户。",
@@ -1019,10 +1030,11 @@ const zh: Dictionary = {
     deletePolicy: "删除保单",
     deletePolicyConfirmTitle: "永久删除保单",
     deletePolicyConfirmMessage: "永久删除该保单？此操作无法撤销，相关收付款、台账、发票关联、文件及操作记录也可能被删除。",
-    deletePolicyConfirmInstruction: "请输入保单编号 {recordNumber} 以确认。",
+    deletePolicyConfirmInstruction: "请输入保单记录编号 {recordNumber} 以确认。",
     deletePolicyConfirmButton: "永久删除",
     deletePolicySuccess: "保单 {recordNumber} 已被永久删除。",
     deletePolicyInvoiceLinked: "该保单已关联发票（{invoiceNumbers}），无法删除。请先解除发票关联。",
+    deletePolicyConfirmationMismatch: "输入的记录编号不匹配，未做任何更改。",
     deletePolicyDeleteFailedError: "保单删除失败，未做任何更改。",
 
     // --- Phase 2A: 报价单 -> 保单关联 ---
@@ -1240,7 +1252,7 @@ const zh: Dictionary = {
     issueDate: "签发日期",
     issueDateOptional: "签发日期（可选）",
     expiryDateOptional: "到期日期（可选）",
-    fileName: "文件名称",
+    fileName: "原始文件名",
     fileSize: "文件大小",
     uploadedBy: "上传人",
     uploadedAt: "上传时间",
@@ -1330,6 +1342,8 @@ const zh: Dictionary = {
     importUnsupportedTypeError: "部分行使用的险种类型不属于受支持的非车险类型（例如车险、保函或工作许可类型），已标记为错误。",
 
     // --- Dropbox Integration Phase 5: Policy document synchronization ---
+    dropboxStatusColumnHeader: "Dropbox 状态",
+    dropboxDetailsButton: "Dropbox 详情",
     dropboxFilingTitle: "Dropbox 建档",
     dropboxBusinessFileFolder: "业务文件夹",
     dropboxBusinessFolderPath: "业务文件夹 Dropbox 路径",

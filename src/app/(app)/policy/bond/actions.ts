@@ -317,8 +317,8 @@ export async function updateBondOverviewAction(
 
 // Permanent, admin-only delete — see deletePolicyRecord's own doc comment
 // for the full relation/transaction breakdown.
-export async function deleteBondPolicyAction(id: string): Promise<DeletePolicyResult> {
-  const result = await deletePolicyRecord(id, "BOND");
+export async function deleteBondPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "BOND", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/bond");
   return result;
 }

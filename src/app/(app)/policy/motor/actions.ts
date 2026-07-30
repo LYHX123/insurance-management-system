@@ -594,8 +594,8 @@ export async function updateCommissionAction(
 // (not folded into updateMotorOverviewAction like Cancel is), since it has
 // fundamentally different side effects (file cleanup, InvoiceItem guard,
 // admin-only gate) than a routine edit.
-export async function deleteMotorPolicyAction(id: string): Promise<DeletePolicyResult> {
-  const result = await deletePolicyRecord(id, "MOTOR");
+export async function deleteMotorPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "MOTOR", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/motor");
   return result;
 }

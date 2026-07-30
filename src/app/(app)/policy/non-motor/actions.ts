@@ -288,8 +288,8 @@ export async function updateNonMotorOverviewAction(
 
 // Permanent, admin-only delete — see deletePolicyRecord's own doc comment
 // for the full relation/transaction breakdown.
-export async function deleteNonMotorPolicyAction(id: string): Promise<DeletePolicyResult> {
-  const result = await deletePolicyRecord(id, "NON_MOTOR");
+export async function deleteNonMotorPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "NON_MOTOR", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/non-motor");
   return result;
 }

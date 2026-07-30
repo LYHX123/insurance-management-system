@@ -472,6 +472,18 @@ const en = {
     confirmDeleteQuotation: "Delete Quotation",
     confirmDeleteQuotationMessage: "Are you sure you want to delete quotation {number}? This will permanently remove it and all its insurance sections. This action cannot be undone.",
     deleteQuotationFailed: "Failed to delete this quotation. Please try again.",
+
+    // --- Quotation LIST page delete (case-level, see deleteQuotationCaseAction) ---
+    deleteQuotationListConfirmMessage:
+      "Are you sure you want to delete this quotation? This will delete the quotation and its revisions. Files already synchronized to Dropbox will be retained.",
+    deleteQuotationListConfirmInstruction: "Type the quotation number {number} to confirm.",
+    deleteQuotationListConfirmButton: "Delete",
+    deleteQuotationListSuccess: "Quotation {number} was deleted.",
+    deleteQuotationListForbidden: "You do not have permission to delete quotations.",
+    deleteQuotationListNotFound: "This quotation could not be found.",
+    deleteQuotationListConfirmationMismatch: "The typed quotation number did not match. No changes were made.",
+    deleteQuotationListBlockedByPolicy: "This quotation is linked to a policy and cannot be deleted directly. Resolve the linked policy first.",
+    deleteQuotationListDeleteFailed: "Failed to delete this quotation. Please try again.",
     requiredField: "This field is required.",
     customerRequired: "Please select a customer.",
     projectNotBelongToCustomer: "The selected project does not belong to the selected customer.",
@@ -1028,10 +1040,11 @@ const en = {
     deletePolicyConfirmTitle: "Permanently Delete Policy",
     deletePolicyConfirmMessage:
       "Permanently delete this Policy? This action cannot be undone. Related payments, ledger records, invoice links, documents, and activity history may also be affected.",
-    deletePolicyConfirmInstruction: "Type the record number {recordNumber} to confirm.",
+    deletePolicyConfirmInstruction: "Enter policy record number {recordNumber} to confirm.",
     deletePolicyConfirmButton: "Delete Permanently",
     deletePolicySuccess: "Policy {recordNumber} was permanently deleted.",
     deletePolicyInvoiceLinked: "This policy cannot be deleted because it is linked to invoice(s): {invoiceNumbers}. Remove the invoice link first.",
+    deletePolicyConfirmationMismatch: "The typed record number did not match. No changes were made.",
     deletePolicyDeleteFailedError: "The policy could not be deleted. No changes were made.",
 
     // --- Phase 2A: Quotation -> Policy relationship ---
@@ -1249,7 +1262,7 @@ const en = {
     issueDate: "Issue Date",
     issueDateOptional: "Issue Date (optional)",
     expiryDateOptional: "Expiry Date (optional)",
-    fileName: "File Name",
+    fileName: "Original Filename",
     fileSize: "File Size",
     uploadedBy: "Uploaded By",
     uploadedAt: "Uploaded At",
@@ -1339,6 +1352,8 @@ const en = {
     importUnsupportedTypeError: "One or more rows use a type of cover that is not a supported Non-Motor type (e.g. a Motor, Bond, or Work Permit type) and were flagged as errors.",
 
     // --- Dropbox Integration Phase 5: Policy document synchronization ---
+    dropboxStatusColumnHeader: "Dropbox Status",
+    dropboxDetailsButton: "Dropbox Details",
     dropboxFilingTitle: "Dropbox Filing",
     dropboxBusinessFileFolder: "Business File Folder",
     dropboxBusinessFolderPath: "Business Folder Dropbox Path",

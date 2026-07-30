@@ -2633,3 +2633,65 @@ export async function deleteQuotationAction(id: string): Promise<ActionResult> {
     return { success: false, error: "DELETE_FAILED" };
   }
 }
+
+export type DeleteQuotationCaseResult =
+  | { success: true; quotationNumber: string }
+  | { success: false; error: "FORBIDDEN" | "CASE_NOT_FOUND" | "CONFIRMATION_MISMATCH" | "QUOTATION_HAS_LINKED_POLICIES" | "DELETE_FAILED"; policyRecordNumbers?: string[] };
+
+// Quotation LIST page delete — a distinct, case-level operation from
+// deleteQuotationAction (legacy, no-case quotations) and
+// deleteDraftRevisionAction (revisionActions.ts, detail-page, DRAFT-only:
+// deletes one revision, or the whole case only incidentally when that
+// DRAFT happens to be the sole revision). The list shows one row per
+// QuotationCase regardless of its current revision's status (see
+// src/app/(app)/quotation/page.tsx), so "Delete" here always removes the
+// entire case and every revision under it, gated only by permission and
+// the same linked-Policy guard the other two actions already use —
+// generalized here across every revision id under the case, not just one.
+//
+// confirmedQuotationNumber is whatever the user actually typed into the
+// TypedConfirmDialog (trimmed client-side) — re-verified here against the
+// database's own QuotationCase.quotationNumber rather than trusted, so a
+// modified/bypassed client still cannot delete an arbitrary case by
+// supplying its id without also knowing its real quotation number.
+//
+// Deleting the QuotationCase cascades (schema-level onDelete: Cascade)
+// through every Quotation revision -> QuotationInsuranceSection -> coverage
+// items/structured detail rows, QuotationCaseActivity, QuotationDocument,
+// QuotationDropboxBusinessFile, and QuotationDropboxVersion. No Dropbox
+// delete API is ever called — any file already uploaded to Dropbox is
+// deliberately retained (mirrors deleteQuotationAction above).
+export async function deleteQuotationCaseAction(caseId: string, confirmedQuotationNumber: string): Promise<DeleteQuotationCaseResult> {
+  const session = await requireQuotationPermission();
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
+  const quotationCase = await prisma.quotationCase.findUnique({
+    where: { id: caseId },
+    select: { id: true, quotationNumber: true, revisions: { select: { id: true } } },
+  });
+  if (!quotationCase) return { success: false, error: "CASE_NOT_FOUND" };
+
+  if (confirmedQuotationNumber.trim() !== quotationCase.quotationNumber) {
+    return { success: false, error: "CONFIRMATION_MISMATCH" };
+  }
+
+  const revisionIds = quotationCase.revisions.map((r) => r.id);
+  if (revisionIds.length > 0) {
+    const linkedPolicies = await prisma.policyRecord.findMany({
+      where: { sourceQuotationId: { in: revisionIds }, deletedAt: null },
+      select: { recordNumber: true },
+    });
+    if (linkedPolicies.length > 0) {
+      return { success: false, error: "QUOTATION_HAS_LINKED_POLICIES", policyRecordNumbers: linkedPolicies.map((p) => p.recordNumber) };
+    }
+  }
+
+  try {
+    await prisma.quotationCase.delete({ where: { id: caseId } });
+    revalidatePath("/quotation");
+    return { success: true, quotationNumber: quotationCase.quotationNumber };
+  } catch (err) {
+    console.error("Failed to delete quotation case:", err);
+    return { success: false, error: "DELETE_FAILED" };
+  }
+}

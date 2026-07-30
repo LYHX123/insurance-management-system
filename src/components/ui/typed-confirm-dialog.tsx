@@ -8,10 +8,17 @@ import { useLocale } from "@/i18n/locale-provider";
 
 // Same shape as ConfirmDialog (src/components/ui/confirm-dialog.tsx) plus a
 // required type-to-confirm input — used for irreversible actions (permanent
-// Policy delete) where a plain Confirm/Cancel dialog isn't enough friction.
-// The destructive button stays disabled until the typed text exactly matches
-// confirmValue (e.g. the record's own recordNumber), so a confirmation can
-// never be fired by an accidental extra click.
+// Policy delete, list-level Quotation delete) where a plain Confirm/Cancel
+// dialog isn't enough friction. The destructive button stays disabled until
+// the typed text exactly matches confirmValue (e.g. the record's own
+// recordNumber), so a confirmation can never be fired by an accidental extra
+// click. Leading/trailing whitespace in what the user typed is trimmed only
+// for this comparison (and only what's sent back via onConfirm) — confirmValue
+// itself, the actual record identifier, is never altered.
+// onConfirm receives the exact text the user typed (trimmed) so callers can
+// forward it to their server action, which must independently re-verify it
+// against the database record rather than trusting that the client-side
+// `matches` gate was honestly evaluated.
 export function TypedConfirmDialog({
   title,
   message,
@@ -28,12 +35,12 @@ export function TypedConfirmDialog({
   confirmValue: string;
   confirmPlaceholder?: string;
   isSubmitting: boolean;
-  onConfirm: () => void;
+  onConfirm: (typedValue: string) => void;
   onClose: () => void;
 }) {
   const { t } = useLocale();
   const [typed, setTyped] = useState("");
-  const matches = typed === confirmValue;
+  const matches = typed.trim() === confirmValue;
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -51,7 +58,7 @@ export function TypedConfirmDialog({
         <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
-        <Button variant="destructive" onClick={onConfirm} disabled={isSubmitting || !matches}>
+        <Button variant="destructive" onClick={() => onConfirm(typed.trim())} disabled={isSubmitting || !matches}>
           {confirmLabel}
         </Button>
       </div>

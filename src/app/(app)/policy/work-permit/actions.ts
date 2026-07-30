@@ -303,8 +303,8 @@ export async function updateWorkPermitOverviewAction(
 
 // Permanent, admin-only delete — see deletePolicyRecord's own doc comment
 // for the full relation/transaction breakdown.
-export async function deleteWorkPermitPolicyAction(id: string): Promise<DeletePolicyResult> {
-  const result = await deletePolicyRecord(id, "WORK_PERMIT");
+export async function deleteWorkPermitPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
+  const result = await deletePolicyRecord(id, "WORK_PERMIT", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/work-permit");
   return result;
 }

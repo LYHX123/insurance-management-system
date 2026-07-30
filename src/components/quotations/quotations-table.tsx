@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Eye, Settings, Plus, Paperclip } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Eye, Settings, Plus, Paperclip, Trash2, X } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,9 @@ import { Input } from "@/components/ui/input";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
+import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
+import { deleteQuotationCaseAction } from "@/app/(app)/quotation/actions";
 import type { QuotationListRow, QuotationCaseStatus } from "@/components/quotations/types";
 
 const CASE_STATUSES: QuotationCaseStatus[] = [
@@ -37,10 +40,40 @@ const CASE_STATUS_TONE: Record<QuotationCaseStatus, "neutral" | "brand" | "succe
 
 export function QuotationsTable({ quotations }: { quotations: QuotationListRow[] }) {
   const { t, locale } = useLocale();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | QuotationCaseStatus>("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<QuotationListRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleDelete = async (typedQuotationNumber: string) => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    setIsDeleting(true);
+    const result = await deleteQuotationCaseAction(deleteTarget.caseId, typedQuotationNumber);
+    setIsDeleting(false);
+    if (!result.success) {
+      if (result.error === "QUOTATION_HAS_LINKED_POLICIES") {
+        setDeleteError(t.quotations.deleteQuotationListBlockedByPolicy);
+      } else if (result.error === "FORBIDDEN") {
+        setDeleteError(t.quotations.deleteQuotationListForbidden);
+      } else if (result.error === "CASE_NOT_FOUND") {
+        setDeleteError(t.quotations.deleteQuotationListNotFound);
+      } else if (result.error === "CONFIRMATION_MISMATCH") {
+        setDeleteError(t.quotations.deleteQuotationListConfirmationMismatch);
+      } else {
+        setDeleteError(t.quotations.deleteQuotationListDeleteFailed);
+      }
+      return;
+    }
+    setDeleteTarget(null);
+    setSuccessMessage(t.quotations.deleteQuotationListSuccess.replace("{number}", result.quotationNumber));
+    router.refresh();
+  };
 
   const caseStatusLabel: Record<QuotationCaseStatus, string> = {
     DRAFT: t.quotations.caseStatusDraft,
@@ -197,6 +230,16 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                         <Eye size={16} />
                       </IconButton>
                     </Link>
+                    <IconButton
+                      tone="danger"
+                      title={t.common.delete}
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteTarget(q);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
                   </div>
                 </td>
               </tr>
@@ -204,6 +247,30 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
           </tbody>
         </Table>
       </TableWrap>
+
+      {successMessage && (
+        <div className="flex items-center justify-between rounded-surface border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <span>{successMessage}</span>
+          <button type="button" className="text-emerald-600 hover:text-emerald-800" onClick={() => setSuccessMessage(null)}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <TypedConfirmDialog
+          title={t.quotations.confirmDeleteQuotation}
+          message={`${deleteError ?? t.quotations.deleteQuotationListConfirmMessage} ${t.quotations.deleteQuotationListConfirmInstruction.replace("{number}", deleteTarget.quotationNumber)}`}
+          confirmLabel={t.quotations.deleteQuotationListConfirmButton}
+          confirmValue={deleteTarget.quotationNumber}
+          isSubmitting={isDeleting}
+          onConfirm={handleDelete}
+          onClose={() => {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -137,16 +137,18 @@ export function MotorOverviewTab({
     router.refresh();
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (typedRecordNumber: string) => {
     setDeleteError(null);
     setIsDeleting(true);
-    const result = await deleteMotorPolicyAction(detail.id);
+    const result = await deleteMotorPolicyAction(detail.id, typedRecordNumber);
     setIsDeleting(false);
     if (!result.success) {
       if (result.error === "INVOICE_LINKED") {
         setDeleteError(t.policy.deletePolicyInvoiceLinked.replace("{invoiceNumbers}", (result.invoiceNumbers ?? []).join(", ")));
       } else if (result.error === "FORBIDDEN") {
         setDeleteError(t.policy.genericError);
+      } else if (result.error === "CONFIRMATION_MISMATCH") {
+        setDeleteError(t.policy.deletePolicyConfirmationMismatch);
       } else {
         setDeleteError(t.policy.deletePolicyDeleteFailedError);
       }
@@ -264,7 +266,7 @@ export function MotorOverviewTab({
         {showDeleteConfirm && (
           <TypedConfirmDialog
             title={t.policy.deletePolicyConfirmTitle}
-            message={`${deleteError ?? t.policy.deletePolicyConfirmMessage} ${t.policy.deletePolicyConfirmInstruction.replace("{recordNumber}", detail.recordNumber)}`}
+            message={`${deleteError ?? t.policy.deletePolicyConfirmMessage} ${t.policy.dropboxRetentionNote} ${t.policy.deletePolicyConfirmInstruction.replace("{recordNumber}", detail.recordNumber)}`}
             confirmLabel={t.policy.deletePolicyConfirmButton}
             confirmValue={detail.recordNumber}
             isSubmitting={isDeleting}
