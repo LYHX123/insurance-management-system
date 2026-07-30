@@ -64,13 +64,18 @@ const QUOTATION_SYNC_INCLUDE = {
 } satisfies Prisma.QuotationInclude;
 
 type QuotationForSync = Prisma.QuotationGetPayload<{ include: typeof QUOTATION_SYNC_INCLUDE }>;
-type SectionForSync = QuotationForSync["sections"][number];
+export type SectionForSync = QuotationForSync["sections"][number];
+export { QUOTATION_SYNC_INCLUDE };
 
 // Business-title source order (Part 4, requirement 3): A. project name
 // (CAR) B. vehicle plate (Motor, any of the 4 variants) C. bond/tender
 // project name D. (no product/route field exists in this schema — skipped,
 // per "do not invent") E. quotation number as the safe fallback.
-function resolveBusinessTitleCandidate(section: SectionForSync | undefined, quotationNumber: string): string {
+// Exported (Dropbox Integration Phase 5) — the Policy business-file
+// resolution module's linked-Policy path (a case with no Quotation
+// business file yet) needs the exact same title-candidate resolution when
+// creating one on the fly.
+export function resolveBusinessTitleCandidate(section: SectionForSync | undefined, quotationNumber: string): string {
   if (section?.carDetail?.projectName) return section.carDetail.projectName;
   const plate =
     section?.motorCompPrivateDetail?.plateNo ??
@@ -171,11 +176,53 @@ export async function generateAndSyncQuotationExcel(quotationId: string): Promis
 }
 
 // Correction 1: the business file belongs directly to the QuotationCase
-// (a 1:1 relation), and every version records which specific revision
-// (sourceQuotationId) generated it. R01/R02/R03 all resolve the SAME
-// businessFile row via quotationCaseId — no sibling-revision search is
-// needed anymore; case ownership is a direct foreign key, not something
-// inferred by scanning other rows.
+// (a 1:1 relation). Extracted (Dropbox Integration Phase 5) so the Policy
+// business-file resolution module's linked-Policy path can reuse the exact
+// same get-or-create semantics — a Policy created from a case that has
+// never had an Excel version generated must still resolve/create the SAME one
+// business file a later Quotation sync would use, never a second one.
+export async function ensureQuotationCaseDropboxBusinessFile(
+  tx: Prisma.TransactionClient,
+  input: {
+    quotationCaseId: string;
+    businessDate: Date;
+    insuranceTypeCode: string;
+    businessTitle: string;
+    customerShortName: string;
+  }
+) {
+  let businessFile = await tx.quotationDropboxBusinessFile.findUnique({ where: { quotationCaseId: input.quotationCaseId } });
+  if (!businessFile) {
+    const businessFolderName = buildBusinessFolderName({
+      businessDate: input.businessDate,
+      insuranceTypeCode: input.insuranceTypeCode,
+      businessTitle: input.businessTitle,
+    });
+    try {
+      businessFile = await tx.quotationDropboxBusinessFile.create({
+        data: {
+          quotationCaseId: input.quotationCaseId,
+          businessDate: input.businessDate,
+          insuranceTypeCode: input.insuranceTypeCode,
+          customerShortName: input.customerShortName,
+          businessTitle: input.businessTitle,
+          businessFolderName,
+          syncStatus: "PENDING",
+        },
+      });
+    } catch {
+      // Lost a create race (unique quotationCaseId) — another concurrent
+      // revision of the same case already created the business file;
+      // reuse it rather than erroring.
+      businessFile = await tx.quotationDropboxBusinessFile.findUniqueOrThrow({ where: { quotationCaseId: input.quotationCaseId } });
+    }
+  }
+  return businessFile;
+}
+
+// R01/R02/R03 all resolve the SAME businessFile row via quotationCaseId —
+// no sibling-revision search is needed anymore; case ownership is a direct
+// foreign key, not something inferred by scanning other rows.
 async function resolveVersion(input: {
   sourceQuotationId: string;
   quotationCaseId: string;
@@ -187,32 +234,7 @@ async function resolveVersion(input: {
   fingerprint: string;
 }): Promise<{ versionId: string; versionNumber: number; isNewVersion: boolean }> {
   return prisma.$transaction(async (tx) => {
-    let businessFile = await tx.quotationDropboxBusinessFile.findUnique({ where: { quotationCaseId: input.quotationCaseId } });
-    if (!businessFile) {
-      const businessFolderName = buildBusinessFolderName({
-        businessDate: input.businessDate,
-        insuranceTypeCode: input.insuranceTypeCode,
-        businessTitle: input.businessTitle,
-      });
-      try {
-        businessFile = await tx.quotationDropboxBusinessFile.create({
-          data: {
-            quotationCaseId: input.quotationCaseId,
-            businessDate: input.businessDate,
-            insuranceTypeCode: input.insuranceTypeCode,
-            customerShortName: input.customerShortName,
-            businessTitle: input.businessTitle,
-            businessFolderName,
-            syncStatus: "PENDING",
-          },
-        });
-      } catch {
-        // Lost a create race (unique quotationCaseId) — another concurrent
-        // revision of the same case already created the business file;
-        // reuse it rather than erroring.
-        businessFile = await tx.quotationDropboxBusinessFile.findUniqueOrThrow({ where: { quotationCaseId: input.quotationCaseId } });
-      }
-    }
+    const businessFile = await ensureQuotationCaseDropboxBusinessFile(tx, input);
 
     // Version sequence is scoped to the one shared business file (Part 6:
     // versions of the same business file, not per-revision).
@@ -487,7 +509,7 @@ export async function syncQuotationVersionToDropbox(versionId: string): Promise<
   }
 }
 
-type EnsureBusinessFolderResult =
+export type EnsureBusinessFolderResult =
   | { ok: true; folderId: string | null; displayPath: string; finalFolderName: string }
   | { ok: false; status: "ERROR" | "CONFLICT"; code: DropboxErrorCode; message: string };
 
@@ -499,11 +521,16 @@ type EnsureBusinessFolderResult =
 // never silently reused. Create-and-catch (not check-then-create) closes
 // the TOCTOU race window: filesCreateFolderV2 with autorename:false itself
 // atomically fails if the path is already occupied.
-async function ensureBusinessFolder(
+//
+// Exported (Dropbox Integration Phase 5) — disambiguationSuffix was
+// "quotationNumber" until this phase; the Policy sync module's fallback-file
+// path reuses this exact same folder-creation/collision logic, passing the
+// Policy's recordNumber as the suffix instead.
+export async function ensureBusinessFolder(
   client: Dropbox,
   customerFolderPath: string,
   businessFolderName: string,
-  quotationNumber: string
+  disambiguationSuffix: string
 ): Promise<EnsureBusinessFolderResult> {
   const tryCreateAt = async (
     folderName: string
@@ -527,8 +554,8 @@ async function ensureBusinessFolder(
     }
 
     // An unrelated folder occupies the plain name — retry once at a
-    // quotation-number-suffixed path (never overwrite, never delete).
-    const suffixed = disambiguateBusinessFolderName(businessFolderName, quotationNumber);
+    // suffixed path (never overwrite, never delete).
+    const suffixed = disambiguateBusinessFolderName(businessFolderName, disambiguationSuffix);
     const second = await tryCreateAt(suffixed);
     if (second.created) return { ok: true, folderId: second.folderId, displayPath: second.displayPath, finalFolderName: suffixed };
 
@@ -809,7 +836,7 @@ export async function runQuotationBackfillBatch(
 // when the case has one, otherwise its latest-numbered revision. Never
 // invents a revision: a case with no revisions at all yields null and is
 // simply skipped by the caller.
-async function resolveSourceQuotationId(quotationCase: { id: string; currentRevisionId: string | null }): Promise<string | null> {
+export async function resolveSourceQuotationId(quotationCase: { id: string; currentRevisionId: string | null }): Promise<string | null> {
   if (quotationCase.currentRevisionId) return quotationCase.currentRevisionId;
   const latestRevision = await prisma.quotation.findFirst({
     where: { quotationCaseId: quotationCase.id },

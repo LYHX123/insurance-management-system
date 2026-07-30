@@ -5,6 +5,7 @@ import { hasPermission, isAdmin } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
+import { buildPolicyDropboxViewModel } from "@/lib/integrations/dropbox/policyPathViewModel";
 import { NonMotorDetailView } from "@/components/policy/non-motor/non-motor-detail-view";
 import type { NonMotorDetail, TransactionRow, PolicyDocumentRow, PolicyActivityRow } from "@/components/policy/types";
 
@@ -44,9 +45,10 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
   });
   if (!record || !record.nonMotorDetail) notFound();
 
-  const [documents, activities] = await Promise.all([
+  const [documents, activities, dropboxViewModel] = await Promise.all([
     prisma.policyDocument.findMany({ where: { policyRecordId: id }, orderBy: { createdAt: "desc" } }),
     prisma.policyActivity.findMany({ where: { policyRecordId: id }, orderBy: { createdAt: "desc" }, take: 100 }),
+    buildPolicyDropboxViewModel(id),
   ]);
 
   const documentUploaderIds = [...new Set(documents.map((d) => d.uploadedById))];
@@ -61,6 +63,7 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
     [...activityUsers, ...documentUsers].map((u) => [u.id, u.fullName || u.username])
   );
 
+  const fallbackDropboxInfo = { view: { state: "unavailable" as const, path: null, isPlanned: true, errorMessage: null }, standardizedFileName: null, lastSyncedAt: null };
   const documentRows: PolicyDocumentRow[] = documents.map((d) => ({
     id: d.id,
     documentType: d.documentType,
@@ -72,6 +75,7 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
     notes: d.notes,
     uploadedByName: userNameById.get(d.uploadedById) ?? "—",
     createdAt: d.createdAt.toISOString(),
+    dropbox: dropboxViewModel.documents[d.id] ?? fallbackDropboxInfo,
   }));
 
   const activityRows: PolicyActivityRow[] = activities.map((a) => ({
@@ -175,5 +179,5 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
     },
   });
 
-  return <NonMotorDetailView detail={detail} customers={customers} isAdmin={isAdmin(session.user)} />;
+  return <NonMotorDetailView detail={detail} customers={customers} isAdmin={isAdmin(session.user)} dropbox={dropboxViewModel} />;
 }

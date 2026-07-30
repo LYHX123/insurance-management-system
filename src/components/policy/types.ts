@@ -384,6 +384,24 @@ export type RelatedInvoiceInfo = {
   totalPremium: string;
 };
 
+// Dropbox Integration Phase 5 — mirrors pathDisplay.ts's DropboxPathView
+// shape, duplicated here (rather than importing the server module) so this
+// client-safe types file has no dependency on server-only Dropbox code.
+export type DropboxPathState = "synced" | "planned" | "pending" | "syncing" | "error" | "conflict" | "not_connected" | "unavailable";
+
+export type DropboxPathViewPlain = {
+  state: DropboxPathState;
+  path: string | null;
+  isPlanned: boolean;
+  errorMessage: string | null;
+};
+
+export type PolicyDocumentDropboxInfo = {
+  view: DropboxPathViewPlain;
+  standardizedFileName: string | null;
+  lastSyncedAt: string | null;
+};
+
 export type PolicyDocumentRow = {
   id: string;
   documentType: PolicyDocumentType;
@@ -395,6 +413,17 @@ export type PolicyDocumentRow = {
   notes: string | null;
   uploadedByName: string;
   createdAt: string;
+  dropbox: PolicyDocumentDropboxInfo;
+};
+
+// Dropbox Integration Phase 5 — the Policy detail page's "Dropbox Filing"
+// section view model (see policyPathViewModel.ts's server-side builder).
+export type PolicyDropboxSectionView = {
+  dropboxConnected: boolean;
+  source: "QUOTATION_CASE" | "POLICY_FALLBACK";
+  businessFolderName: string;
+  businessFolder: DropboxPathViewPlain;
+  policyFolder: DropboxPathViewPlain;
 };
 
 export type PolicyActivityRow = {

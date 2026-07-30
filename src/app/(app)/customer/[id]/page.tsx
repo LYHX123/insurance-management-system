@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission, isAdmin } from "@/lib/permissions";
 import { getDropboxIntegrationRow } from "@/lib/integrations/dropbox/service";
+import { buildCustomerDropboxPathViewModel } from "@/lib/integrations/dropbox/customerPathViewModel";
 import { CustomerDetailView } from "@/components/customers/customer-detail";
 
 export default async function CustomerDetailPage({
@@ -16,7 +17,7 @@ export default async function CustomerDetailPage({
   }
 
   const { id } = await params;
-  const [customer, dropboxIntegration] = await Promise.all([
+  const [customer, dropboxIntegration, dropboxPathViewModel] = await Promise.all([
     prisma.customer.findUnique({
       where: { id },
       include: {
@@ -26,6 +27,7 @@ export default async function CustomerDetailPage({
       },
     }),
     getDropboxIntegrationRow(),
+    buildCustomerDropboxPathViewModel(id),
   ]);
 
   if (!customer) notFound();
@@ -67,6 +69,7 @@ export default async function CustomerDetailPage({
     updatedAt: p.updatedAt.toISOString(),
   }));
 
+  const fallbackDropboxPath = { state: "unavailable" as const, path: null, isPlanned: true, errorMessage: null };
   const documents = customer.documents.map((d) => ({
     id: d.id,
     customerId: d.customerId,
@@ -88,6 +91,7 @@ export default async function CustomerDetailPage({
           lastErrorMessage: d.dropboxSync.lastErrorMessage,
         }
       : null,
+    dropboxPath: dropboxPathViewModel.documents[d.id] ?? fallbackDropboxPath,
   }));
 
   // Safe view model only — never the raw dropboxFolderId (Phase 2 spec,
@@ -111,6 +115,11 @@ export default async function CustomerDetailPage({
       dropboxFolder={dropboxFolder}
       dropboxConnected={dropboxIntegration.status === "CONNECTED"}
       isAdmin={isAdmin(session.user)}
+      dropboxPaths={{
+        customerFolder: dropboxPathViewModel.customerFolder,
+        customerDocumentsFolder: dropboxPathViewModel.customerDocumentsFolder,
+        generalDocumentsFolder: dropboxPathViewModel.generalDocumentsFolder,
+      }}
     />
   );
 }

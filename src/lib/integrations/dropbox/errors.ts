@@ -52,7 +52,11 @@ export type DropboxErrorCode =
   | "BUSINESS_FOLDER_NOT_SYNCED"
   | "BUSINESS_FOLDER_CONFLICT"
   | "QUOTATION_VERSION_CONFLICT"
-  | "EXPORT_FAILED";
+  | "EXPORT_FAILED"
+  // --- Phase 5: Policy document synchronization ---
+  | "POLICY_NOT_FOUND"
+  | "POLICY_DOCUMENT_NOT_FOUND"
+  | "POLICY_DOCUMENT_CONFLICT";
 
 export class DropboxIntegrationError extends Error {
   readonly code: DropboxErrorCode;

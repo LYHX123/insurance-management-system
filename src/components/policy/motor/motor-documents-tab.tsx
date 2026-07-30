@@ -10,6 +10,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UploadPolicyDocumentModal } from "@/components/policy/motor/upload-policy-document-modal";
+import { PolicyDocumentDropboxStatus } from "@/components/policy/policy-document-dropbox-status";
 import { deletePolicyDocumentAction } from "@/app/(app)/policy/motor/documentActions";
 import type { PolicyDocumentRow, PolicyDocumentType } from "@/components/policy/types";
 
@@ -19,7 +20,15 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function MotorDocumentsTab({ policyRecordId, documents }: { policyRecordId: string; documents: PolicyDocumentRow[] }) {
+export function MotorDocumentsTab({
+  policyRecordId,
+  documents,
+  isAdmin = false,
+}: {
+  policyRecordId: string;
+  documents: PolicyDocumentRow[];
+  isAdmin?: boolean;
+}) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -89,6 +98,7 @@ export function MotorDocumentsTab({ policyRecordId, documents }: { policyRecordI
                 <th>{t.policy.uploadedBy}</th>
                 <th>{t.policy.uploadedAt}</th>
                 <th>{t.policy.fileSize}</th>
+                <th>{t.policy.dropboxFilingTitle}</th>
                 <th className="text-right">{t.common.actions}</th>
               </tr>
             </thead>
@@ -102,6 +112,9 @@ export function MotorDocumentsTab({ policyRecordId, documents }: { policyRecordI
                   <td className="text-zinc-500">{doc.uploadedByName}</td>
                   <td className="text-zinc-500">{dateTimeFormatter.format(new Date(doc.createdAt))}</td>
                   <td className="text-zinc-500">{formatFileSize(doc.fileSize)}</td>
+                  <td className="max-w-xs">
+                    <PolicyDocumentDropboxStatus policyDocumentId={doc.id} dropbox={doc.dropbox} isAdmin={isAdmin} />
+                  </td>
                   <td>
                     <div className="flex items-center justify-end gap-1">
                       <a href={`/api/policy-documents/${doc.id}?mode=download`}>
@@ -116,7 +129,7 @@ export function MotorDocumentsTab({ policyRecordId, documents }: { policyRecordI
                   </td>
                 </tr>
               ))}
-              {documents.length === 0 && <TableEmpty colSpan={8}>{t.policy.noDocumentsYet}</TableEmpty>}
+              {documents.length === 0 && <TableEmpty colSpan={9}>{t.policy.noDocumentsYet}</TableEmpty>}
             </tbody>
           </Table>
         </TableWrap>
@@ -129,7 +142,11 @@ export function MotorDocumentsTab({ policyRecordId, documents }: { policyRecordI
       {deleteTarget && (
         <ConfirmDialog
           title={t.policy.deleteDocumentConfirmTitle}
-          message={t.policy.deleteDocumentConfirmMessage}
+          message={
+            deleteTarget.dropbox.view.state === "synced"
+              ? `${t.policy.deleteDocumentConfirmMessage} ${t.policy.dropboxRetentionNote}`
+              : t.policy.deleteDocumentConfirmMessage
+          }
           isSubmitting={isSubmitting}
           onConfirm={handleDelete}
           onClose={() => setDeleteTarget(null)}

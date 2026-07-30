@@ -20,9 +20,10 @@ import { ProjectFormModal } from "@/components/customers/project-form-modal";
 import { UploadDocumentModal } from "@/components/customers/upload-document-modal";
 import { CustomerDropboxCard, type CustomerDropboxFolderView } from "@/components/customers/customer-dropbox-card";
 import { DocumentDropboxStatus } from "@/components/customers/document-dropbox-status";
+import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
 import { deleteProjectAction } from "@/app/(app)/customer/project-actions";
 import { deleteDocumentAction } from "@/app/(app)/customer/document-actions";
-import type { CustomerDetail, ProjectRow, DocumentRow } from "@/components/customers/types";
+import type { CustomerDetail, ProjectRow, DocumentRow, DropboxPathViewPlain } from "@/components/customers/types";
 
 type TabKey = "overview" | "projects" | "documents" | "related";
 
@@ -49,6 +50,7 @@ export function CustomerDetailView({
   dropboxFolder,
   dropboxConnected,
   isAdmin,
+  dropboxPaths,
 }: {
   customer: CustomerDetail;
   projects: ProjectRow[];
@@ -56,6 +58,7 @@ export function CustomerDetailView({
   dropboxFolder: CustomerDropboxFolderView;
   dropboxConnected: boolean;
   isAdmin: boolean;
+  dropboxPaths: { customerFolder: DropboxPathViewPlain; customerDocumentsFolder: DropboxPathViewPlain; generalDocumentsFolder: DropboxPathViewPlain };
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -129,11 +132,12 @@ export function CustomerDetailView({
             <th>{t.customers.uploadedBy}</th>
             <th>{t.customers.uploadedDate}</th>
             <th>{t.customers.dropboxDocumentStatusLabel}</th>
+            <th>{t.dropbox.pathLabel}</th>
             <th className="text-right">{t.common.actions}</th>
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && <TableEmpty colSpan={8}>{emptyMessage}</TableEmpty>}
+          {rows.length === 0 && <TableEmpty colSpan={9}>{emptyMessage}</TableEmpty>}
           {rows.map((doc) => (
             <tr key={doc.id}>
               <td>{documentDisplayName(doc)}</td>
@@ -149,6 +153,9 @@ export function CustomerDetailView({
                   dropboxConnected={dropboxConnected}
                   isAdmin={isAdmin}
                 />
+              </td>
+              <td className="max-w-xs">
+                <DropboxPathDisplay label="" view={doc.dropboxPath} />
               </td>
               <td>
                 <div className="flex items-center justify-end gap-1.5">
@@ -263,6 +270,7 @@ export function CustomerDetailView({
             dropboxFolder={dropboxFolder}
             dropboxConnected={dropboxConnected}
             isAdmin={isAdmin}
+            dropboxPaths={dropboxPaths}
           />
         </div>
       )}

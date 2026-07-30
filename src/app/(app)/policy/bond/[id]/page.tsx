@@ -5,6 +5,7 @@ import { hasPermission, isAdmin } from "@/lib/permissions";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
+import { buildPolicyDropboxViewModel } from "@/lib/integrations/dropbox/policyPathViewModel";
 import { BondDetailView } from "@/components/policy/bond/bond-detail-view";
 import type { BondDetail, TransactionRow, PolicyDocumentRow, PolicyActivityRow } from "@/components/policy/types";
 
@@ -44,9 +45,10 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
   });
   if (!record || !record.bondDetail) notFound();
 
-  const [documents, activities] = await Promise.all([
+  const [documents, activities, dropboxViewModel] = await Promise.all([
     prisma.policyDocument.findMany({ where: { policyRecordId: id }, orderBy: { createdAt: "desc" } }),
     prisma.policyActivity.findMany({ where: { policyRecordId: id }, orderBy: { createdAt: "desc" }, take: 100 }),
+    buildPolicyDropboxViewModel(id),
   ]);
 
   const documentUploaderIds = [...new Set(documents.map((d) => d.uploadedById))];
@@ -61,6 +63,7 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
     [...activityUsers, ...documentUsers].map((u) => [u.id, u.fullName || u.username])
   );
 
+  const fallbackDropboxInfo = { view: { state: "unavailable" as const, path: null, isPlanned: true, errorMessage: null }, standardizedFileName: null, lastSyncedAt: null };
   const documentRows: PolicyDocumentRow[] = documents.map((d) => ({
     id: d.id,
     documentType: d.documentType,
@@ -72,6 +75,7 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
     notes: d.notes,
     uploadedByName: userNameById.get(d.uploadedById) ?? "—",
     createdAt: d.createdAt.toISOString(),
+    dropbox: dropboxViewModel.documents[d.id] ?? fallbackDropboxInfo,
   }));
 
   const activityRows: PolicyActivityRow[] = activities.map((a) => ({
@@ -177,5 +181,5 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
     },
   });
 
-  return <BondDetailView detail={detail} customers={customers} isAdmin={isAdmin(session.user)} />;
+  return <BondDetailView detail={detail} customers={customers} isAdmin={isAdmin(session.user)} dropbox={dropboxViewModel} />;
 }

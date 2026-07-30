@@ -36,9 +36,12 @@ export type DocumentType =
   | "CR12"
   | "OTHER";
 
-// Safe view model only — never dropboxFileId, dropboxDisplayPath,
-// dropboxPathLower, or any local storage path (Phase 3 Part 7/15: no raw
-// Dropbox IDs, no raw storage paths exposed to the client).
+// Safe view model only — never dropboxFileId, dropboxPathLower, or any
+// local storage path (Phase 3 Part 7/15: no raw Dropbox IDs, no raw storage
+// paths exposed to the client). Dropbox Integration Phase 5 adds the human
+// display path itself (dropboxPath below) as an explicit, deliberate
+// exception — a safe display path is exactly what Part 2 asks every
+// detail page to show; only the ID/token/local-path restrictions remain.
 export type DropboxDocumentSyncView = {
   syncStatus: "PENDING" | "SYNCING" | "SYNCED" | "ERROR" | "CONFLICT" | "DISABLED";
   standardizedFileName: string;
@@ -46,6 +49,18 @@ export type DropboxDocumentSyncView = {
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
 } | null;
+
+// Dropbox Integration Phase 5 — mirrors pathDisplay.ts's DropboxPathView
+// shape, duplicated here (rather than importing the server module) so this
+// client-safe types file has no dependency on server-only Dropbox code.
+export type DropboxPathState = "synced" | "planned" | "pending" | "syncing" | "error" | "conflict" | "not_connected" | "unavailable";
+
+export type DropboxPathViewPlain = {
+  state: DropboxPathState;
+  path: string | null;
+  isPlanned: boolean;
+  errorMessage: string | null;
+};
 
 export type DocumentRow = {
   id: string;
@@ -60,4 +75,5 @@ export type DocumentRow = {
   uploadedByName: string;
   createdAt: string;
   dropboxSync: DropboxDocumentSyncView;
+  dropboxPath: DropboxPathViewPlain;
 };

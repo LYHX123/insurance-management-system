@@ -30,7 +30,7 @@ import type {
   RelatedPolicyBusinessStatus,
 } from "@/components/quotations/types";
 import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
-import { QuotationDropboxSection, type QuotationDropboxView } from "@/components/quotations/quotation-dropbox-status";
+import { QuotationDropboxSection, type QuotationDropboxView, type QuotationDropboxPathsView } from "@/components/quotations/quotation-dropbox-status";
 
 // Phase 3B: all four Policy categories now exist (see PolicyCategory) — the
 // selector below no longer shows any category as "coming soon".
@@ -92,6 +92,7 @@ export function QuotationDetailView({
   caseStatus = null,
   dropbox = null,
   dropboxConnected = false,
+  dropboxPaths = null,
   isAdmin = false,
 }: {
   quotation: QuotationDetail;
@@ -110,6 +111,9 @@ export function QuotationDetailView({
    * file/current version, or null when nothing has been generated yet. */
   dropbox?: QuotationDropboxView;
   dropboxConnected?: boolean;
+  /** Dropbox Integration Phase 5 — safe planned/actual path views for the
+   * business folder, Quotation subfolder, and per-version Excel files. */
+  dropboxPaths?: QuotationDropboxPathsView | null;
   isAdmin?: boolean;
 }) {
   const { t, locale } = useLocale();
@@ -633,7 +637,13 @@ export function QuotationDetailView({
         </div>
       </Card>
 
-      <QuotationDropboxSection quotationId={quotation.id} dropbox={dropbox} dropboxConnected={dropboxConnected} isAdmin={isAdmin} />
+      <QuotationDropboxSection
+        quotationId={quotation.id}
+        dropbox={dropbox}
+        dropboxConnected={dropboxConnected}
+        dropboxPaths={dropboxPaths}
+        isAdmin={isAdmin}
+      />
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

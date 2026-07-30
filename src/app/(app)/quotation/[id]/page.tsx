@@ -4,6 +4,7 @@ import { hasPermission, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { getQuotationDetailData } from "@/lib/quotationRevisions/getQuotationDetail";
 import { getDropboxIntegrationRow } from "@/lib/integrations/dropbox/service";
+import { buildQuotationPathViewModel } from "@/lib/integrations/dropbox/quotationPathViewModel";
 import { QuotationDetailView } from "@/components/quotations/quotation-detail";
 import type { QuotationDropboxView } from "@/components/quotations/quotation-dropbox-status";
 
@@ -53,12 +54,16 @@ export default async function QuotationDetailPage({
       }
     : null;
 
+  const dropboxConnected = dropboxIntegration.status === "CONNECTED";
+  const dropboxPaths = await buildQuotationPathViewModel(detail.quotationCaseId ?? null, dropboxConnected);
+
   return (
     <QuotationDetailView
       quotation={detail}
       caseStatus={quotationCase?.status ?? null}
       dropbox={dropboxView}
-      dropboxConnected={dropboxIntegration.status === "CONNECTED"}
+      dropboxConnected={dropboxConnected}
+      dropboxPaths={dropboxPaths}
       isAdmin={isAdmin(session.user)}
     />
   );

@@ -6,12 +6,14 @@ import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
 import {
   syncCustomerFolderAction,
   verifyCustomerFolderAction,
   rebuildCustomerSubfoldersAction,
   type CustomerDropboxActionResult,
 } from "@/app/(app)/customer/dropboxActions";
+import type { DropboxPathViewPlain } from "@/components/customers/types";
 
 export type CustomerDropboxFolderView = {
   syncStatus: "PENDING" | "SYNCING" | "SYNCED" | "ERROR" | "CONFLICT" | "DISABLED";
@@ -47,11 +49,13 @@ export function CustomerDropboxCard({
   dropboxFolder,
   dropboxConnected,
   isAdmin,
+  dropboxPaths,
 }: {
   customerId: string;
   dropboxFolder: CustomerDropboxFolderView;
   dropboxConnected: boolean;
   isAdmin: boolean;
+  dropboxPaths?: { customerFolder: DropboxPathViewPlain; customerDocumentsFolder: DropboxPathViewPlain; generalDocumentsFolder: DropboxPathViewPlain };
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -158,6 +162,14 @@ export function CustomerDropboxCard({
         ) : dropboxConnected ? (
           <p className="text-secondary text-sm">{t.customers.dropboxNoFolder}</p>
         ) : null}
+
+        {dropboxPaths && (
+          <div className="flex flex-col gap-3">
+            <DropboxPathDisplay label={t.customers.dropboxCustomerFolderPath} view={dropboxPaths.customerFolder} />
+            <DropboxPathDisplay label={t.customers.dropboxCustomerDocumentsFolderPath} view={dropboxPaths.customerDocumentsFolder} />
+            <DropboxPathDisplay label={t.customers.dropboxGeneralDocumentsFolderPath} view={dropboxPaths.generalDocumentsFolder} />
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {dropboxConnected && current?.syncStatus === "SYNCED" && (

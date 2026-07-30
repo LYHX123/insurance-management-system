@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
+import { RefreshCw, ShieldCheck, UploadCloud, ChevronDown, ChevronRight } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
 import {
   retryQuotationDropboxSyncAction,
   reuploadQuotationVersionAction,
@@ -14,6 +15,34 @@ import {
   verifyQuotationVersionAction,
   type QuotationDropboxActionResult,
 } from "@/app/(app)/quotation/dropboxActions";
+
+// Dropbox Integration Phase 5, Part 10 — mirrors pathDisplay.ts's
+// DropboxPathView shape, duplicated here (rather than importing the
+// server module) so this client component has no dependency on
+// server-only Dropbox code, same convention as policy/customers' own
+// client-safe type duplicates.
+export type QuotationDropboxPathState =
+  | "synced"
+  | "planned"
+  | "pending"
+  | "syncing"
+  | "error"
+  | "conflict"
+  | "not_connected"
+  | "unavailable";
+
+export type QuotationDropboxPathViewPlain = {
+  state: QuotationDropboxPathState;
+  path: string | null;
+  isPlanned: boolean;
+  errorMessage: string | null;
+};
+
+export type QuotationDropboxPathsView = {
+  businessFolder: QuotationDropboxPathViewPlain;
+  quotationFolder: QuotationDropboxPathViewPlain;
+  versions: { versionNumber: number; excelFileName: string; view: QuotationDropboxPathViewPlain }[];
+};
 
 // Safe view model only — never a raw Dropbox folder/file id, never an
 // absolute local storage path (Part 9, requirement 3-4).
@@ -58,11 +87,13 @@ export function QuotationDropboxSection({
   quotationId,
   dropbox,
   dropboxConnected,
+  dropboxPaths = null,
   isAdmin,
 }: {
   quotationId: string;
   dropbox: QuotationDropboxView;
   dropboxConnected: boolean;
+  dropboxPaths?: QuotationDropboxPathsView | null;
   isAdmin: boolean;
 }) {
   const { t, locale } = useLocale();
@@ -70,6 +101,7 @@ export function QuotationDropboxSection({
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium", timeStyle: "short" });
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const effectiveStatus = !dropboxConnected ? "NOT_CONNECTED" : dropbox?.currentVersion?.excelSyncStatus ?? "PENDING";
   const statusLabel: Record<string, string> = {
@@ -146,6 +178,32 @@ export function QuotationDropboxSection({
         ) : dropboxConnected ? (
           <p className="text-secondary text-sm">{t.quotations.dropboxNotGeneratedYet}</p>
         ) : null}
+
+        {dropboxPaths && (
+          <div className="flex flex-col gap-3">
+            <DropboxPathDisplay label={t.quotations.dropboxBusinessFolderPath} view={dropboxPaths.businessFolder} />
+            <DropboxPathDisplay label={t.quotations.dropboxQuotationFolderPath} view={dropboxPaths.quotationFolder} />
+            {dropboxPaths.versions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowHistory((v) => !v)}
+                  className="inline-flex w-fit items-center gap-1 text-sm text-emerald-700 hover:underline"
+                >
+                  {showHistory ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {t.quotations.dropboxVersionHistory}
+                </button>
+                {showHistory && (
+                  <div className="flex flex-col gap-3 border-l-2 border-zinc-100 pl-3">
+                    {dropboxPaths.versions.map((v) => (
+                      <DropboxPathDisplay key={v.versionNumber} label={`V${v.versionNumber} — ${v.excelFileName}`} view={v.view} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {isAdmin && dropboxConnected && dropbox?.currentVersion && (
           <div className="flex flex-wrap gap-2">

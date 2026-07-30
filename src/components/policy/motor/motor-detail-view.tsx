@@ -11,7 +11,8 @@ import { MotorOverviewTab } from "@/components/policy/motor/motor-overview-tab";
 import { MotorFinancialTab } from "@/components/policy/motor/motor-financial-tab";
 import { MotorDocumentsTab } from "@/components/policy/motor/motor-documents-tab";
 import { MotorActivityTab } from "@/components/policy/motor/motor-activity-tab";
-import type { MotorDetail, PolicyBusinessStatus, CustomerOption } from "@/components/policy/types";
+import { PolicyDropboxSection } from "@/components/policy/policy-dropbox-section";
+import type { MotorDetail, PolicyBusinessStatus, CustomerOption, PolicyDropboxSectionView } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
   DRAFT: "neutral",
@@ -28,10 +29,12 @@ export function MotorDetailView({
   detail,
   customers,
   isAdmin,
+  dropbox,
 }: {
   detail: MotorDetail;
   customers: CustomerOption[];
   isAdmin: boolean;
+  dropbox: PolicyDropboxSectionView;
 }) {
   const { t } = useLocale();
   // Allows deep-linking straight to a tab (e.g. Ledger's "Open Source" link
@@ -89,7 +92,12 @@ export function MotorDetailView({
 
       {tab === "overview" && <MotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} />}
       {tab === "financial" && <MotorFinancialTab detail={detail} />}
-      {tab === "documents" && <MotorDocumentsTab policyRecordId={detail.id} documents={detail.documents} />}
+      {tab === "documents" && (
+        <div className="flex flex-col gap-4">
+          <PolicyDropboxSection policyRecordId={detail.id} dropbox={dropbox} isAdmin={isAdmin} />
+          <MotorDocumentsTab policyRecordId={detail.id} documents={detail.documents} isAdmin={isAdmin} />
+        </div>
+      )}
       {tab === "activity" && <MotorActivityTab activities={detail.activities} />}
     </div>
   );

@@ -1797,6 +1797,13 @@ model PolicyRecord {
   activities       PolicyActivity[]
   invoiceItems     InvoiceItem[]
 
+  // Dropbox Integration Phase 5 — only present for a Policy that has no
+  // linked QuotationCase business file (see PolicyDropboxBusinessFile's own
+  // doc comment); a linked Policy resolves its business file through
+  // sourceQuotation.quotationCase.dropboxBusinessFile instead and this
+  // relation stays null forever for it.
+  dropboxBusinessFile PolicyDropboxBusinessFile?
+
   @@index([category])
   @@index([customerId])
   @@index([projectId])
@@ -2254,8 +2261,99 @@ model PolicyDocument {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Dropbox Integration Phase 5 — dedicated sync-status row, same
+  // one-row-per-document convention as CustomerDocumentDropboxSync (Phase
+  // 3). Optional: existing documents have no row until backfilled.
+  dropboxSync PolicyDocumentDropboxSync?
+
   @@index([policyRecordId])
   @@index([documentType])
+}
+
+// Dropbox Integration Phase 5 — distinguishes which of the two business-file
+// tables a PolicyDocumentDropboxSync row's businessFileId points at. Plain,
+// unenforced id + this discriminator (this project's existing convention for
+// a cross-table reference — see e.g. PolicyActivity.performedById) rather
+// than two nullable FK columns, since exactly one of the two business-file
+// kinds ever applies to a given Policy.
+enum PolicyDropboxBusinessFileSource {
+  QUOTATION_CASE
+  POLICY_FALLBACK
+}
+
+// Dropbox Integration Phase 5 — one row per PolicyRecord that has NO linked
+// QuotationCase (sourceQuotationId is null, or its source Quotation's case
+// has no business file of its own to reuse — see
+// src/lib/integrations/dropbox/policyBusinessFile.ts). A linked Policy never
+// gets a row here; it resolves its business file through
+// sourceQuotation.quotationCase.dropboxBusinessFile instead (Part 3,
+// requirement 1: never a second, duplicate business folder). Created the
+// first time a Policy document is synchronized for an unlinked Policy —
+// same lazy-creation convention as QuotationDropboxBusinessFile. Stores an
+// IMMUTABLE naming snapshot, same reasoning as QuotationDropboxBusinessFile
+// (Part 3, requirement 8: "store immutable naming snapshots").
+model PolicyDropboxBusinessFile {
+  id             String       @id @default(cuid())
+  policyRecordId String       @unique
+  policyRecord   PolicyRecord @relation(fields: [policyRecordId], references: [id], onDelete: Cascade)
+
+  businessDate       DateTime
+  insuranceTypeCode  String
+  customerShortName  String
+  businessTitle      String
+  businessFolderName String
+
+  dropboxFolderId    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+
+  syncStatus        DropboxBusinessFileSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+}
+
+// Dropbox Integration Phase 5 — one row per PolicyDocument, same dedicated
+// sync-metadata convention as CustomerDocumentDropboxSync/
+// QuotationDropboxVersion. businessFileId/businessFileSource record which
+// business file (a QuotationCase's shared one, or this Policy's own
+// fallback) this document was filed under, so retries never need to
+// re-derive/guess the relationship (Part 3, requirement 2).
+model PolicyDocumentDropboxSync {
+  id               String         @id @default(cuid())
+  policyDocumentId String         @unique
+  policyDocument   PolicyDocument @relation(fields: [policyDocumentId], references: [id], onDelete: Cascade)
+
+  businessFileId     String?
+  businessFileSource PolicyDropboxBusinessFileSource?
+
+  standardizedFileName String
+  originalFileName     String
+
+  dropboxFileId      String?
+  dropboxRevision    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+  dropboxContentHash String?
+  dropboxSize        BigInt?
+
+  syncStatus        DropboxDocumentSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+  @@index([businessFileId])
 }
 
 // One entry per action listed in updatePolicyActivity's doc comment
