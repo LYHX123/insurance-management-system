@@ -1,8 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isAdmin } from "@/lib/permissions";
 import { InvoiceDetailView } from "@/components/invoice/invoice-detail-view";
+import { buildInvoiceDropboxViewModel } from "@/lib/integrations/dropbox/invoicePathViewModel";
 import type { InvoiceDetail } from "@/components/invoice/types";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,6 +25,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     },
   });
   if (!invoice) notFound();
+
+  const dropbox = await buildInvoiceDropboxViewModel(id);
 
   const userIds = [invoice.createdById, invoice.cancelledById].filter((x): x is string => !!x);
   const users = userIds.length
@@ -56,5 +59,5 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     })),
   };
 
-  return <InvoiceDetailView detail={detail} />;
+  return <InvoiceDetailView detail={detail} dropbox={dropbox} isAdmin={isAdmin(session.user)} />;
 }

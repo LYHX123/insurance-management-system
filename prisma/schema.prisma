@@ -2452,6 +2452,11 @@ model Invoice {
 
   items InvoiceItem[]
 
+  // Dropbox Integration Phase 6 — see InvoiceDropboxBusinessFile/
+  // InvoiceDocumentDropboxSync's own doc comments below.
+  dropboxBusinessFile InvoiceDropboxBusinessFile?
+  dropboxSync         InvoiceDocumentDropboxSync?
+
   @@index([customerId])
   @@index([status])
   @@index([invoiceDate])
@@ -2487,6 +2492,99 @@ model InvoiceItem {
   // since the DB cannot see other rows' Invoice.status.
   @@unique([invoiceId, policyRecordId])
   @@index([policyRecordId])
+}
+
+// Dropbox Integration Phase 6 — distinguishes which business-file table an
+// InvoiceDocumentDropboxSync row's businessFileId points at. Deliberately a
+// separate enum from PolicyDropboxBusinessFileSource (not that enum plus a
+// third member): an Invoice's business-file resolution is not a peer of
+// Policy's QUOTATION_CASE/POLICY_FALLBACK binary — see
+// src/lib/integrations/dropbox/invoiceBusinessFile.ts's doc comment for why
+// (an Invoice can bundle multiple PolicyRecords via InvoiceItem, unlike a
+// Policy's single sourceQuotation, so "the Policy's business folder" is only
+// well-defined when an Invoice has exactly one linked Policy).
+enum InvoiceDropboxBusinessFileSource {
+  QUOTATION_CASE
+  POLICY_FALLBACK
+  INVOICE_FALLBACK
+}
+
+// Dropbox Integration Phase 6 — one row per Invoice that has NO single
+// resolvable Policy/QuotationCase business folder to reuse (zero or 2+
+// linked PolicyRecords via InvoiceItem — see invoiceBusinessFile.ts). An
+// Invoice with exactly one linked Policy never gets a row here; it resolves
+// its business file through that Policy's own resolver instead (reusing
+// QuotationDropboxBusinessFile or PolicyDropboxBusinessFile — Part 2,
+// requirement 1: never a second, duplicate business folder for the same
+// insurance transaction). Created lazily the first time an Invoice is
+// synchronized without a single resolvable Policy. Stores an IMMUTABLE
+// naming snapshot, same reasoning/shape as PolicyDropboxBusinessFile/
+// QuotationDropboxBusinessFile.
+model InvoiceDropboxBusinessFile {
+  id        String  @id @default(cuid())
+  invoiceId String  @unique
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  businessDate       DateTime
+  insuranceTypeCode  String
+  customerShortName  String
+  businessTitle      String
+  businessFolderName String
+
+  dropboxFolderId    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+
+  syncStatus        DropboxBusinessFileSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+}
+
+// Dropbox Integration Phase 6 — one row per Invoice's single generated
+// document (an Invoice has exactly one generated file for its whole
+// lifetime — no revision/regeneration concept exists in this schema, unlike
+// QuotationDropboxVersion's many-versions-per-case shape — so this mirrors
+// PolicyDocumentDropboxSync's one-row-per-document convention, not
+// QuotationDropboxVersion's). businessFileId/businessFileSource record
+// which business file (a reused QuotationCase/Policy one, or this Invoice's
+// own INVOICE_FALLBACK) this file was filed under, so retries never need to
+// re-derive/guess the relationship.
+model InvoiceDocumentDropboxSync {
+  id        String  @id @default(cuid())
+  invoiceId String  @unique
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  businessFileId     String?
+  businessFileSource InvoiceDropboxBusinessFileSource?
+
+  standardizedFileName String
+  originalFileName     String
+
+  dropboxFileId      String?
+  dropboxRevision    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+  dropboxContentHash String?
+  dropboxSize        BigInt?
+
+  syncStatus        DropboxDocumentSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+  @@index([businessFileId])
 }
 
 // =============================================================================

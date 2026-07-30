@@ -13,6 +13,7 @@ import { CustomerFolderSyncSection } from "@/components/settings/customer-folder
 import { CustomerDocumentFolderSyncSection } from "@/components/settings/customer-document-folder-sync-section";
 import { QuotationDropboxSyncSection } from "@/components/settings/quotation-dropbox-sync-section";
 import { PolicyDocumentDropboxSyncSection } from "@/components/settings/policy-document-dropbox-sync-section";
+import { InvoiceDocumentDropboxSyncSection } from "@/components/settings/invoice-document-dropbox-sync-section";
 import {
   testDropboxConnectionAction,
   disconnectDropboxAction,
@@ -252,6 +253,7 @@ export function DropboxIntegrationForm({
 
       <QuotationDropboxSyncSection isConnected={isConnected} />
       <PolicyDocumentDropboxSyncSection isConnected={isConnected} />
+      <InvoiceDocumentDropboxSyncSection isConnected={isConnected} />
 
       {showDisconnectConfirm && (
         <ConfirmDialog

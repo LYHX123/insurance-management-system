@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { invoiceDocumentStorage } from "@/lib/invoiceDocuments/storage";
+import { buildContentDisposition } from "@/lib/http/contentDisposition";
 
 // Protected download route, same shape/conventions as
 // src/app/api/policy-documents/[id]/route.ts: auth + module permission,
@@ -49,7 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return new NextResponse(webStream, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}.xlsx"`,
+      "Content-Disposition": buildContentDisposition({ mode: "attachment", filename: `${invoice.invoiceNumber}.xlsx`, fallbackFilename: "Invoice.xlsx" }),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

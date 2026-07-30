@@ -17,6 +17,7 @@ import {
 import { getPolicyClassLabel } from "@/lib/invoice/policyClassLabel";
 import { generateInvoiceExcelBuffer, InvoiceTemplateValidationError, InvoiceTemplateNotFoundError } from "@/lib/invoiceTemplateEngine";
 import { invoiceDocumentStorage } from "@/lib/invoiceDocuments/storage";
+import { syncInvoiceDocumentWithTimeout } from "@/lib/integrations/dropbox/invoiceDocumentSync";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -165,6 +166,15 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
     });
     return { success: false, error: "FILE_SAVE_FAILED" };
   }
+
+  // Dropbox Integration Phase 6 — called AFTER the local file is already
+  // durably saved, never inside the DB transaction above (Part 5,
+  // requirements 1-4): a disconnected/unavailable/rate-limited/timed-out/
+  // misconfigured Dropbox must never prevent the user from receiving the
+  // just-generated Invoice. syncInvoiceDocumentWithTimeout never throws and
+  // is bounded by its own internal timeout, so this can never hang the
+  // response.
+  await syncInvoiceDocumentWithTimeout(created.id).catch(() => {});
 
   try {
     await prisma.$transaction(async (tx) => {

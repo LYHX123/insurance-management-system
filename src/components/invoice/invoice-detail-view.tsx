@@ -13,7 +13,8 @@ import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
 import { cancelInvoiceAction } from "@/app/(app)/invoice/actions";
-import type { InvoiceDetail, InvoiceStatus } from "@/components/invoice/types";
+import { InvoiceDropboxSection } from "@/components/invoice/invoice-dropbox-section";
+import type { InvoiceDetail, InvoiceDropboxSectionView, InvoiceStatus } from "@/components/invoice/types";
 
 const STATUS_TONE: Record<InvoiceStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
   ISSUED: "success",
@@ -33,7 +34,7 @@ const ERROR_KEY: Record<string, string> = {
   ALREADY_CANCELLED: "alreadyCancelled",
 };
 
-export function InvoiceDetailView({ detail }: { detail: InvoiceDetail }) {
+export function InvoiceDetailView({ detail, dropbox, isAdmin }: { detail: InvoiceDetail; dropbox: InvoiceDropboxSectionView; isAdmin: boolean }) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -175,10 +176,14 @@ export function InvoiceDetailView({ detail }: { detail: InvoiceDetail }) {
         </TableWrap>
       </Card>
 
+      <InvoiceDropboxSection invoiceId={detail.id} dropbox={dropbox} isAdmin={isAdmin} />
+
       {showCancelConfirm && (
         <ConfirmDialog
           title={t.invoice.cancelInvoiceConfirmTitle}
-          message={error ?? t.invoice.cancelInvoiceConfirmMessage}
+          message={
+            error ?? (dropbox.invoiceFile.state === "synced" ? `${t.invoice.cancelInvoiceConfirmMessage} ${t.invoice.dropboxRetentionNote}` : t.invoice.cancelInvoiceConfirmMessage)
+          }
           isSubmitting={isCancelling}
           onConfirm={handleCancel}
           onClose={() => {
