@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/i18n/locale-provider";
 import { Modal } from "@/components/ui/modal";
@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Combobox } from "@/components/ui/combobox";
 import { FormField } from "@/components/ui/form-field";
-import { createMotorClaimAction } from "@/app/(app)/task/motor-claim/actions";
+import { createMotorClaimAction, getMotorClaimPolicyOptionsAction } from "@/app/(app)/task/motor-claim/actions";
 import { MOTOR_CLAIM_NATURES, MOTOR_CLAIM_PROGRESS_VALUES } from "@/lib/claims/enums";
 import { resolveCustomerContact, resolveProjectContact } from "@/lib/claims/contactPrefill";
-import type { MotorClaimNatureValue, MotorClaimProgressValue, ClaimCustomerOption, ActiveUserOption } from "@/components/claims/types";
+import { ClaimPolicyLinkField } from "@/components/claims/claim-policy-link-field";
+import type { MotorClaimNatureValue, MotorClaimProgressValue, ClaimCustomerOption, ActiveUserOption, ClaimPolicyOption } from "@/components/claims/types";
 
 const ERROR_KEY: Record<string, string> = {
   FORBIDDEN: "forbidden",
@@ -32,6 +33,9 @@ const ERROR_KEY: Record<string, string> = {
   PROGRESS_INVALID: "progressInvalid",
   USER_INACTIVE: "userInactive",
   CREATE_FAILED: "createFailed",
+  POLICY_NOT_FOUND: "policyNotFound",
+  POLICY_CUSTOMER_MISMATCH: "policyCustomerMismatch",
+  POLICY_CATEGORY_MISMATCH: "policyCategoryMismatch",
 };
 
 function pad2(n: number): string {
@@ -70,6 +74,9 @@ export function MotorClaimFormModal({
   const [claimNature, setClaimNature] = useState<MotorClaimNatureValue | "">("");
   const [progress, setProgress] = useState<MotorClaimProgressValue>("PREPARE_CLAIM_DOCUMENT");
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(() => new Set([currentUserId]));
+  const [policyRecordId, setPolicyRecordId] = useState("");
+  const [policyOptions, setPolicyOptions] = useState<ClaimPolicyOption[]>([]);
+  const policyFetchToken = useRef(0);
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,6 +109,16 @@ export function MotorClaimFormModal({
     const contact = resolveCustomerContact(customers.find((c) => c.id === id));
     setContactName(contact.name);
     setContactPhone(contact.phone);
+    // Changing Customer invalidates whatever Policy was selected for the
+    // previous Customer — never carried over (see this phase's spec, Part 2).
+    setPolicyRecordId("");
+    setPolicyOptions([]);
+    const token = ++policyFetchToken.current;
+    if (id) {
+      getMotorClaimPolicyOptionsAction(id).then((options) => {
+        if (policyFetchToken.current === token) setPolicyOptions(options);
+      });
+    }
   };
 
   // Selecting a Project prefills from that Project's own contact, falling
@@ -149,6 +166,7 @@ export function MotorClaimFormModal({
       numberPlate,
       claimNature,
       progress,
+      policyRecordId: policyRecordId || null,
       participantIds: [...selectedParticipants],
     });
     setIsSubmitting(false);
@@ -225,6 +243,7 @@ export function MotorClaimFormModal({
               ))}
             </Select>
           </FormField>
+          <ClaimPolicyLinkField value={policyRecordId} onChange={setPolicyRecordId} options={policyOptions} disabled={!customerId} />
         </div>
 
         <FormField label={t.claims.participants}>

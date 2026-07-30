@@ -56,5 +56,9 @@ next-env.d.ts
 # Generated Invoice workbooks (local storage provider)
 /invoice-documents
 
+# Motor/Non-Motor Claim document uploads (local storage provider)
+/motor-claim-documents
+/non-motor-claim-documents
+
 # Local database backups (see backups/*.dump)
 /backups

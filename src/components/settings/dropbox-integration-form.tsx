@@ -14,11 +14,26 @@ import { CustomerDocumentFolderSyncSection } from "@/components/settings/custome
 import { QuotationDropboxSyncSection } from "@/components/settings/quotation-dropbox-sync-section";
 import { PolicyDocumentDropboxSyncSection } from "@/components/settings/policy-document-dropbox-sync-section";
 import { InvoiceDocumentDropboxSyncSection } from "@/components/settings/invoice-document-dropbox-sync-section";
+import { ClaimDocumentDropboxSyncSection } from "@/components/settings/claim-document-dropbox-sync-section";
 import {
   testDropboxConnectionAction,
   disconnectDropboxAction,
   saveDropboxRootFolderAction,
 } from "@/app/(app)/settings/dropboxActions";
+import {
+  previewMotorClaimDocumentBackfillAction,
+  initMissingMotorClaimDocumentsAction,
+  syncMissingMotorClaimDocumentsBackfillAction,
+  retryFailedMotorClaimDocumentsAction,
+  verifySyncedMotorClaimDocumentsAction,
+} from "@/app/(app)/settings/motorClaimDocumentDropboxBackfillActions";
+import {
+  previewNonMotorClaimDocumentBackfillAction,
+  initMissingNonMotorClaimDocumentsAction,
+  syncMissingNonMotorClaimDocumentsBackfillAction,
+  retryFailedNonMotorClaimDocumentsAction,
+  verifySyncedNonMotorClaimDocumentsAction,
+} from "@/app/(app)/settings/nonMotorClaimDocumentDropboxBackfillActions";
 import type { DropboxIntegrationView } from "@/lib/integrations/dropbox/types";
 
 const ERROR_KEY: Record<string, string> = {
@@ -254,6 +269,26 @@ export function DropboxIntegrationForm({
       <QuotationDropboxSyncSection isConnected={isConnected} />
       <PolicyDocumentDropboxSyncSection isConnected={isConnected} />
       <InvoiceDocumentDropboxSyncSection isConnected={isConnected} />
+      <ClaimDocumentDropboxSyncSection
+        isConnected={isConnected}
+        title={t.claims.dropboxClaimSyncSectionTitleMotor}
+        description={t.claims.dropboxClaimSyncSectionDescriptionMotor}
+        previewAction={previewMotorClaimDocumentBackfillAction}
+        initMissingAction={initMissingMotorClaimDocumentsAction}
+        syncMissingAction={syncMissingMotorClaimDocumentsBackfillAction}
+        retryFailedAction={retryFailedMotorClaimDocumentsAction}
+        verifySyncedAction={verifySyncedMotorClaimDocumentsAction}
+      />
+      <ClaimDocumentDropboxSyncSection
+        isConnected={isConnected}
+        title={t.claims.dropboxClaimSyncSectionTitleNonMotor}
+        description={t.claims.dropboxClaimSyncSectionDescriptionNonMotor}
+        previewAction={previewNonMotorClaimDocumentBackfillAction}
+        initMissingAction={initMissingNonMotorClaimDocumentsAction}
+        syncMissingAction={syncMissingNonMotorClaimDocumentsBackfillAction}
+        retryFailedAction={retryFailedNonMotorClaimDocumentsAction}
+        verifySyncedAction={verifySyncedNonMotorClaimDocumentsAction}
+      />
 
       {showDisconnectConfirm && (
         <ConfirmDialog

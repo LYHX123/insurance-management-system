@@ -1,8 +1,12 @@
 import { notFound, redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/permissions";
 import { checkMotorClaimAccess } from "@/lib/claims/access";
 import { getMotorClaimDetailForDisplay, getActiveClaimCustomers } from "@/lib/claims/queries";
 import { getDistinctInsurers } from "@/lib/claims/insurers";
+import { getMotorPolicyLinkOptions } from "@/lib/claims/policyLink";
+import { buildMotorClaimDropboxViewModel } from "@/lib/integrations/dropbox/motorClaimPathViewModel";
 import { MotorClaimDetailView } from "@/components/claims/motor-claim-detail";
 
 export default async function MotorClaimDetailPage({ params }: { params: Promise<{ claimId: string }> }) {
@@ -18,21 +22,41 @@ export default async function MotorClaimDetailPage({ params }: { params: Promise
   if (access.kind === "no-module-access") redirect("/access-denied");
   if (access.kind === "not-found") notFound();
 
-  const [detail, customers, insurers, activeUsers] = await Promise.all([
+  const session = await auth();
+
+  const [detail, customers, insurers, activeUsers, dropbox] = await Promise.all([
     getMotorClaimDetailForDisplay(claimId),
     getActiveClaimCustomers(),
     getDistinctInsurers(),
     prisma.user.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, username: true, role: true } }),
+    buildMotorClaimDropboxViewModel(claimId),
   ]);
   if (!detail) notFound();
 
+  // Dropbox Integration Phase 7, Part 2 — customer-scoped Motor Policy
+  // candidates for the Linked Policy selector, re-fetched fresh on every
+  // detail-page load (never trusted from client state).
+  const policyOptions = await getMotorPolicyLinkOptions(detail.customerId);
+
+  const documents = detail.documents.map((d) => ({ ...d, dropbox: dropbox.documents[d.id] ?? d.dropbox }));
+
   return (
     <MotorClaimDetailView
-      claim={detail}
+      claim={{ ...detail, documents }}
       currentUserId={access.userId}
       customers={customers}
       insurers={insurers}
       activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
+      policyOptions={policyOptions}
+      dropbox={{
+        dropboxConnected: dropbox.dropboxConnected,
+        source: dropbox.source,
+        businessFolderName: dropbox.businessFolderName,
+        businessFolder: dropbox.businessFolder,
+        claimFolder: dropbox.claimFolder,
+        claimReferenceFolder: dropbox.claimReferenceFolder,
+      }}
+      isAdmin={session?.user ? isAdmin(session.user) : false}
     />
   );
 }

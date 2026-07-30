@@ -24,7 +24,10 @@ import { deriveCustomerShortName } from "./customerShortName";
 // INSURANCE_TYPE_FOLDER_CODE, applied to the Policy-side enums so a Policy
 // fallback folder visually matches the equivalent Quotation folder naming
 // for the same kind of business.
-const NON_MOTOR_FOLDER_CODE: Record<NonMotorCoverType, string> = {
+// Exported so a later phase's Non-Motor fallback-naming resolver can reuse
+// the exact same cover-type -> folder-code mapping rather than defining a
+// second, drifting copy.
+export const NON_MOTOR_FOLDER_CODE: Record<NonMotorCoverType, string> = {
   CONTRACTORS_ALL_RISKS: "CAR",
   WIBA: "WIBA",
   EMPLOYERS_LIABILITY: "EL",

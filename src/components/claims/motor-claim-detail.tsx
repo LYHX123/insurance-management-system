@@ -23,9 +23,46 @@ import { MOTOR_CLAIM_PROGRESS_TONE } from "@/lib/claims/enums";
 import { MotorClaimEditModal } from "@/components/claims/motor-claim-edit-modal";
 import { ClaimParticipantsModal } from "@/components/claims/claim-participants-modal";
 import { ClaimTimelinePanel } from "@/components/claims/claim-timeline-panel";
-import type { MotorClaimDetail, MotorClaimNatureValue, MotorClaimProgressValue, ClaimCustomerOption, ActiveUserOption } from "@/components/claims/types";
+import { ClaimDropboxSection } from "@/components/claims/claim-dropbox-section";
+import { ClaimDocumentsSection } from "@/components/claims/claim-documents-section";
+import {
+  uploadMotorClaimDocumentAction,
+  deleteMotorClaimDocumentAction,
+} from "@/app/(app)/task/motor-claim/documentActions";
+import {
+  retryMotorClaimDocumentSyncAction,
+  verifyMotorClaimDocumentAction,
+  verifyMotorClaimBusinessFolderAction,
+  syncMissingMotorClaimDocumentsAction,
+} from "@/app/(app)/task/motor-claim/dropboxActions";
+import { MOTOR_CLAIM_DOCUMENT_TYPES } from "@/lib/claims/enums";
+import type {
+  MotorClaimDetail,
+  MotorClaimNatureValue,
+  MotorClaimProgressValue,
+  ClaimCustomerOption,
+  ActiveUserOption,
+  ClaimPolicyOption,
+  ClaimDropboxSectionView,
+} from "@/components/claims/types";
 
 type ConfirmKind = "close" | "reopen" | "delete";
+
+const DOCUMENT_TYPE_LABEL_KEY: Record<(typeof MOTOR_CLAIM_DOCUMENT_TYPES)[number], string> = {
+  CLAIM_FORM: "docTypeClaimForm",
+  POLICE_ABSTRACT: "docTypePoliceAbstract",
+  DRIVER_LICENSE: "docTypeDriverLicense",
+  LOGBOOK: "docTypeLogbook",
+  INSURANCE_CERTIFICATE: "docTypeInsuranceCertificate",
+  ASSESSMENT_REPORT: "docTypeAssessmentReport",
+  REPAIR_ESTIMATE: "docTypeRepairEstimate",
+  REPAIR_INVOICE: "docTypeRepairInvoice",
+  REINSPECTION_REPORT: "docTypeReinspectionReport",
+  DISCHARGE_VOUCHER: "docTypeDischargeVoucher",
+  RELEASE_LETTER: "docTypeReleaseLetter",
+  PHOTOS: "docTypePhotos",
+  OTHER: "docTypeOther",
+};
 
 export function MotorClaimDetailView({
   claim,
@@ -33,12 +70,18 @@ export function MotorClaimDetailView({
   customers,
   insurers,
   activeUsers,
+  policyOptions,
+  dropbox,
+  isAdmin,
 }: {
   claim: MotorClaimDetail;
   currentUserId: string;
   customers: ClaimCustomerOption[];
   insurers: string[];
   activeUsers: ActiveUserOption[];
+  policyOptions: ClaimPolicyOption[];
+  dropbox: ClaimDropboxSectionView;
+  isAdmin: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -84,11 +127,18 @@ export function MotorClaimDetailView({
     reopen: t.claims.confirmReopenTitle,
     delete: t.claims.confirmDeleteTitle,
   };
+  // Part 11: a bilingual retention note is added to the delete confirmation
+  // only when at least one document has actually synced to Dropbox — never
+  // implies retained files exist when none do.
+  const hasSyncedDocuments = claim.documents.some((d) => d.dropbox.view.state === "synced");
   const confirmMessage: Record<ConfirmKind, string> = {
     close: t.claims.confirmCloseMessage,
     reopen: t.claims.confirmReopenMessage,
-    delete: t.claims.confirmDeleteMessage,
+    delete: hasSyncedDocuments ? `${t.claims.confirmDeleteMessage} ${t.claims.dropboxRetentionNote}` : t.claims.confirmDeleteMessage,
   };
+
+  const documentTypeOptions = MOTOR_CLAIM_DOCUMENT_TYPES.map((value) => ({ value, label: t.claims[DOCUMENT_TYPE_LABEL_KEY[value] as keyof typeof t.claims] as string }));
+  const documentTypeLabel: Record<string, string> = Object.fromEntries(documentTypeOptions.map((o) => [o.value, o.label]));
 
   return (
     <div className="flex flex-col gap-section">
@@ -140,6 +190,18 @@ export function MotorClaimDetailView({
           <div>
             <dt className="text-secondary text-sm">{t.claims.claimNature}</dt>
             <dd className="font-medium text-zinc-800">{natureLabel[claim.claimNature]}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-sm">{t.claims.linkedPolicy}</dt>
+            <dd className="font-medium text-zinc-800">
+              {claim.linkedPolicy ? (
+                <Link href={`/policy/motor/${claim.linkedPolicy.id}`} className="text-emerald-700 hover:underline">
+                  {claim.linkedPolicy.recordNumber}
+                </Link>
+              ) : (
+                t.claims.noLinkedPolicy
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-secondary text-sm">{t.claims.lastUpdated}</dt>
@@ -202,6 +264,29 @@ export function MotorClaimDetailView({
         )}
       </Card>
 
+      <ClaimDocumentsSection
+        claimId={claim.id}
+        claimIdFieldName="motorClaimId"
+        documents={claim.documents}
+        isAdmin={isAdmin}
+        isOpen={isOpen}
+        documentTypeOptions={documentTypeOptions}
+        documentTypeLabel={documentTypeLabel}
+        downloadRoutePrefix="/api/motor-claim-documents"
+        uploadAction={uploadMotorClaimDocumentAction}
+        deleteAction={deleteMotorClaimDocumentAction}
+        retryAction={retryMotorClaimDocumentSyncAction}
+        verifyAction={verifyMotorClaimDocumentAction}
+      />
+
+      <ClaimDropboxSection
+        claimId={claim.id}
+        dropbox={dropbox}
+        isAdmin={isAdmin}
+        verifyBusinessFolderAction={verifyMotorClaimBusinessFolderAction}
+        syncMissingAction={syncMissingMotorClaimDocumentsAction}
+      />
+
       <ClaimTimelinePanel
         claimId={claim.id}
         timeline={claim.timeline}
@@ -214,7 +299,14 @@ export function MotorClaimDetailView({
       />
 
       {showEdit && (
-        <MotorClaimEditModal claim={claim} customers={customers} insurers={insurers} onClose={() => setShowEdit(false)} onSuccess={() => setShowEdit(false)} />
+        <MotorClaimEditModal
+          claim={claim}
+          customers={customers}
+          insurers={insurers}
+          policyOptions={policyOptions}
+          onClose={() => setShowEdit(false)}
+          onSuccess={() => setShowEdit(false)}
+        />
       )}
 
       {showParticipants && (

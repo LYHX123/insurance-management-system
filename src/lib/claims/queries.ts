@@ -2,12 +2,24 @@ import { prisma } from "@/lib/prisma";
 import type {
   MotorClaimRow,
   MotorClaimDetail,
+  MotorClaimDocumentRow,
   NonMotorClaimRow,
   NonMotorClaimDetail,
+  NonMotorClaimDocumentRow,
   ClaimCustomerOption,
   ClaimParticipantRow,
   ClaimTimelineRow,
+  ClaimDocumentDropboxInfo,
 } from "@/components/claims/types";
+
+// Dropbox Integration Phase 7 — placeholder used only until the caller
+// (the detail page) overwrites it with the real per-document view from
+// motorClaimPathViewModel.ts/nonMotorClaimPathViewModel.ts. Never rendered
+// as-is: buildDropboxPathView always returns a real state (at minimum
+// "not_connected"), this literal is just a type-satisfying default so this
+// module (a plain data query, no Dropbox network/DB calls of its own)
+// doesn't need to depend on the Dropbox integration to compile.
+const PENDING_DROPBOX_INFO: ClaimDocumentDropboxInfo = { view: { state: "pending", path: null, isPlanned: true, errorMessage: null }, standardizedFileName: null, lastSyncedAt: null };
 
 const USER_SELECT = { id: true, fullName: true, username: true, status: true, role: true } as const;
 
@@ -149,11 +161,18 @@ export async function getMotorClaimDetailForDisplay(claimId: string): Promise<Mo
       project: { select: { projectName: true } },
       participants: { orderBy: { addedAt: "asc" } },
       updates: { where: { deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+      policyRecord: { select: { id: true, recordNumber: true, category: true } },
+      documents: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!claim) return null;
 
-  const userIds = new Set<string>([claim.createdById, ...claim.participants.map((p) => p.userId), ...claim.updates.map((u) => u.createdById)]);
+  const userIds = new Set<string>([
+    claim.createdById,
+    ...claim.participants.map((p) => p.userId),
+    ...claim.updates.map((u) => u.createdById),
+    ...claim.documents.map((d) => d.uploadedById),
+  ]);
   if (claim.closedById) userIds.add(claim.closedById);
   const users = userIds.size ? await prisma.user.findMany({ where: { id: { in: [...userIds] } }, select: USER_SELECT }) : [];
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -175,6 +194,16 @@ export async function getMotorClaimDetailForDisplay(claimId: string): Promise<Mo
     editedAt: u.editedAt?.toISOString() ?? null,
     isInitial: u.isInitial,
   }));
+  const documents: MotorClaimDocumentRow[] = claim.documents.map((d) => ({
+    id: d.id,
+    documentType: d.documentType,
+    originalFileName: d.originalFileName,
+    fileSize: d.fileSize,
+    notes: d.notes,
+    uploadedByName: nameOf(d.uploadedById),
+    createdAt: d.createdAt.toISOString(),
+    dropbox: PENDING_DROPBOX_INFO,
+  }));
 
   return {
     id: claim.id,
@@ -191,6 +220,9 @@ export async function getMotorClaimDetailForDisplay(claimId: string): Promise<Mo
     claimNature: claim.claimNature,
     progress: claim.progress,
     status: claim.status,
+    policyRecordId: claim.policyRecordId,
+    linkedPolicy: claim.policyRecord ? { id: claim.policyRecord.id, recordNumber: claim.policyRecord.recordNumber, category: claim.policyRecord.category } : null,
+    documents,
     createdById: claim.createdById,
     createdByName: nameOf(claim.createdById),
     createdAt: claim.createdAt.toISOString(),
@@ -211,11 +243,18 @@ export async function getNonMotorClaimDetailForDisplay(claimId: string): Promise
       project: { select: { projectName: true } },
       participants: { orderBy: { addedAt: "asc" } },
       updates: { where: { deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+      policyRecord: { select: { id: true, recordNumber: true, category: true } },
+      documents: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!claim) return null;
 
-  const userIds = new Set<string>([claim.createdById, ...claim.participants.map((p) => p.userId), ...claim.updates.map((u) => u.createdById)]);
+  const userIds = new Set<string>([
+    claim.createdById,
+    ...claim.participants.map((p) => p.userId),
+    ...claim.updates.map((u) => u.createdById),
+    ...claim.documents.map((d) => d.uploadedById),
+  ]);
   if (claim.closedById) userIds.add(claim.closedById);
   const users = userIds.size ? await prisma.user.findMany({ where: { id: { in: [...userIds] } }, select: USER_SELECT }) : [];
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -237,6 +276,16 @@ export async function getNonMotorClaimDetailForDisplay(claimId: string): Promise
     editedAt: u.editedAt?.toISOString() ?? null,
     isInitial: u.isInitial,
   }));
+  const documents: NonMotorClaimDocumentRow[] = claim.documents.map((d) => ({
+    id: d.id,
+    documentType: d.documentType,
+    originalFileName: d.originalFileName,
+    fileSize: d.fileSize,
+    notes: d.notes,
+    uploadedByName: nameOf(d.uploadedById),
+    createdAt: d.createdAt.toISOString(),
+    dropbox: PENDING_DROPBOX_INFO,
+  }));
 
   return {
     id: claim.id,
@@ -252,6 +301,9 @@ export async function getNonMotorClaimDetailForDisplay(claimId: string): Promise
     insuranceType: claim.insuranceType,
     progress: claim.progress,
     status: claim.status,
+    policyRecordId: claim.policyRecordId,
+    linkedPolicy: claim.policyRecord ? { id: claim.policyRecord.id, recordNumber: claim.policyRecord.recordNumber, category: claim.policyRecord.category } : null,
+    documents,
     createdById: claim.createdById,
     createdByName: nameOf(claim.createdById),
     createdAt: claim.createdAt.toISOString(),

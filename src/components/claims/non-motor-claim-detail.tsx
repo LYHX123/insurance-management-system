@@ -23,10 +23,45 @@ import { NON_MOTOR_CLAIM_PROGRESS_TONE } from "@/lib/claims/enums";
 import { NonMotorClaimEditModal } from "@/components/claims/non-motor-claim-edit-modal";
 import { ClaimParticipantsModal } from "@/components/claims/claim-participants-modal";
 import { ClaimTimelinePanel } from "@/components/claims/claim-timeline-panel";
-import type { NonMotorClaimDetail, NonMotorClaimProgressValue, ClaimCustomerOption, ActiveUserOption } from "@/components/claims/types";
+import { ClaimDropboxSection } from "@/components/claims/claim-dropbox-section";
+import { ClaimDocumentsSection } from "@/components/claims/claim-documents-section";
+import {
+  uploadNonMotorClaimDocumentAction,
+  deleteNonMotorClaimDocumentAction,
+} from "@/app/(app)/task/non-motor-claim/documentActions";
+import {
+  retryNonMotorClaimDocumentSyncAction,
+  verifyNonMotorClaimDocumentAction,
+  verifyNonMotorClaimBusinessFolderAction,
+  syncMissingNonMotorClaimDocumentsAction,
+} from "@/app/(app)/task/non-motor-claim/dropboxActions";
+import { NON_MOTOR_CLAIM_DOCUMENT_TYPES } from "@/lib/claims/enums";
+import type {
+  NonMotorClaimDetail,
+  NonMotorClaimProgressValue,
+  ClaimCustomerOption,
+  ActiveUserOption,
+  ClaimPolicyOption,
+  ClaimDropboxSectionView,
+} from "@/components/claims/types";
 import type { NonMotorCoverType } from "@/lib/policy/nonMotorCoverTypes";
 
 type ConfirmKind = "close" | "reopen" | "delete";
+
+const DOCUMENT_TYPE_LABEL_KEY: Record<(typeof NON_MOTOR_CLAIM_DOCUMENT_TYPES)[number], string> = {
+  CLAIM_FORM: "docTypeClaimForm",
+  INCIDENT_REPORT: "docTypeIncidentReport",
+  SURVEY_REPORT: "docTypeSurveyReport",
+  ASSESSMENT_REPORT: "docTypeAssessmentReport",
+  SUPPORTING_DOCUMENT: "docTypeSupportingDocument",
+  REPAIR_ESTIMATE: "docTypeRepairEstimate",
+  REPAIR_INVOICE: "docTypeRepairInvoice",
+  SETTLEMENT_OFFER: "docTypeSettlementOffer",
+  DISCHARGE_VOUCHER: "docTypeDischargeVoucher",
+  SETTLEMENT_LETTER: "docTypeSettlementLetter",
+  PHOTOS: "docTypePhotos",
+  OTHER: "docTypeOther",
+};
 
 export function NonMotorClaimDetailView({
   claim,
@@ -34,12 +69,18 @@ export function NonMotorClaimDetailView({
   customers,
   insurers,
   activeUsers,
+  policyOptions,
+  dropbox,
+  isAdmin,
 }: {
   claim: NonMotorClaimDetail;
   currentUserId: string;
   customers: ClaimCustomerOption[];
   insurers: string[];
   activeUsers: ActiveUserOption[];
+  policyOptions: ClaimPolicyOption[];
+  dropbox: ClaimDropboxSectionView;
+  isAdmin: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -98,11 +139,15 @@ export function NonMotorClaimDetailView({
     reopen: t.claims.confirmReopenTitle,
     delete: t.claims.confirmDeleteTitle,
   };
+  const hasSyncedDocuments = claim.documents.some((d) => d.dropbox.view.state === "synced");
   const confirmMessage: Record<ConfirmKind, string> = {
     close: t.claims.confirmCloseMessage,
     reopen: t.claims.confirmReopenMessage,
-    delete: t.claims.confirmDeleteMessage,
+    delete: hasSyncedDocuments ? `${t.claims.confirmDeleteMessage} ${t.claims.dropboxRetentionNote}` : t.claims.confirmDeleteMessage,
   };
+
+  const documentTypeOptions = NON_MOTOR_CLAIM_DOCUMENT_TYPES.map((value) => ({ value, label: t.claims[DOCUMENT_TYPE_LABEL_KEY[value] as keyof typeof t.claims] as string }));
+  const documentTypeLabel: Record<string, string> = Object.fromEntries(documentTypeOptions.map((o) => [o.value, o.label]));
 
   return (
     <div className="flex flex-col gap-section">
@@ -150,6 +195,18 @@ export function NonMotorClaimDetailView({
           <div>
             <dt className="text-secondary text-sm">{t.claims.insuranceType}</dt>
             <dd className="font-medium text-zinc-800">{coverTypeLabel[claim.insuranceType]}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-sm">{t.claims.linkedPolicy}</dt>
+            <dd className="font-medium text-zinc-800">
+              {claim.linkedPolicy ? (
+                <Link href={`/policy/non-motor/${claim.linkedPolicy.id}`} className="text-emerald-700 hover:underline">
+                  {claim.linkedPolicy.recordNumber}
+                </Link>
+              ) : (
+                t.claims.noLinkedPolicy
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-secondary text-sm">{t.claims.lastUpdated}</dt>
@@ -212,6 +269,29 @@ export function NonMotorClaimDetailView({
         )}
       </Card>
 
+      <ClaimDocumentsSection
+        claimId={claim.id}
+        claimIdFieldName="nonMotorClaimId"
+        documents={claim.documents}
+        isAdmin={isAdmin}
+        isOpen={isOpen}
+        documentTypeOptions={documentTypeOptions}
+        documentTypeLabel={documentTypeLabel}
+        downloadRoutePrefix="/api/non-motor-claim-documents"
+        uploadAction={uploadNonMotorClaimDocumentAction}
+        deleteAction={deleteNonMotorClaimDocumentAction}
+        retryAction={retryNonMotorClaimDocumentSyncAction}
+        verifyAction={verifyNonMotorClaimDocumentAction}
+      />
+
+      <ClaimDropboxSection
+        claimId={claim.id}
+        dropbox={dropbox}
+        isAdmin={isAdmin}
+        verifyBusinessFolderAction={verifyNonMotorClaimBusinessFolderAction}
+        syncMissingAction={syncMissingNonMotorClaimDocumentsAction}
+      />
+
       <ClaimTimelinePanel
         claimId={claim.id}
         timeline={claim.timeline}
@@ -224,7 +304,14 @@ export function NonMotorClaimDetailView({
       />
 
       {showEdit && (
-        <NonMotorClaimEditModal claim={claim} customers={customers} insurers={insurers} onClose={() => setShowEdit(false)} onSuccess={() => setShowEdit(false)} />
+        <NonMotorClaimEditModal
+          claim={claim}
+          customers={customers}
+          insurers={insurers}
+          policyOptions={policyOptions}
+          onClose={() => setShowEdit(false)}
+          onSuccess={() => setShowEdit(false)}
+        />
       )}
 
       {showParticipants && (

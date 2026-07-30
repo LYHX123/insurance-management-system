@@ -59,7 +59,13 @@ export type DropboxErrorCode =
   | "POLICY_DOCUMENT_CONFLICT"
   // --- Phase 6: Invoice synchronization ---
   | "INVOICE_NOT_FOUND"
-  | "INVOICE_DOCUMENT_CONFLICT";
+  | "INVOICE_DOCUMENT_CONFLICT"
+  // --- Phase 7: Claim synchronization ---
+  | "CLAIM_NOT_FOUND"
+  | "CLAIM_DOCUMENT_NOT_FOUND"
+  | "CLAIM_DOCUMENT_CONFLICT"
+  | "CLAIM_FOLDER_CONFLICT"
+  | "CLAIM_POLICY_REASSIGNMENT_BLOCKED";
 
 export class DropboxIntegrationError extends Error {
   readonly code: DropboxErrorCode;

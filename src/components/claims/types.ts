@@ -1,4 +1,11 @@
-import type { ClaimStatusValue, MotorClaimNatureValue, MotorClaimProgressValue, NonMotorClaimProgressValue } from "@/lib/claims/enums";
+import type {
+  ClaimStatusValue,
+  MotorClaimNatureValue,
+  MotorClaimProgressValue,
+  NonMotorClaimProgressValue,
+  MotorClaimDocumentTypeValue,
+  NonMotorClaimDocumentTypeValue,
+} from "@/lib/claims/enums";
 import type { NonMotorCoverType } from "@/lib/policy/nonMotorCoverTypes";
 
 export type { ClaimStatusValue, MotorClaimNatureValue, MotorClaimProgressValue, NonMotorClaimProgressValue };
@@ -31,6 +38,55 @@ export type ClaimParticipantRow = {
   fullName: string;
   role: string | null;
   isActiveAccount: boolean;
+};
+
+// Dropbox Integration Phase 7, Part 2 — the optional "Linked Policy"
+// selector's option shape. Only real, already-available identifying data
+// (Part 2: "Show useful identifying information") — never an invented
+// field.
+export type ClaimPolicyOption = {
+  id: string;
+  recordNumber: string;
+  numberPlate: string | null;
+  insuranceTypeLabel: string | null;
+  insurerName: string | null;
+  effectiveDate: string;
+  expiryDate: string;
+  businessStatus: string;
+};
+
+export type ClaimLinkedPolicy = {
+  id: string;
+  recordNumber: string;
+  category: "MOTOR" | "NON_MOTOR" | "BOND" | "WORK_PERMIT";
+};
+
+// Dropbox Integration Phase 7 — mirrors src/components/policy/types.ts's
+// DropboxPathViewPlain shape, duplicated here (rather than importing the
+// server module) so this client-safe types file has no dependency on
+// server-only Dropbox code.
+export type DropboxPathState = "synced" | "planned" | "pending" | "syncing" | "error" | "conflict" | "not_connected" | "unavailable";
+
+export type DropboxPathViewPlain = {
+  state: DropboxPathState;
+  path: string | null;
+  isPlanned: boolean;
+  errorMessage: string | null;
+};
+
+export type ClaimDocumentDropboxInfo = {
+  view: DropboxPathViewPlain;
+  standardizedFileName: string | null;
+  lastSyncedAt: string | null;
+};
+
+export type ClaimDropboxSectionView = {
+  dropboxConnected: boolean;
+  source: "QUOTATION_CASE" | "POLICY_FALLBACK" | "CLAIM_FALLBACK";
+  businessFolderName: string;
+  businessFolder: DropboxPathViewPlain;
+  claimFolder: DropboxPathViewPlain;
+  claimReferenceFolder: DropboxPathViewPlain;
 };
 
 export type ClaimTimelineRow = {
@@ -71,9 +127,23 @@ export type MotorClaimRow = {
   participantNames: string[];
 };
 
+export type MotorClaimDocumentRow = {
+  id: string;
+  documentType: MotorClaimDocumentTypeValue;
+  originalFileName: string;
+  fileSize: number;
+  notes: string | null;
+  uploadedByName: string;
+  createdAt: string;
+  dropbox: ClaimDocumentDropboxInfo;
+};
+
 export type MotorClaimDetail = MotorClaimRow & {
+  policyRecordId: string | null;
+  linkedPolicy: ClaimLinkedPolicy | null;
   participants: ClaimParticipantRow[];
   timeline: ClaimTimelineRow[];
+  documents: MotorClaimDocumentRow[];
 };
 
 export type NonMotorClaimRow = {
@@ -99,7 +169,21 @@ export type NonMotorClaimRow = {
   participantNames: string[];
 };
 
+export type NonMotorClaimDocumentRow = {
+  id: string;
+  documentType: NonMotorClaimDocumentTypeValue;
+  originalFileName: string;
+  fileSize: number;
+  notes: string | null;
+  uploadedByName: string;
+  createdAt: string;
+  dropbox: ClaimDocumentDropboxInfo;
+};
+
 export type NonMotorClaimDetail = NonMotorClaimRow & {
+  policyRecordId: string | null;
+  linkedPolicy: ClaimLinkedPolicy | null;
   participants: ClaimParticipantRow[];
   timeline: ClaimTimelineRow[];
+  documents: NonMotorClaimDocumentRow[];
 };

@@ -9,6 +9,8 @@ import { generateNonMotorClaimNumber } from "@/lib/claims/nonMotorClaimNumber";
 import { isNonMotorClaimProgress, type NonMotorClaimProgressValue } from "@/lib/claims/enums";
 import { isNonMotorCoverType, type NonMotorCoverType } from "@/lib/policy/nonMotorCoverTypes";
 import { NON_MOTOR_PROGRESS_EN_LABEL } from "@/lib/claims/systemLabels";
+import { getNonMotorPolicyLinkOptions, validatePolicyLink } from "@/lib/claims/policyLink";
+import type { ClaimPolicyOption } from "@/components/claims/types";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -36,6 +38,28 @@ async function validateProjectForCustomer(
   return { ok: true, projectId };
 }
 
+// Re-validates a submitted policyRecordId against the Claim's OWN customerId
+// (never trusts the client's selection alone — see this phase's spec, Part
+// 15.I5/I6 and src/lib/claims/policyLink.ts).
+async function resolvePolicyRecordId(
+  customerId: string,
+  policyRecordId: string | null | undefined
+): Promise<{ error: string } | { ok: true; policyRecordId: string | null }> {
+  if (!policyRecordId) return { ok: true, policyRecordId: null };
+  const result = await validatePolicyLink(policyRecordId, customerId, "NON_MOTOR");
+  if (!result.ok) return { error: result.error };
+  return { ok: true, policyRecordId };
+}
+
+// Customer-scoped Non-Motor Policy candidates for the client-side "Linked
+// Policy" selector, re-fetched whenever the Customer field changes inside
+// the create/edit modal (never trusted from client state — see Part 2).
+export async function getNonMotorClaimPolicyOptionsAction(customerId: string): Promise<ClaimPolicyOption[]> {
+  const session = await requireTaskPermission();
+  if (!session || !customerId) return [];
+  return getNonMotorPolicyLinkOptions(customerId);
+}
+
 export type NonMotorClaimInput = {
   reportedAt: string;
   customerId: string;
@@ -45,6 +69,7 @@ export type NonMotorClaimInput = {
   insurer: string;
   insuranceType: string;
   progress: string;
+  policyRecordId?: string | null;
 };
 
 type ValidatedNonMotorClaim = {
@@ -109,6 +134,9 @@ export async function createNonMotorClaimAction(
   const projectResult = await validateProjectForCustomer(validated.data.customerId, input.projectId);
   if (!("ok" in projectResult)) return { success: false, error: projectResult.error };
 
+  const policyResult = await resolvePolicyRecordId(validated.data.customerId, input.policyRecordId);
+  if (!("ok" in policyResult)) return { success: false, error: policyResult.error };
+
   const submittedIds = new Set((input.participantIds ?? []).filter((id) => id && id !== session.user.id));
   let activeParticipants: { id: string }[] = [];
   if (submittedIds.size > 0) {
@@ -131,6 +159,7 @@ export async function createNonMotorClaimAction(
           insurer: validated.data.insurer,
           insuranceType: validated.data.insuranceType,
           progress: validated.data.progress,
+          policyRecordId: policyResult.policyRecordId,
           createdById: session.user.id,
         },
       });
@@ -175,8 +204,20 @@ export async function updateNonMotorClaimAction(id: string, input: NonMotorClaim
   const projectResult = await validateProjectForCustomer(validated.data.customerId, input.projectId);
   if (!("ok" in projectResult)) return { success: false, error: projectResult.error };
 
-  const existing = await prisma.nonMotorClaim.findUnique({ where: { id }, select: { progress: true } });
+  const existing = await prisma.nonMotorClaim.findUnique({ where: { id }, select: { progress: true, policyRecordId: true } });
   if (!existing) return { success: false, error: "CLAIM_NOT_FOUND" };
+
+  const policyResult = await resolvePolicyRecordId(validated.data.customerId, input.policyRecordId);
+  if (!("ok" in policyResult)) return { success: false, error: policyResult.error };
+
+  // Part 10/11 — see the identical Motor Claim rationale in
+  // src/app/(app)/task/motor-claim/actions.ts.
+  if (policyResult.policyRecordId !== existing.policyRecordId) {
+    const syncedDocumentCount = await prisma.nonMotorClaimDocument.count({
+      where: { nonMotorClaimId: id, dropboxSync: { syncStatus: "SYNCED" } },
+    });
+    if (syncedDocumentCount > 0) return { success: false, error: "CLAIM_POLICY_REASSIGNMENT_BLOCKED" };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -191,6 +232,7 @@ export async function updateNonMotorClaimAction(id: string, input: NonMotorClaim
           insurer: validated.data.insurer,
           insuranceType: validated.data.insuranceType,
           progress: validated.data.progress,
+          policyRecordId: policyResult.policyRecordId,
           updatedById: access.userId,
         },
       });

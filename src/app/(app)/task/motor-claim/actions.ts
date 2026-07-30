@@ -8,6 +8,8 @@ import { checkMotorClaimAccess } from "@/lib/claims/access";
 import { generateMotorClaimNumber } from "@/lib/claims/motorClaimNumber";
 import { isMotorClaimNature, isMotorClaimProgress, type MotorClaimNatureValue, type MotorClaimProgressValue } from "@/lib/claims/enums";
 import { MOTOR_PROGRESS_EN_LABEL } from "@/lib/claims/systemLabels";
+import { getMotorPolicyLinkOptions, validatePolicyLink } from "@/lib/claims/policyLink";
+import type { ClaimPolicyOption } from "@/components/claims/types";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -43,6 +45,28 @@ async function validateProjectForCustomer(
   return { ok: true, projectId };
 }
 
+// Re-validates a submitted policyRecordId against the Claim's OWN customerId
+// (never trusts the client's selection alone — see this phase's spec, Part
+// 15.I5/I6 and src/lib/claims/policyLink.ts).
+async function resolvePolicyRecordId(
+  customerId: string,
+  policyRecordId: string | null | undefined
+): Promise<{ error: string } | { ok: true; policyRecordId: string | null }> {
+  if (!policyRecordId) return { ok: true, policyRecordId: null };
+  const result = await validatePolicyLink(policyRecordId, customerId, "MOTOR");
+  if (!result.ok) return { error: result.error };
+  return { ok: true, policyRecordId };
+}
+
+// Customer-scoped Motor Policy candidates for the client-side "Linked
+// Policy" selector, re-fetched whenever the Customer field changes inside
+// the create/edit modal (never trusted from client state — see Part 2).
+export async function getMotorClaimPolicyOptionsAction(customerId: string): Promise<ClaimPolicyOption[]> {
+  const session = await requireTaskPermission();
+  if (!session || !customerId) return [];
+  return getMotorPolicyLinkOptions(customerId);
+}
+
 export type MotorClaimInput = {
   reportedAt: string;
   customerId: string;
@@ -53,6 +77,7 @@ export type MotorClaimInput = {
   numberPlate: string;
   claimNature: string;
   progress: string;
+  policyRecordId?: string | null;
 };
 
 type ValidatedMotorClaim = {
@@ -119,6 +144,9 @@ export async function createMotorClaimAction(
   const projectResult = await validateProjectForCustomer(validated.data.customerId, input.projectId);
   if (!("ok" in projectResult)) return { success: false, error: projectResult.error };
 
+  const policyResult = await resolvePolicyRecordId(validated.data.customerId, input.policyRecordId);
+  if (!("ok" in policyResult)) return { success: false, error: policyResult.error };
+
   // Never trust submitted participant ids: the creator is always forced in,
   // and every other submitted id must resolve to a real, currently-active
   // user (see this phase's spec, Part C.6).
@@ -145,6 +173,7 @@ export async function createMotorClaimAction(
           numberPlate: validated.data.numberPlate,
           claimNature: validated.data.claimNature,
           progress: validated.data.progress,
+          policyRecordId: policyResult.policyRecordId,
           createdById: session.user.id,
         },
       });
@@ -189,8 +218,24 @@ export async function updateMotorClaimAction(id: string, input: MotorClaimInput)
   const projectResult = await validateProjectForCustomer(validated.data.customerId, input.projectId);
   if (!("ok" in projectResult)) return { success: false, error: projectResult.error };
 
-  const existing = await prisma.motorClaim.findUnique({ where: { id }, select: { progress: true } });
+  const existing = await prisma.motorClaim.findUnique({ where: { id }, select: { progress: true, policyRecordId: true } });
   if (!existing) return { success: false, error: "CLAIM_NOT_FOUND" };
+
+  const policyResult = await resolvePolicyRecordId(validated.data.customerId, input.policyRecordId);
+  if (!("ok" in policyResult)) return { success: false, error: policyResult.error };
+
+  // Part 10/11 — once a document has already synced to Dropbox under the
+  // claim's CURRENT business-folder resolution, changing (or clearing) the
+  // linked Policy would silently split future uploads into a different
+  // folder while past ones remain under the old path. Block the change
+  // rather than allow a divergent folder structure; the fallback business
+  // folder / Claim itself are entirely unaffected.
+  if (policyResult.policyRecordId !== existing.policyRecordId) {
+    const syncedDocumentCount = await prisma.motorClaimDocument.count({
+      where: { motorClaimId: id, dropboxSync: { syncStatus: "SYNCED" } },
+    });
+    if (syncedDocumentCount > 0) return { success: false, error: "CLAIM_POLICY_REASSIGNMENT_BLOCKED" };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -206,6 +251,7 @@ export async function updateMotorClaimAction(id: string, input: MotorClaimInput)
           numberPlate: validated.data.numberPlate,
           claimNature: validated.data.claimNature,
           progress: validated.data.progress,
+          policyRecordId: policyResult.policyRecordId,
           updatedById: access.userId,
         },
       });

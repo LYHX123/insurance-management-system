@@ -1797,6 +1797,14 @@ model PolicyRecord {
   activities       PolicyActivity[]
   invoiceItems     InvoiceItem[]
 
+  // Dropbox Integration Phase 7 — the optional, explicit, user-selected
+  // link a Motor/Non-Motor Claim may have to this Policy (see
+  // MotorClaim.policyRecordId/NonMotorClaim.policyRecordId's own doc
+  // comments). Never auto-linked/guessed; purely for the user-facing
+  // "Linked Policy" selector and Claim Dropbox business-folder reuse.
+  motorClaims    MotorClaim[]
+  nonMotorClaims NonMotorClaim[]
+
   // Dropbox Integration Phase 5 — only present for a Policy that has no
   // linked QuotationCase business file (see PolicyDropboxBusinessFile's own
   // doc comment); a linked Policy resolves its business file through
@@ -2869,6 +2877,20 @@ model MotorClaim {
   progress    MotorClaimProgress @default(PREPARE_CLAIM_DOCUMENT)
   status      ClaimStatus        @default(OPEN)
 
+  // Dropbox Integration Phase 7, Part 2 — optional, explicit, user-selected
+  // link to the source Policy this Claim is against. Nullable: never
+  // auto-linked/guessed from customer+number plate similarity (Part 2,
+  // requirement 7) — the user always makes the final selection in the
+  // Claim create/edit UI. onDelete: SetNull (not Restrict/Cascade) for the
+  // same reasoning as PolicyRecord.sourceQuotationId: a Claim record must
+  // never be lost or blocked just because its linked Policy is later
+  // deleted; it simply loses the link. Drives Claim Dropbox business-folder
+  // resolution (see claimBusinessFile.ts) — reused, never duplicated,
+  // through the exact same ensurePolicyDropboxBusinessFile Policy already
+  // uses for its own Quotation-folder reuse.
+  policyRecordId String?
+  policyRecord   PolicyRecord? @relation(fields: [policyRecordId], references: [id], onDelete: SetNull)
+
   createdById String
   createdAt   DateTime @default(now())
   updatedById String?
@@ -2885,6 +2907,13 @@ model MotorClaim {
 
   participants MotorClaimParticipant[]
   updates      MotorClaimUpdate[]
+  documents    MotorClaimDocument[]
+
+  // Dropbox Integration Phase 7 — only present for a Claim that has no
+  // (or more than one — not applicable here, a Claim links to at most one
+  // Policy) usable linked-Policy business file to reuse; see
+  // MotorClaimDropboxBusinessFile's own doc comment.
+  dropboxBusinessFile MotorClaimDropboxBusinessFile?
 
   @@index([status])
   @@index([reportedAt])
@@ -2892,6 +2921,7 @@ model MotorClaim {
   @@index([projectId])
   @@index([deletedAt])
   @@index([numberPlate])
+  @@index([policyRecordId])
 }
 
 model NonMotorClaim {
@@ -2916,6 +2946,11 @@ model NonMotorClaim {
   progress      NonMotorClaimProgress @default(DOCUMENT_PREPARATION)
   status        ClaimStatus           @default(OPEN)
 
+  // Dropbox Integration Phase 7, Part 2 — see MotorClaim.policyRecordId's
+  // doc comment; identical reasoning/shape.
+  policyRecordId String?
+  policyRecord   PolicyRecord? @relation(fields: [policyRecordId], references: [id], onDelete: SetNull)
+
   createdById String
   createdAt   DateTime @default(now())
   updatedById String?
@@ -2929,12 +2964,16 @@ model NonMotorClaim {
 
   participants NonMotorClaimParticipant[]
   updates      NonMotorClaimUpdate[]
+  documents    NonMotorClaimDocument[]
+
+  dropboxBusinessFile NonMotorClaimDropboxBusinessFile?
 
   @@index([status])
   @@index([reportedAt])
   @@index([customerId])
   @@index([projectId])
   @@index([deletedAt])
+  @@index([policyRecordId])
 }
 
 // =============================================================================
@@ -3030,4 +3069,246 @@ model NonMotorClaimUpdate {
   @@index([nonMotorClaimId])
   @@index([createdAt])
   @@index([deletedAt])
+}
+
+// =============================================================================
+// Dropbox Integration Phase 7: Claim document storage + synchronization.
+// No document/attachment model existed for either Claim type before this
+// phase (confirmed by inspection) — these are genuinely new, not an
+// extension of an existing document table. Two dedicated document models
+// (not one polymorphic table), matching this schema's existing, explicitly
+// stated convention for Motor/Non-Motor Claim child tables (see
+// MotorClaimParticipant's Phase 6C doc comment: "this schema has no
+// polymorphic entityType+entityId pattern anywhere else"). Mirrors
+// PolicyDocument's shape, minus the issueDate/expiryDate fields (not
+// meaningful for a Claim attachment) and the storageProvider/externalFileId/
+// externalPath fields PolicyDocument reserved for a future Dropbox phase —
+// Claim documents get a dedicated one-row-per-document sync table from day
+// one instead (see MotorClaimDocumentDropboxSync), the same pattern
+// InvoiceDocumentDropboxSync already uses.
+// =============================================================================
+
+enum MotorClaimDocumentType {
+  CLAIM_FORM
+  POLICE_ABSTRACT
+  DRIVER_LICENSE
+  LOGBOOK
+  INSURANCE_CERTIFICATE
+  ASSESSMENT_REPORT
+  REPAIR_ESTIMATE
+  REPAIR_INVOICE
+  REINSPECTION_REPORT
+  DISCHARGE_VOUCHER
+  RELEASE_LETTER
+  PHOTOS
+  OTHER
+}
+
+enum NonMotorClaimDocumentType {
+  CLAIM_FORM
+  INCIDENT_REPORT
+  SURVEY_REPORT
+  ASSESSMENT_REPORT
+  SUPPORTING_DOCUMENT
+  REPAIR_ESTIMATE
+  REPAIR_INVOICE
+  SETTLEMENT_OFFER
+  DISCHARGE_VOUCHER
+  SETTLEMENT_LETTER
+  PHOTOS
+  OTHER
+}
+
+model MotorClaimDocument {
+  id           String     @id @default(cuid())
+  motorClaimId String
+  motorClaim   MotorClaim @relation(fields: [motorClaimId], references: [id], onDelete: Cascade)
+
+  documentType     MotorClaimDocumentType
+  originalFileName String
+  storedFileName   String
+  mimeType         String
+  fileSize         Int
+  storagePath      String
+  notes            String?
+
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  dropboxSync MotorClaimDocumentDropboxSync?
+
+  @@index([motorClaimId])
+  @@index([documentType])
+  @@index([createdAt])
+}
+
+model NonMotorClaimDocument {
+  id              String        @id @default(cuid())
+  nonMotorClaimId String
+  nonMotorClaim   NonMotorClaim @relation(fields: [nonMotorClaimId], references: [id], onDelete: Cascade)
+
+  documentType     NonMotorClaimDocumentType
+  originalFileName String
+  storedFileName   String
+  mimeType         String
+  fileSize         Int
+  storagePath      String
+  notes            String?
+
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  dropboxSync NonMotorClaimDocumentDropboxSync?
+
+  @@index([nonMotorClaimId])
+  @@index([documentType])
+  @@index([createdAt])
+}
+
+// Distinguishes which business-file table a Claim document sync row's
+// businessFileId points at. ONE shared enum reused by both Motor and
+// Non-Motor Claim sync tables — not a cross-domain reuse of Policy's/
+// Invoice's own dedicated source enums (those stay untouched, same
+// reasoning InvoiceDropboxBusinessFileSource gave for not extending
+// PolicyDropboxBusinessFileSource) but a same-domain, same-concept reuse
+// exactly like ClaimStatus is already shared between MotorClaim and
+// NonMotorClaim above.
+enum ClaimDropboxBusinessFileSource {
+  QUOTATION_CASE
+  POLICY_FALLBACK
+  CLAIM_FALLBACK
+}
+
+// One row per Claim that has NO usable linked-Policy business file to
+// reuse (policyRecordId is null, or the linked Policy's own resolution
+// unexpectedly fails) — see claimBusinessFile.ts. A Claim with a linked
+// Policy never gets a row here; it resolves through
+// policyRecord's own business file instead (Part 3, requirement 1: never a
+// second, duplicate business folder for the same insurance transaction).
+// Stores an IMMUTABLE naming snapshot, same reasoning/shape as every other
+// *DropboxBusinessFile model in this schema.
+model MotorClaimDropboxBusinessFile {
+  id           String     @id @default(cuid())
+  motorClaimId String     @unique
+  motorClaim   MotorClaim @relation(fields: [motorClaimId], references: [id], onDelete: Cascade)
+
+  businessDate       DateTime
+  insuranceTypeCode  String
+  customerShortName  String
+  businessTitle      String
+  businessFolderName String
+
+  dropboxFolderId    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+
+  syncStatus        DropboxBusinessFileSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+}
+
+model NonMotorClaimDropboxBusinessFile {
+  id              String        @id @default(cuid())
+  nonMotorClaimId String        @unique
+  nonMotorClaim   NonMotorClaim @relation(fields: [nonMotorClaimId], references: [id], onDelete: Cascade)
+
+  businessDate       DateTime
+  insuranceTypeCode  String
+  customerShortName  String
+  businessTitle      String
+  businessFolderName String
+
+  dropboxFolderId    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+
+  syncStatus        DropboxBusinessFileSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+}
+
+// One row per Claim document's sync state — mirrors
+// PolicyDocumentDropboxSync/InvoiceDocumentDropboxSync exactly.
+// claimFolderName is an additional immutable snapshot beyond what Policy/
+// Invoice need: unlike a Policy document (filed directly in one shared
+// "Policy" subfolder) or an Invoice file (one per Invoice), multiple
+// Claims can exist under the same business folder, so each Claim gets its
+// own reference subfolder under "Claim/" — this snapshot records that
+// subfolder's name so retries never need to re-derive it (Part 4).
+model MotorClaimDocumentDropboxSync {
+  id                   String              @id @default(cuid())
+  motorClaimDocumentId String              @unique
+  motorClaimDocument   MotorClaimDocument  @relation(fields: [motorClaimDocumentId], references: [id], onDelete: Cascade)
+
+  businessFileId     String?
+  businessFileSource ClaimDropboxBusinessFileSource?
+  claimFolderName    String?
+
+  standardizedFileName String
+  originalFileName     String
+
+  dropboxFileId      String?
+  dropboxRevision    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+  dropboxContentHash String?
+  dropboxSize        BigInt?
+
+  syncStatus        DropboxDocumentSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+  @@index([businessFileId])
+}
+
+model NonMotorClaimDocumentDropboxSync {
+  id                      String                 @id @default(cuid())
+  nonMotorClaimDocumentId String                 @unique
+  nonMotorClaimDocument   NonMotorClaimDocument  @relation(fields: [nonMotorClaimDocumentId], references: [id], onDelete: Cascade)
+
+  businessFileId     String?
+  businessFileSource ClaimDropboxBusinessFileSource?
+  claimFolderName    String?
+
+  standardizedFileName String
+  originalFileName     String
+
+  dropboxFileId      String?
+  dropboxRevision    String?
+  dropboxDisplayPath String?
+  dropboxPathLower   String?
+  dropboxContentHash String?
+  dropboxSize        BigInt?
+
+  syncStatus        DropboxDocumentSyncStatus @default(PENDING)
+  lastSyncAttemptAt DateTime?
+  lastSyncedAt      DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([syncStatus])
+  @@index([businessFileId])
 }

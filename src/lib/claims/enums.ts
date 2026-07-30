@@ -64,3 +64,39 @@ export const NON_MOTOR_CLAIM_PROGRESS_TONE: Record<NonMotorClaimProgressValue, B
   PAYMENT: "teal",
   FINISH: "success",
 };
+
+// Dropbox Integration Phase 7 — mirrors the Prisma MotorClaimDocumentType/
+// NonMotorClaimDocumentType enums exactly, same reasoning as the arrays
+// above.
+export const MOTOR_CLAIM_DOCUMENT_TYPES = [
+  "CLAIM_FORM",
+  "POLICE_ABSTRACT",
+  "DRIVER_LICENSE",
+  "LOGBOOK",
+  "INSURANCE_CERTIFICATE",
+  "ASSESSMENT_REPORT",
+  "REPAIR_ESTIMATE",
+  "REPAIR_INVOICE",
+  "REINSPECTION_REPORT",
+  "DISCHARGE_VOUCHER",
+  "RELEASE_LETTER",
+  "PHOTOS",
+  "OTHER",
+] as const;
+export type MotorClaimDocumentTypeValue = (typeof MOTOR_CLAIM_DOCUMENT_TYPES)[number];
+
+export const NON_MOTOR_CLAIM_DOCUMENT_TYPES = [
+  "CLAIM_FORM",
+  "INCIDENT_REPORT",
+  "SURVEY_REPORT",
+  "ASSESSMENT_REPORT",
+  "SUPPORTING_DOCUMENT",
+  "REPAIR_ESTIMATE",
+  "REPAIR_INVOICE",
+  "SETTLEMENT_OFFER",
+  "DISCHARGE_VOUCHER",
+  "SETTLEMENT_LETTER",
+  "PHOTOS",
+  "OTHER",
+] as const;
+export type NonMotorClaimDocumentTypeValue = (typeof NON_MOTOR_CLAIM_DOCUMENT_TYPES)[number];
