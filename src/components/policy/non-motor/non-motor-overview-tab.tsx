@@ -137,7 +137,7 @@ export function NonMotorOverviewTab({
       }
       return;
     }
-    router.push(`/policy/non-motor?deleted=${encodeURIComponent(result.recordNumber)}`);
+    router.replace(`/policy/non-motor?deleted=${encodeURIComponent(result.recordNumber)}`);
   };
 
   if (!editing) {

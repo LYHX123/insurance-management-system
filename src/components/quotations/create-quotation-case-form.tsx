@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/i18n/locale-provider";
+import { useSmartBackHref } from "@/lib/navigation/useSmartBack";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ const ERROR_KEY: Record<string, string> = {
 export function CreateQuotationCaseForm({ customers }: { customers: CustomerOption[] }) {
   const { t } = useLocale();
   const router = useRouter();
+  const cancelHref = useSmartBackHref("/quotation");
 
   const [customerId, setCustomerId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -113,7 +115,7 @@ export function CreateQuotationCaseForm({ customers }: { customers: CustomerOpti
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/quotation")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push(cancelHref)} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

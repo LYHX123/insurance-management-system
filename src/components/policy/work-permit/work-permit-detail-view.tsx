@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useLocale } from "@/i18n/locale-provider";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { WorkPermitOverviewTab } from "@/components/policy/work-permit/work-permit-overview-tab";
@@ -39,12 +38,23 @@ export function WorkPermitDetailView({
   dropbox: PolicyDropboxSectionView;
 }) {
   const { t } = useLocale();
+  const router = useRouter();
+  const pathname = usePathname();
   // Allows deep-linking straight to a tab (e.g. Ledger's "Open Source" link
   // to a Policy's Financial tab, see src/lib/ledger/systemRecords.ts) via
-  // ?tab=financial — read once on mount.
+  // ?tab=financial, now kept in sync afterward too (Phase 8 Part 6.5).
   const searchParams = useSearchParams();
   const initialTab = VALID_TABS.includes(searchParams.get("tab") as Tab) ? (searchParams.get("tab") as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
+
+  const handleTabChange = (key: Tab) => {
+    setTab(key);
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === "overview") params.delete("tab");
+    else params.set("tab", key);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const statusLabel: Record<PolicyBusinessStatus, string> = {
     DRAFT: t.policy.statusDraft,
@@ -57,7 +67,7 @@ export function WorkPermitDetailView({
   const tabButton = (key: Tab, label: string) => (
     <button
       type="button"
-      onClick={() => setTab(key)}
+      onClick={() => handleTabChange(key)}
       className={`border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
         tab === key ? "border-emerald-700 text-emerald-800" : "border-transparent text-zinc-500 hover:text-zinc-800"
       }`}
@@ -69,10 +79,7 @@ export function WorkPermitDetailView({
   return (
     <div className="flex flex-col gap-section">
       <div>
-        <Link href="/policy/work-permit" className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline">
-          <ArrowLeft size={14} />
-          {t.policy.backToListWorkPermit}
-        </Link>
+        <SmartBackLink fallbackHref="/policy/work-permit" label={t.policy.backToListWorkPermit} />
         <PageHeader
           title={
             <span className="inline-flex items-center gap-2">

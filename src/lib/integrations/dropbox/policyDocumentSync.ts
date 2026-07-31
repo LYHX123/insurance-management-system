@@ -14,6 +14,7 @@ import { joinDropboxPath, assertInsideRoot } from "./paths";
 import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from "./errors";
 import { buildStandardizedPolicyDocumentFilename, isPlausibleStandardizedPolicyFilename } from "./policyDocumentFilenames";
 import type { PolicyDocumentType } from "@/generated/prisma/enums";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 
 const STALE_SYNCING_THRESHOLD_MS = 2 * 60 * 1000;
 export const POLICY_SUBFOLDER_NAME = "Policy";
@@ -64,7 +65,8 @@ function isNotFoundError(err: unknown): boolean {
 
 async function tryGetMetadata(client: Dropbox, path: string): Promise<{ tag: string; id: string | null; displayPath: string; rev?: string } | null> {
   try {
-    const metadata = await client.filesGetMetadata({ path });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path }));
     const result = metadata.result;
     return {
       tag: result[".tag"],
@@ -247,7 +249,7 @@ export async function syncPolicyDocumentToDropbox(policyDocumentId: string): Pro
     assertInsideRoot(policyFolderPath, auth.row.rootFolder);
     const existingSubfolder = await tryGetMetadata(auth.client, policyFolderPath);
     if (!existingSubfolder) {
-      await auth.client.filesCreateFolderV2({ path: policyFolderPath, autorename: false });
+      await withRateLimitBackoff(() => auth.client.filesCreateFolderV2({ path: policyFolderPath, autorename: false }));
     } else if (existingSubfolder.tag !== "folder") {
       return failResult(policyDocumentId, "CONFLICT", "BUSINESS_FOLDER_CONFLICT", "A file exists where the Policy subfolder should be.");
     }
@@ -306,7 +308,7 @@ export async function syncPolicyDocumentToDropbox(policyDocumentId: string): Pro
       uploadMode = existing.rev ? { ".tag": "update", update: existing.rev } : { ".tag": "add" };
     }
 
-    const uploaded = await auth.client.filesUpload({ path: targetPath, mode: uploadMode, autorename: false, contents: buffer });
+    const uploaded = await withRateLimitBackoff(() => auth.client.filesUpload({ path: targetPath, mode: uploadMode, autorename: false, contents: buffer }));
     const result = uploaded.result;
 
     await prisma.policyDocumentDropboxSync.update({
@@ -364,7 +366,9 @@ export async function verifyPolicyBusinessFolder(policyRecordId: string): Promis
   if (!auth.ok) return { success: false, status: "ERROR", code: "DROPBOX_NOT_CONNECTED", message: auth.message };
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: ref.dropboxFolderId });
+    // Read-only single-record check (Part 11 convention) — bounded tightly
+    // so an admin's Verify click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: ref.dropboxFolderId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "folder") {
       return { success: false, status: "ERROR", code: "BUSINESS_FOLDER_CONFLICT", message: "The linked Dropbox object is not a folder." };
     }
@@ -400,7 +404,9 @@ export async function verifyPolicyDocumentSync(policyDocumentId: string): Promis
   if (!auth.ok) return { success: false, status: "ERROR", code: "DROPBOX_NOT_CONNECTED", message: auth.message };
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: syncRow.dropboxFileId });
+    // Read-only single-record check (Part 11 convention) — bounded tightly
+    // so an admin's Verify click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: syncRow.dropboxFileId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "file") {
       return failResult(policyDocumentId, "ERROR", "DROPBOX_FILE_IS_FOLDER", "The linked Dropbox object is a folder, not a file.");
     }

@@ -5,11 +5,20 @@ import { hasPermission } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import { QuotationsTable } from "@/components/quotations/quotations-table";
 
-export default async function QuotationPage() {
+export default async function QuotationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ customerId?: string }>;
+}) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "quotation")) {
     redirect("/access-denied");
   }
+
+  // Phase 8.1 Part 4 — the "View All Quotations" entry point from Customer
+  // Detail's Related Records tab filters at the database level, never just
+  // in the browser: customerId here narrows the actual Prisma query.
+  const { customerId } = await searchParams;
 
   // One row per QuotationCase (the permanent enquiry), never one row per
   // revision — see Phase 1 revision history. currentRevisionId is a plain
@@ -17,6 +26,7 @@ export default async function QuotationPage() {
   // comment), so the current revision's own display data is fetched
   // separately and joined in application code below.
   const cases = await prisma.quotationCase.findMany({
+    where: customerId ? { customerId } : undefined,
     orderBy: { updatedAt: "desc" },
     include: {
       customer: { select: { companyName: true } },

@@ -148,7 +148,7 @@ export function WorkPermitOverviewTab({
       }
       return;
     }
-    router.push(`/policy/work-permit?deleted=${encodeURIComponent(result.recordNumber)}`);
+    router.replace(`/policy/work-permit?deleted=${encodeURIComponent(result.recordNumber)}`);
   };
 
   if (!editing) {

@@ -8,6 +8,7 @@ import {
   getEligiblePoliciesForCustomer,
 } from "@/lib/invoice/eligibility";
 import { CreateInvoiceForm } from "@/components/invoice/create-invoice-form";
+import { isSafeReturnTo } from "@/lib/navigation/returnTo";
 import type { PolicyInvoiceEligibility } from "@/lib/invoice/eligibility";
 import type { PolicyCategory } from "@/generated/prisma/enums";
 
@@ -24,15 +25,21 @@ import type { PolicyCategory } from "@/generated/prisma/enums";
 export default async function NewInvoicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ fromPolicyId?: string }>;
+  searchParams: Promise<{ fromPolicyId?: string; returnTo?: string }>;
 }) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "invoice")) {
     redirect("/access-denied");
   }
 
-  const { fromPolicyId } = await searchParams;
+  const { fromPolicyId, returnTo } = await searchParams;
   if (!fromPolicyId) redirect("/invoice");
+  // Phase 8.1 Part 9: the Policy Detail page's own current URL (its own
+  // tab/returnTo included), so Cancel and the newly-created Invoice's own
+  // Back both return to exactly where the user was, not just the bare
+  // Policy URL — validated the same as every other returnTo, never trusted
+  // raw.
+  const sourcePolicyReturnTo = isSafeReturnTo(returnTo) ? returnTo : null;
 
   const sourcePolicy = await prisma.policyRecord.findUnique({
     where: { id: fromPolicyId, deletedAt: null },
@@ -61,6 +68,7 @@ export default async function NewInvoicePage({
         customerPin=""
         policies={[]}
         defaultSelectedPolicyId=""
+        sourcePolicyReturnTo={sourcePolicyReturnTo}
       />
     );
   }
@@ -75,6 +83,8 @@ export default async function NewInvoicePage({
       customerPin={sourcePolicy.customer.pinNumber}
       policies={eligiblePolicies}
       defaultSelectedPolicyId={sourcePolicy.id}
+      sourcePolicy={{ id: sourcePolicy.id, category: sourcePolicy.category }}
+      sourcePolicyReturnTo={sourcePolicyReturnTo}
     />
   );
 }

@@ -20,6 +20,7 @@ import type { DropboxEnvConfig } from "../constants";
 import { MIGRATION_TARGET_TEAM_FOLDER_NAME } from "../constants";
 import { createDropboxClient } from "../client";
 import { DropboxIntegrationError, mapDropboxError } from "../errors";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "../rateLimitRetry";
 
 export function createSourceClient(env: DropboxEnvConfig, refreshToken: string): Dropbox {
   return createDropboxClient(env, refreshToken);
@@ -66,7 +67,9 @@ export async function resolveTeamFolderNamespace(
 
   let account;
   try {
-    account = await homeClient.usersGetCurrentAccount();
+    // Single admin-triggered namespace-resolution step (Stage A), not a
+    // batch call — bounded tightly.
+    account = await withRateLimitBackoff(() => homeClient.usersGetCurrentAccount(), INTERACTIVE_BACKOFF);
   } catch (err) {
     throw mapDropboxError(err);
   }
@@ -88,7 +91,7 @@ export async function resolveTeamFolderNamespace(
 
   let meta;
   try {
-    meta = await rootClient.filesGetMetadata({ path: `/${MIGRATION_TARGET_TEAM_FOLDER_NAME}` });
+    meta = await withRateLimitBackoff(() => rootClient.filesGetMetadata({ path: `/${MIGRATION_TARGET_TEAM_FOLDER_NAME}` }), INTERACTIVE_BACKOFF);
   } catch (err) {
     throw mapDropboxError(err);
   }
@@ -111,7 +114,7 @@ export async function resolveTeamFolderNamespace(
   // candidate id without a live round-trip confirming it resolves.
   const candidateClient = createNamespaceClient(env, refreshToken, candidateNamespaceId);
   try {
-    await candidateClient.filesListFolder({ path: "" });
+    await withRateLimitBackoff(() => candidateClient.filesListFolder({ path: "" }), INTERACTIVE_BACKOFF);
   } catch (err) {
     throw mapDropboxError(err);
   }

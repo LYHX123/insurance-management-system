@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLocale } from "@/i18n/locale-provider";
+import { useCreateFlowNavigation } from "@/lib/navigation/useCreateFlowNavigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ export function CreateMotorRecordForm({
 }) {
   const { t } = useLocale();
   const router = useRouter();
+  const { cancelHref, buildSuccessHref } = useCreateFlowNavigation("/policy/motor");
 
   const taxClassLabel: Record<string, string> = {
     PRIVATE: t.policy.taxClassPrivate,
@@ -152,7 +154,7 @@ export function CreateMotorRecordForm({
       setError(t.policy[key as keyof typeof t.policy]);
       return;
     }
-    router.push(`/policy/motor/${result.id}`);
+    router.push(buildSuccessHref(`/policy/motor/${result.id}`));
   };
 
   if (ineligibleQuotation) {
@@ -283,7 +285,7 @@ export function CreateMotorRecordForm({
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/policy/motor")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push(cancelHref)} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

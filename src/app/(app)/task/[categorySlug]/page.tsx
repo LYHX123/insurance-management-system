@@ -19,7 +19,13 @@ const SLUG_PERMISSION: Record<TaskCategorySlug, PermissionKey> = {
   "non-motor-claim": "claim.non_motor",
 };
 
-export default async function TaskCategoryPage({ params }: { params: Promise<{ categorySlug: string }> }) {
+export default async function TaskCategoryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ categorySlug: string }>;
+  searchParams: Promise<{ customerId?: string }>;
+}) {
   const { categorySlug } = await params;
   if (!isTaskCategorySlug(categorySlug)) notFound();
 
@@ -28,12 +34,19 @@ export default async function TaskCategoryPage({ params }: { params: Promise<{ c
     redirect("/access-denied");
   }
 
+  // Phase 8.1 Part 4 — the "View All Motor/Non-Motor Claims" entry point
+  // from Customer Detail's Related Records tab filters at the database
+  // level, never just in the browser: customerId here narrows the actual
+  // Prisma query inside getMotorClaims/getNonMotorClaims, merged alongside
+  // (never replacing) their existing participant-scoping filter.
+  const { customerId } = await searchParams;
+
   // Motor Claim / Non-Motor Claim are dedicated, participant-scoped claim-
   // record management pages as of Phase 6B/6C — they never render the
   // generic Daily Task TaskWorkspace. Only Daily Task still does.
   if (categorySlug === "motor-claim") {
     const [claims, customers, insurers, activeUsers] = await Promise.all([
-      getMotorClaims(session.user.id),
+      getMotorClaims(session.user.id, customerId),
       getActiveClaimCustomers(),
       getDistinctInsurers(),
       prisma.user.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, username: true, role: true } }),
@@ -51,7 +64,7 @@ export default async function TaskCategoryPage({ params }: { params: Promise<{ c
 
   if (categorySlug === "non-motor-claim") {
     const [claims, customers, insurers, activeUsers] = await Promise.all([
-      getNonMotorClaims(session.user.id),
+      getNonMotorClaims(session.user.id, customerId),
       getActiveClaimCustomers(),
       getDistinctInsurers(),
       prisma.user.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, username: true, role: true } }),

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Eye, GitBranch, GitCompare, Send, CheckCircle2, XCircle } from "lucide-react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Download, Eye, GitBranch, GitCompare, Send, CheckCircle2, XCircle } from "lucide-react";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
 } from "@/app/(app)/quotation/revisionActions";
 import type { QuotationCaseStatus, RevisionStatus, QuotationDocumentRow } from "@/components/quotations/types";
 import { CASE_STATUS_TONE, REVISION_TONE } from "@/components/quotations/statusTones";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 
 type RevisionRow = {
   id: string;
@@ -66,7 +68,22 @@ export function QuotationCaseView({
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("overview");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get("tab");
+    const valid: Tab[] = ["overview", "documents", "revisions"];
+    return valid.includes(requested as Tab) ? (requested as Tab) : "overview";
+  });
+
+  const handleTabChange = (key: Tab) => {
+    setTab(key);
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === "overview") params.delete("tab");
+    else params.set("tab", key);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const [showCreateRevision, setShowCreateRevision] = useState(false);
   const [copyFromId, setCopyFromId] = useState(quotationCase.currentRevisionId ?? revisions[0]?.id ?? "");
@@ -125,6 +142,16 @@ export function QuotationCaseView({
 
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
 
+  // This case page's own current URL (including whatever returnTo it was
+  // reached with), forwarded as the returnTo for the Revisions tab's "view"
+  // link — otherwise a revision detail's Back button would strand the user
+  // here with no way back to the list this case was originally opened from.
+  const revisionViewReturnTo = (() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "revisions");
+    return buildReturnTo(pathname, params.toString());
+  })();
+
   const handleCreateRevision = async () => {
     if (!createReason.trim()) {
       setCreateError(t.quotations.revisionReasonRequiredError);
@@ -138,7 +165,7 @@ export function QuotationCaseView({
       setCreateError(revisionErrorLabel[result.error] ?? t.quotations.revisionCreateFailed);
       return;
     }
-    router.push(`/quotation/${result.id}/edit`);
+    router.push(`/quotation/${result.id}/edit?returnTo=${encodeURIComponent(revisionViewReturnTo)}`);
   };
 
   const handleCompare = async () => {
@@ -203,7 +230,7 @@ export function QuotationCaseView({
   const tabButton = (key: Tab, label: string) => (
     <button
       type="button"
-      onClick={() => setTab(key)}
+      onClick={() => handleTabChange(key)}
       className={`border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
         tab === key ? "border-emerald-700 text-emerald-800" : "border-transparent text-zinc-500 hover:text-zinc-800"
       }`}
@@ -215,10 +242,7 @@ export function QuotationCaseView({
   return (
     <div className="flex flex-col gap-section">
       <div>
-        <Link href="/quotation" className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline">
-          <ArrowLeft size={14} />
-          {t.quotations.backToList}
-        </Link>
+        <SmartBackLink fallbackHref="/quotation" label={t.quotations.backToList} />
         <PageHeader
           title={
             <span className="inline-flex items-center gap-2">
@@ -319,7 +343,7 @@ export function QuotationCaseView({
                     </td>
                     <td>
                       <div className="flex items-center justify-end gap-1">
-                        <Link href={`/quotation/${r.id}`}>
+                        <Link href={`/quotation/${r.id}?returnTo=${encodeURIComponent(revisionViewReturnTo)}`}>
                           <IconButton title={t.quotations.view}>
                             <Eye size={16} />
                           </IconButton>

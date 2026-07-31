@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Plus, Eye, XCircle, RotateCcw, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
@@ -18,6 +18,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { closeMotorClaimAction, reopenMotorClaimAction, deleteMotorClaimAction } from "@/app/(app)/task/motor-claim/actions";
 import { MotorClaimFormModal } from "@/components/claims/motor-claim-form-modal";
 import { MOTOR_CLAIM_NATURES, MOTOR_CLAIM_PROGRESS_VALUES, MOTOR_CLAIM_PROGRESS_TONE } from "@/lib/claims/enums";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import type { MotorClaimRow, ClaimCustomerOption, ActiveUserOption, ClaimStatusValue, MotorClaimNatureValue, MotorClaimProgressValue } from "@/components/claims/types";
 
 const PAGE_SIZE = 25;
@@ -29,6 +31,23 @@ function normalizePlate(value: string): string {
 }
 
 type ConfirmKind = "close" | "reopen" | "delete";
+
+// customerId is server-filtered (see task/[categorySlug]/page.tsx's
+// motor-claim branch), not client-side — tracked here purely so
+// useUrlListState's own router.replace calls never silently drop it from
+// the URL (Phase 8.1 Part 4).
+const MOTOR_CLAIM_LIST_DEFAULTS = {
+  search: "",
+  customer: "ALL",
+  insurer: "ALL",
+  nature: "ALL",
+  progress: "ALL",
+  status: "ALL",
+  dateFrom: "",
+  dateTo: "",
+  page: "1",
+  customerId: "",
+};
 
 export function MotorClaimTable({
   claims,
@@ -45,17 +64,24 @@ export function MotorClaimTable({
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium", timeStyle: "short" });
 
-  const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("ALL");
-  const [insurerFilter, setInsurerFilter] = useState("ALL");
-  const [natureFilter, setNatureFilter] = useState<"ALL" | MotorClaimNatureValue>("ALL");
-  const [progressFilter, setProgressFilter] = useState<"ALL" | MotorClaimProgressValue>("ALL");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | ClaimStatusValue>("ALL");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(1);
+  const [listState, setListState] = useUrlListState(MOTOR_CLAIM_LIST_DEFAULTS);
+  const {
+    search,
+    customer: customerFilter,
+    insurer: insurerFilter,
+    nature: natureFilter,
+    progress: progressFilter,
+    status: statusFilter,
+    dateFrom,
+    dateTo,
+    customerId,
+  } = listState;
+  const page = Math.max(1, Number(listState.page) || 1);
+  const returnTo = buildReturnTo(pathname, searchParams.toString());
 
   const [showCreate, setShowCreate] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ kind: ConfirmKind; claim: MotorClaimRow } | null>(null);
@@ -109,11 +135,6 @@ export function MotorClaimTable({
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const resetToFirstPage = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
-
   const handleConfirm = async () => {
     if (!confirmAction) return;
     setIsConfirmBusy(true);
@@ -149,44 +170,92 @@ export function MotorClaimTable({
         }
       />
 
+      {customerId && (
+        <div className="flex items-center gap-2 text-sm text-zinc-600">
+          <Badge tone="brand">{t.common.filteredByCustomer}</Badge>
+          <button
+            type="button"
+            className="text-emerald-700 hover:underline"
+            onClick={() => setListState({ customerId: "" }, { immediate: true })}
+          >
+            {t.common.clearFilter}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
-        <SearchBar value={search} onChange={resetToFirstPage(setSearch)} placeholder={t.claims.searchPlaceholderMotor} className="w-full max-w-sm" />
-        <Select value={customerFilter} onChange={(e) => resetToFirstPage(setCustomerFilter)(e.target.value)} className="w-auto max-w-[200px]">
+        <SearchBar
+          value={search}
+          onChange={(value) => setListState({ search: value, page: "1" })}
+          placeholder={t.claims.searchPlaceholderMotor}
+          className="w-full max-w-sm"
+        />
+        <Select
+          value={customerFilter}
+          onChange={(e) => setListState({ customer: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[200px]"
+        >
           <option value="ALL">{t.claims.allCustomers}</option>
           {customerOptions.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </Select>
-        <Select value={insurerFilter} onChange={(e) => resetToFirstPage(setInsurerFilter)(e.target.value)} className="w-auto max-w-[180px]">
+        <Select
+          value={insurerFilter}
+          onChange={(e) => setListState({ insurer: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[180px]"
+        >
           <option value="ALL">{t.claims.allInsurers}</option>
           {insurerOptions.map((i) => (
             <option key={i} value={i}>{i}</option>
           ))}
         </Select>
-        <Select value={natureFilter} onChange={(e) => resetToFirstPage(setNatureFilter)(e.target.value as typeof natureFilter)} className="w-auto max-w-[190px]">
+        <Select
+          value={natureFilter}
+          onChange={(e) => setListState({ nature: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[190px]"
+        >
           <option value="ALL">{t.claims.allClaimNatures}</option>
           {MOTOR_CLAIM_NATURES.map((n) => (
             <option key={n} value={n}>{natureLabel[n]}</option>
           ))}
         </Select>
-        <Select value={progressFilter} onChange={(e) => resetToFirstPage(setProgressFilter)(e.target.value as typeof progressFilter)} className="w-auto max-w-[210px]">
+        <Select
+          value={progressFilter}
+          onChange={(e) => setListState({ progress: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[210px]"
+        >
           <option value="ALL">{t.claims.allProgress}</option>
           {MOTOR_CLAIM_PROGRESS_VALUES.map((p) => (
             <option key={p} value={p}>{progressLabel[p]}</option>
           ))}
         </Select>
-        <Select value={statusFilter} onChange={(e) => resetToFirstPage(setStatusFilter)(e.target.value as typeof statusFilter)} className="w-auto max-w-[160px]">
+        <Select
+          value={statusFilter}
+          onChange={(e) => setListState({ status: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[160px]"
+        >
           <option value="ALL">{t.claims.allClaimStatuses}</option>
           <option value="OPEN">{t.claims.open}</option>
           <option value="CLOSED">{t.claims.closed}</option>
         </Select>
         <label className="flex items-center gap-1.5 text-sm text-secondary">
           {t.claims.dateFrom}
-          <Input type="date" value={dateFrom} onChange={(e) => resetToFirstPage(setDateFrom)(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setListState({ dateFrom: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto"
+          />
         </label>
         <label className="flex items-center gap-1.5 text-sm text-secondary">
           {t.claims.dateTo}
-          <Input type="date" value={dateTo} onChange={(e) => resetToFirstPage(setDateTo)(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setListState({ dateTo: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto"
+          />
         </label>
       </div>
 
@@ -223,7 +292,7 @@ export function MotorClaimTable({
                   </td>
                   <td>
                     <div className="flex items-center justify-end gap-1.5">
-                      <Link href={`/task/motor-claim/${c.id}`}>
+                      <Link href={`/task/motor-claim/${c.id}?returnTo=${encodeURIComponent(returnTo)}`}>
                         <IconButton title={t.claims.view}>
                           <Eye size={16} />
                         </IconButton>
@@ -250,7 +319,7 @@ export function MotorClaimTable({
         </Table>
       </TableWrap>
 
-      <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination page={currentPage} totalPages={totalPages} onPageChange={(p) => setListState({ page: String(p) }, { immediate: true })} />
 
       {showCreate && (
         <MotorClaimFormModal

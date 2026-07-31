@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Plus, Eye, Trash2, Download, Upload } from "lucide-react";
+import { useState, Fragment } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Pencil, Plus, Eye, Trash2, Download, Upload, ChevronDown, ChevronRight } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,14 @@ import { UploadDocumentModal } from "@/components/customers/upload-document-moda
 import { CustomerDropboxCard, type CustomerDropboxFolderView } from "@/components/customers/customer-dropbox-card";
 import { DocumentDropboxStatus } from "@/components/customers/document-dropbox-status";
 import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
+import { CustomerRelatedRecords } from "@/components/customers/customer-related-records";
 import { deleteProjectAction } from "@/app/(app)/customer/project-actions";
 import { deleteDocumentAction } from "@/app/(app)/customer/document-actions";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import type { CustomerDetail, ProjectRow, DocumentRow, DropboxPathViewPlain } from "@/components/customers/types";
+import type { CustomerRelatedRecordsData } from "@/lib/customers/relatedRecords";
 
-type TabKey = "overview" | "projects" | "documents" | "related";
+type TabKey = "overview" | "projects" | "documents" | "relatedRecords";
 
 type ModalState =
   | { type: "edit-customer" }
@@ -51,6 +54,7 @@ export function CustomerDetailView({
   dropboxConnected,
   isAdmin,
   dropboxPaths,
+  relatedRecords,
 }: {
   customer: CustomerDetail;
   projects: ProjectRow[];
@@ -59,13 +63,54 @@ export function CustomerDetailView({
   dropboxConnected: boolean;
   isAdmin: boolean;
   dropboxPaths: { customerFolder: DropboxPathViewPlain; customerDocumentsFolder: DropboxPathViewPlain; generalDocumentsFolder: DropboxPathViewPlain };
+  relatedRecords: CustomerRelatedRecordsData;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
-  const [tab, setTab] = useState<TabKey>("overview");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<TabKey>(() => {
+    const requested = searchParams.get("tab");
+    const valid: TabKey[] = ["overview", "projects", "documents", "relatedRecords"];
+    return valid.includes(requested as TabKey) ? (requested as TabKey) : "overview";
+  });
+  // Phase 8.1 Part 3: this page's own current URL (including whatever
+  // returnTo it itself was reached with), always pinned to tab=relatedRecords
+  // regardless of which tab is actually active — this is only ever used as
+  // the returnTo handed to a Quotation/Policy/Invoice/Claim opened FROM the
+  // Related Records tab, so coming back always lands back on that tab.
+  const selfReturnTo = (() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "relatedRecords");
+    return buildReturnTo(pathname, params.toString());
+  })();
   const [modal, setModal] = useState<ModalState>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Which document rows have their full Dropbox path expanded — collapsed
+  // by default so a long path never stretches the whole table row (Phase 8
+  // Part 7.2), matching the Policy/Claim documents tables' existing pattern.
+  const [expandedDropboxDocIds, setExpandedDropboxDocIds] = useState<Set<string>>(new Set());
+  const toggleDropboxDetails = (docId: string) => {
+    setExpandedDropboxDocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  };
+
+  // Keeps the tab in the URL (replace, never push) so refreshing, sharing,
+  // or a smart-back returnTo capture always restores the tab the user was
+  // actually looking at (Phase 8 Part 6.5).
+  const handleTabChange = (key: string) => {
+    setTab(key as TabKey);
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === "overview") params.delete("tab");
+    else params.set("tab", key);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
     dateStyle: "medium",
@@ -138,48 +183,70 @@ export function CustomerDetailView({
         </thead>
         <tbody>
           {rows.length === 0 && <TableEmpty colSpan={9}>{emptyMessage}</TableEmpty>}
-          {rows.map((doc) => (
-            <tr key={doc.id}>
-              <td>{documentDisplayName(doc)}</td>
-              <td className="text-zinc-500">{doc.originalFileName}</td>
-              {rows.some((r) => r.projectId) && <td>{doc.projectName || "—"}</td>}
-              <td className="text-zinc-500">{formatFileSize(doc.fileSize)}</td>
-              <td className="text-zinc-500">{doc.uploadedByName}</td>
-              <td className="text-zinc-500">{dateFormatter.format(new Date(doc.createdAt))}</td>
-              <td>
-                <DocumentDropboxStatus
-                  documentId={doc.id}
-                  dropboxSync={doc.dropboxSync}
-                  dropboxConnected={dropboxConnected}
-                  isAdmin={isAdmin}
-                />
-              </td>
-              <td className="max-w-xs">
-                <DropboxPathDisplay label="" view={doc.dropboxPath} />
-              </td>
-              <td>
-                <div className="flex items-center justify-end gap-1.5">
-                  <a href={`/api/customer-documents/${doc.id}?mode=view`} target="_blank" rel="noopener noreferrer">
-                    <IconButton title={t.customers.view}>
-                      <Eye size={16} />
-                    </IconButton>
-                  </a>
-                  <a href={`/api/customer-documents/${doc.id}?mode=download`}>
-                    <IconButton title={t.customers.download}>
-                      <Download size={16} />
-                    </IconButton>
-                  </a>
-                  <IconButton
-                    tone="danger"
-                    title={t.common.delete}
-                    onClick={() => setModal({ type: "delete-document", document: doc })}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {rows.map((doc) => {
+            const expanded = expandedDropboxDocIds.has(doc.id);
+            return (
+              <Fragment key={doc.id}>
+                <tr>
+                  <td>{documentDisplayName(doc)}</td>
+                  <td className="max-w-[220px] truncate text-zinc-500" title={doc.originalFileName}>
+                    {doc.originalFileName}
+                  </td>
+                  {rows.some((r) => r.projectId) && <td>{doc.projectName || "—"}</td>}
+                  <td className="text-zinc-500">{formatFileSize(doc.fileSize)}</td>
+                  <td className="text-zinc-500">{doc.uploadedByName}</td>
+                  <td className="text-zinc-500">{dateFormatter.format(new Date(doc.createdAt))}</td>
+                  <td>
+                    <DocumentDropboxStatus
+                      documentId={doc.id}
+                      dropboxSync={doc.dropboxSync}
+                      dropboxConnected={dropboxConnected}
+                      isAdmin={isAdmin}
+                    />
+                  </td>
+                  <td className="max-w-[140px]">
+                    <button
+                      type="button"
+                      onClick={() => toggleDropboxDetails(doc.id)}
+                      aria-expanded={expanded}
+                      className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    >
+                      {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {expanded ? t.dropbox.hideFullPath : t.dropbox.showFullPath}
+                    </button>
+                  </td>
+                  <td>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <a href={`/api/customer-documents/${doc.id}?mode=view`} target="_blank" rel="noopener noreferrer">
+                        <IconButton title={t.customers.view}>
+                          <Eye size={16} />
+                        </IconButton>
+                      </a>
+                      <a href={`/api/customer-documents/${doc.id}?mode=download`}>
+                        <IconButton title={t.customers.download}>
+                          <Download size={16} />
+                        </IconButton>
+                      </a>
+                      <IconButton
+                        tone="danger"
+                        title={t.common.delete}
+                        onClick={() => setModal({ type: "delete-document", document: doc })}
+                      >
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </div>
+                  </td>
+                </tr>
+                {expanded && (
+                  <tr>
+                    <td colSpan={rows.some((r) => r.projectId) ? 9 : 8} className="bg-zinc-50">
+                      <DropboxPathDisplay label={t.dropbox.pathLabel} view={doc.dropboxPath} className="w-full" />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </Table>
     </TableWrap>
@@ -188,10 +255,7 @@ export function CustomerDetailView({
   return (
     <div className="flex flex-col gap-section">
       <div>
-        <Link href="/customer" className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline">
-          <ArrowLeft size={14} />
-          {t.customers.backToList}
-        </Link>
+        <SmartBackLink fallbackHref="/customer" label={t.customers.backToList} />
         <PageHeader
           title={customer.companyName}
           description={customer.customerNumber}
@@ -215,12 +279,12 @@ export function CustomerDetailView({
 
       <Tabs
         active={tab}
-        onChange={(key) => setTab(key as TabKey)}
+        onChange={handleTabChange}
         tabs={[
           { key: "overview", label: t.customers.overview },
           { key: "projects", label: `${t.customers.projects} (${projects.length})` },
           { key: "documents", label: `${t.customers.customerDocuments} (${documents.length})` },
-          { key: "related", label: t.customers.relatedRecords },
+          { key: "relatedRecords", label: t.customers.relatedRecords },
         ]}
       />
 
@@ -359,10 +423,8 @@ export function CustomerDetailView({
         </div>
       )}
 
-      {tab === "related" && (
-        <Card>
-          <p className="text-secondary">{t.customers.relatedRecordsPlaceholder}</p>
-        </Card>
+      {tab === "relatedRecords" && (
+        <CustomerRelatedRecords customerId={customer.id} selfReturnTo={selfReturnTo} data={relatedRecords} />
       )}
 
       {modal?.type === "edit-customer" && (

@@ -13,6 +13,10 @@ const en = {
     no: "No",
     close: "Close",
     status: "Status",
+    // Phase 8.1 Part 4 — shared by every list page's "View All" customerId
+    // filter chip (Quotation/Invoice/Policy x4/Motor Claim/Non-Motor Claim).
+    filteredByCustomer: "Filtered by customer",
+    clearFilter: "Clear",
   },
   sidebar: {
     dashboard: "Dashboard",
@@ -219,6 +223,21 @@ const en = {
     noDocumentsYet: "No documents have been uploaded yet.",
     relatedRecords: "Related Records",
     relatedRecordsPlaceholder: "Quotations, Invoices, Policies, Claims, Ledger Records, and Tasks for this customer will appear here in a future release.",
+    // --- Phase 8.1 Part 2: Related Records real implementation ---
+    relatedQuotationsTitle: "Quotations",
+    relatedPoliciesTitle: "Policies",
+    relatedInvoicesTitle: "Invoices",
+    relatedMotorClaimsTitle: "Motor Claims",
+    relatedNonMotorClaimsTitle: "Non-Motor Claims",
+    relatedViewAll: "View All",
+    relatedTotalRecords: "{count} total",
+    relatedEmptyQuotations: "No quotations for this customer yet.",
+    relatedEmptyPolicies: "No policies for this customer yet.",
+    relatedEmptyInvoices: "No invoices for this customer yet.",
+    relatedEmptyMotorClaims: "No motor claims for this customer yet.",
+    relatedEmptyNonMotorClaims: "No non-motor claims for this customer yet.",
+    relatedColInsurerAgent: "Insurer / Agent",
+    relatedColPolicySummary: "Related Policy",
     numberOfProjects: "Number of Projects",
     numberOfDocuments: "Number of Documents",
     searchPlaceholder: "Search by company name, PIN, or customer number",
@@ -2093,6 +2112,14 @@ const en = {
     dropboxMigrationLegacySourceLabel: "Legacy source retained (read-only)",
     dropboxMigrationLockedNotice:
       "Dropbox storage migration is in progress. Business data has been saved, and Dropbox synchronization will resume automatically after migration.",
+
+    dropboxMigrationCompletedTitle: "Migration Completed",
+    dropboxMigrationCompletedAt: "Completed at",
+    dropboxMigrationViewHistory: "View Migration History",
+    dropboxMigrationHideHistory: "Hide Migration History",
+    dropboxMigrationVerifyActiveStorage: "Verify Active Storage",
+    dropboxMigrationVerifyActiveSuccess: "Active storage verified — the normal application Dropbox client resolves correctly.",
+    dropboxMigrationObjectsTransferred: "Objects transferred",
   },
   reminders: {
     panelTitle: "Reminders",

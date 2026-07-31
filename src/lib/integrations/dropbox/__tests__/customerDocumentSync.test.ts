@@ -241,7 +241,11 @@ describe("syncCustomerDocument (Phase 3 Part 5/8/13)", () => {
   });
 
   it("B4: rate limited -> safe ERROR with RATE_LIMITED code", async () => {
-    filesUpload.mockRejectedValue({ status: 429, error: {} });
+    // Phase 8 Part 8/12: filesUpload is now wrapped in withRateLimitBackoff,
+    // so a persistent 429 is retried (BATCH_BACKOFF) before failing — a
+    // tiny retry_after keeps this test fast instead of waiting out real
+    // exponential backoff (same convention as rateLimitRetry.test.ts).
+    filesUpload.mockRejectedValue({ status: 429, error: { retry_after: 0.001 } });
     const { syncCustomerDocument } = await import("../customerDocumentSync");
 
     const result = await syncCustomerDocument("doc-1");

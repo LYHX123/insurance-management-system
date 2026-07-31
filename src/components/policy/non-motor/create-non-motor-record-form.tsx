@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLocale } from "@/i18n/locale-provider";
+import { useCreateFlowNavigation } from "@/lib/navigation/useCreateFlowNavigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ export function CreateNonMotorRecordForm({
   ineligibleQuotation?: { quotationId: string; quotationNumber: string } | null;
 }) {
   const { t } = useLocale();
+  const { cancelHref, buildSuccessHref } = useCreateFlowNavigation("/policy/non-motor");
   const router = useRouter();
 
   const coverTypeLabel: Record<string, string> = {
@@ -137,7 +139,7 @@ export function CreateNonMotorRecordForm({
       setError(t.policy[key as keyof typeof t.policy]);
       return;
     }
-    router.push(`/policy/non-motor/${result.id}`);
+    router.push(buildSuccessHref(`/policy/non-motor/${result.id}`));
   };
 
   if (ineligibleQuotation) {
@@ -247,7 +249,7 @@ export function CreateNonMotorRecordForm({
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/policy/non-motor")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push(cancelHref)} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

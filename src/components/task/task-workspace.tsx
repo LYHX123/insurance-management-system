@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Button } from "@/components/ui/button";
@@ -10,12 +11,19 @@ import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { NewTaskModal } from "@/components/task/new-task-modal";
 import { TaskDetailPanel } from "@/components/task/task-detail-panel";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import type { TaskCategorySlug, TaskListItem, TaskDetail, ActiveUserOption, TaskStatusValue } from "@/components/task/types";
 
 const STATUS_TONE: Record<TaskStatusValue, "brand" | "success"> = {
   ACTIVE: "brand",
   COMPLETED: "success",
 };
+
+// Daily Task's entire filter surface is just these two — no date filter, no
+// pagination (it's a scrollable list, not a paginated table), no
+// customer/participant control. Do not add fields here to "match" the Claim
+// tables' shape; those controls don't exist in this UI (Phase 8.1 Part 4).
+const TASK_LIST_DEFAULTS = { search: "", status: "ALL" };
 
 export function TaskWorkspace({
   categorySlug,
@@ -33,9 +41,15 @@ export function TaskWorkspace({
   const { t, locale } = useLocale();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium", timeStyle: "short" });
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | TaskStatusValue>("ALL");
+  const [listState, setListState] = useUrlListState(TASK_LIST_DEFAULTS);
+  const { search, status: statusFilter } = listState;
   const [showNewTask, setShowNewTask] = useState(false);
+  // Selecting a task navigates to its own route (/task/{slug}/{id}) — carry
+  // the current search/status query string along so the left panel's
+  // filters aren't reset just from picking a task to view (Phase 8.1 Part
+  // 7, requirement 6).
+  const searchParams = useSearchParams();
+  const listQueryString = searchParams.toString();
 
   const categoryLabel: Record<TaskCategorySlug, string> = {
     daily: t.task.tabDaily,
@@ -77,8 +91,8 @@ export function TaskWorkspace({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <SearchBar value={search} onChange={setSearch} placeholder={t.task.searchPlaceholder} className="w-full" />
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="w-auto sm:max-w-[160px]">
+          <SearchBar value={search} onChange={(value) => setListState({ search: value })} placeholder={t.task.searchPlaceholder} className="w-full" />
+          <Select value={statusFilter} onChange={(e) => setListState({ status: e.target.value }, { immediate: true })} className="w-auto sm:max-w-[160px]">
             <option value="ALL">{t.task.allStatuses}</option>
             <option value="ACTIVE">{t.task.active}</option>
             <option value="COMPLETED">{t.task.completed}</option>
@@ -95,7 +109,7 @@ export function TaskWorkspace({
                 return (
                   <li key={task.id}>
                     <Link
-                      href={`/task/${categorySlug}/${task.id}`}
+                      href={`/task/${categorySlug}/${task.id}${listQueryString ? `?${listQueryString}` : ""}`}
                       className={`flex flex-col gap-1 px-4 py-3 transition-colors ${
                         isSelected
                           ? "bg-emerald-50 border-l-2 border-emerald-700"

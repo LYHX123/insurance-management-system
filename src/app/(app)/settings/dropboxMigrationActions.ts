@@ -8,6 +8,7 @@ import { runCopyPreview } from "@/lib/integrations/dropbox/migration/preview";
 import { startCopyPhase, pauseCopyPhase, runCopyBatch } from "@/lib/integrations/dropbox/migration/copyEngine";
 import { runVerificationBatch, getVerificationSummary } from "@/lib/integrations/dropbox/migration/verify";
 import { activateDestinationNamespace } from "@/lib/integrations/dropbox/migration/activation";
+import { verifyActiveStorage } from "@/lib/integrations/dropbox/migration/verifyActiveStorage";
 import type { MigrationActionResult } from "@/lib/integrations/dropbox/migration/types";
 import type { DiagnosticResult } from "@/lib/integrations/dropbox/migration/diagnostics";
 import type { WriteTestResult } from "@/lib/integrations/dropbox/migration/writeTest";
@@ -15,6 +16,7 @@ import type { PreviewSummary } from "@/lib/integrations/dropbox/migration/previe
 import type { CopyBatchResult } from "@/lib/integrations/dropbox/migration/copyEngine";
 import type { VerificationBatchResult, VerificationSummary } from "@/lib/integrations/dropbox/migration/verify";
 import type { ActivationResult } from "@/lib/integrations/dropbox/migration/activation";
+import type { ActiveStorageVerification } from "@/lib/integrations/dropbox/migration/verifyActiveStorage";
 
 // ADMIN-only, mirroring dropboxActions.ts's convention: every action
 // re-checks requireAdmin() itself.
@@ -126,4 +128,15 @@ export async function activateDestinationNamespaceAction(
   const result = await activateDestinationNamespace(jobId, confirmationText, dbBackupConfirmed);
   revalidatePath("/settings");
   return result;
+}
+
+// Post-migration (Phase 8 Part 9/10) — the one action retained indefinitely
+// after COMPLETED, alongside Run Diagnostic and View Migration History.
+// Read-only; goes through the normal active-client path, not a
+// migration-specific one.
+export async function verifyActiveStorageAction(): Promise<MigrationActionResult<ActiveStorageVerification>> {
+  const session = await requireAdmin();
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
+  return verifyActiveStorage();
 }

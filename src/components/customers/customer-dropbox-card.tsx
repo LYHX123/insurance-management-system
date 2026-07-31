@@ -6,7 +6,7 @@ import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
-import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
+import { CollapsibleDropboxPath } from "@/components/dropbox/dropbox-path-display";
 import {
   syncCustomerFolderAction,
   verifyCustomerFolderAction,
@@ -165,9 +165,9 @@ export function CustomerDropboxCard({
 
         {dropboxPaths && (
           <div className="flex flex-col gap-3">
-            <DropboxPathDisplay label={t.customers.dropboxCustomerFolderPath} view={dropboxPaths.customerFolder} />
-            <DropboxPathDisplay label={t.customers.dropboxCustomerDocumentsFolderPath} view={dropboxPaths.customerDocumentsFolder} />
-            <DropboxPathDisplay label={t.customers.dropboxGeneralDocumentsFolderPath} view={dropboxPaths.generalDocumentsFolder} />
+            <CollapsibleDropboxPath label={t.customers.dropboxCustomerFolderPath} view={dropboxPaths.customerFolder} />
+            <CollapsibleDropboxPath label={t.customers.dropboxCustomerDocumentsFolderPath} view={dropboxPaths.customerDocumentsFolder} />
+            <CollapsibleDropboxPath label={t.customers.dropboxGeneralDocumentsFolderPath} view={dropboxPaths.generalDocumentsFolder} />
           </div>
         )}
 

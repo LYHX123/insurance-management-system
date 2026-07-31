@@ -11,11 +11,13 @@ import { runInBatches, DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE } from "./batch";
 import type { MigrationActionResult } from "./types";
 import type { Dropbox } from "dropbox";
 import type { DropboxMigrationObjectLedgerModel } from "@/generated/prisma/models";
+import { withRateLimitBackoff } from "../rateLimitRetry";
 
 async function verifyRow(client: Dropbox, row: DropboxMigrationObjectLedgerModel): Promise<void> {
   let meta;
   try {
-    meta = await client.filesGetMetadata({ path: row.destinationPath });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    meta = await withRateLimitBackoff(() => client.filesGetMetadata({ path: row.destinationPath }));
   } catch (err) {
     if (isNotFoundError(err)) {
       throw Object.assign(new Error("VERIFICATION_INCOMPLETE"), { code: "VERIFICATION_INCOMPLETE" });

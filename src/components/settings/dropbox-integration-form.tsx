@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,8 @@ export function DropboxIntegrationForm({
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const fmt = dateFormatter(locale);
 
   const [rootFolder, setRootFolder] = useState(dropbox.rootFolder);
@@ -87,6 +89,21 @@ export function DropboxIntegrationForm({
   const [message, setMessage] = useState<string | null>(
     callbackResult === "connected" ? t.settings.dropboxConnectedSuccessfully : null
   );
+
+  // The OAuth callback's one-shot signal (?dropbox=connected|error&code=...)
+  // must only ever be shown once — strip it from the URL (replace, no new
+  // history entry) right after reading it into local state, so returning to
+  // this exact URL later (browser history, a bookmark, or a smart-back
+  // returnTo capture) never replays the banner (Phase 8 Part 1 finding).
+  useEffect(() => {
+    if (!callbackResult) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("dropbox");
+    params.delete("code");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isTesting, setIsTesting] = useState(false);
   const [isSavingRoot, setIsSavingRoot] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);

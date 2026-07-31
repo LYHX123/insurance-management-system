@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Download, ExternalLink, FilePlus } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/components/ui/money-input";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import type { RelatedInvoiceInfo, PolicyBusinessStatus } from "@/components/policy/types";
 
 // Shared across every Policy category's Overview tab (Motor/Non-Motor/Bond/
@@ -31,6 +33,14 @@ export function RelatedInvoiceCard({
 }) {
   const { t, locale } = useLocale();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Phase 8.1 Part 9 — this Policy Detail page's own current URL (including
+  // its own tab/returnTo), forwarded as the returnTo for Create Invoice so
+  // the round trip (Cancel, or the new Invoice's own Back) lands back on
+  // exactly this page instead of a bare category route that's lost track
+  // of how to get back to whatever list this Policy was itself opened from.
+  const createInvoiceHref = `/invoice/new?fromPolicyId=${policyRecordId}&returnTo=${encodeURIComponent(buildReturnTo(pathname, searchParams.toString()))}`;
 
   const hasActiveInvoice = relatedInvoice?.status === "ISSUED";
   const canCreateInvoice = businessStatus !== "CANCELLED" && !hasActiveInvoice;
@@ -82,7 +92,7 @@ export function RelatedInvoiceCard({
               </Button>
             </a>
             {canCreateInvoice && hasPolicyNumber && (
-              <Link href={`/invoice/new?fromPolicyId=${policyRecordId}`}>
+              <Link href={createInvoiceHref}>
                 <Button>
                   <FilePlus size={16} />
                   {t.invoice.createInvoice}
@@ -97,7 +107,7 @@ export function RelatedInvoiceCard({
           {businessStatus !== "CANCELLED" && (
             <div>
               {hasPolicyNumber ? (
-                <Link href={`/invoice/new?fromPolicyId=${policyRecordId}`}>
+                <Link href={createInvoiceHref}>
                   <Button>
                     <FilePlus size={16} />
                     {t.invoice.createInvoice}

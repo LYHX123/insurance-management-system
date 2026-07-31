@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLocale } from "@/i18n/locale-provider";
+import { useCreateFlowNavigation } from "@/lib/navigation/useCreateFlowNavigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ export function CreateBondRecordForm({
   ineligibleQuotation?: { quotationId: string; quotationNumber: string } | null;
 }) {
   const { t } = useLocale();
+  const { cancelHref, buildSuccessHref } = useCreateFlowNavigation("/policy/bond");
   const router = useRouter();
 
   const bondTypeLabel: Record<BondType, string> = {
@@ -151,7 +153,7 @@ export function CreateBondRecordForm({
       setError(t.policy[key as keyof typeof t.policy]);
       return;
     }
-    router.push(`/policy/bond/${result.id}`);
+    router.push(buildSuccessHref(`/policy/bond/${result.id}`));
   };
 
   if (ineligibleQuotation) {
@@ -277,7 +279,7 @@ export function CreateBondRecordForm({
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/policy/bond")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push(cancelHref)} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

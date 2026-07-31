@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Eye, Plus, Upload, Download } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
@@ -19,6 +19,7 @@ import {
   PolicyOutstandingBalanceCheckboxes,
   matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import type { MotorListRow, PolicyBusinessStatus } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -31,17 +32,39 @@ const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" 
 
 const PAGE_SIZE = 25;
 
+// customerId is server-filtered (see policy/motor/page.tsx), not client-side
+// — tracked here purely so useUrlListState's own router.replace calls never
+// silently drop it from the URL (Phase 8.1 Part 4). customerFilter (by
+// customer NAME) is a separate, pre-existing client-side filter and is
+// deliberately left as-is.
+const MOTOR_LIST_DEFAULTS = {
+  search: "",
+  customer: "ALL",
+  type: "ALL",
+  insurer: "ALL",
+  status: "ALL",
+  expiryDate: "",
+  outstandingClientOnly: "",
+  outstandingInsurerOnly: "",
+  page: "1",
+  customerId: "",
+};
+
 export function MotorListTable({ records }: { records: MotorListRow[] }) {
   const { t, locale } = useLocale();
-  const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("ALL");
-  const [typeFilter, setTypeFilter] = useState("ALL");
-  const [insurerFilter, setInsurerFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | PolicyBusinessStatus>("ALL");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [outstandingClientOnly, setOutstandingClientOnly] = useState(false);
-  const [outstandingInsurerOnly, setOutstandingInsurerOnly] = useState(false);
-  const [page, setPage] = useState(1);
+  const [listState, setListState] = useUrlListState(MOTOR_LIST_DEFAULTS);
+  const {
+    search,
+    customer: customerFilter,
+    type: typeFilter,
+    insurer: insurerFilter,
+    status: statusFilter,
+    expiryDate,
+    customerId,
+  } = listState;
+  const outstandingClientOnly = listState.outstandingClientOnly === "1";
+  const outstandingInsurerOnly = listState.outstandingInsurerOnly === "1";
+  const page = Math.max(1, Number(listState.page) || 1);
 
   const statusLabel: Record<PolicyBusinessStatus, string> = {
     DRAFT: t.policy.statusDraft,
@@ -112,11 +135,6 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const resetToFirstPage = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
-
   return (
     <div className="flex flex-col gap-section">
       <PolicyDeleteSuccessBanner listPath="/policy/motor" />
@@ -143,26 +161,51 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
         }
       />
 
+      {customerId && (
+        <div className="flex items-center gap-2 text-sm text-zinc-600">
+          <Badge tone="brand">{t.common.filteredByCustomer}</Badge>
+          <button
+            type="button"
+            className="text-emerald-700 hover:underline"
+            onClick={() => setListState({ customerId: "" }, { immediate: true })}
+          >
+            {t.common.clearFilter}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
-          onChange={resetToFirstPage(setSearch)}
+          onChange={(value) => setListState({ search: value, page: "1" })}
           placeholder={t.policy.searchPlaceholder}
           className="w-full max-w-sm"
         />
-        <Select value={customerFilter} onChange={(e) => resetToFirstPage(setCustomerFilter)(e.target.value)} className="w-auto max-w-[220px]">
+        <Select
+          value={customerFilter}
+          onChange={(e) => setListState({ customer: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[220px]"
+        >
           <option value="ALL">{t.policy.allCustomers}</option>
           {customerOptions.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </Select>
-        <Select value={typeFilter} onChange={(e) => resetToFirstPage(setTypeFilter)(e.target.value)} className="w-auto max-w-[180px]">
+        <Select
+          value={typeFilter}
+          onChange={(e) => setListState({ type: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[180px]"
+        >
           <option value="ALL">{t.policy.allTypesOfCover}</option>
           {typeOptions.map((tOpt) => (
             <option key={tOpt} value={tOpt}>{tOpt}</option>
           ))}
         </Select>
-        <Select value={insurerFilter} onChange={(e) => resetToFirstPage(setInsurerFilter)(e.target.value)} className="w-auto max-w-[180px]">
+        <Select
+          value={insurerFilter}
+          onChange={(e) => setListState({ insurer: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[180px]"
+        >
           <option value="ALL">{t.policy.allInsurers}</option>
           {insurerOptions.map((i) => (
             <option key={i} value={i}>{i}</option>
@@ -170,7 +213,7 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
         </Select>
         <Select
           value={statusFilter}
-          onChange={(e) => resetToFirstPage(setStatusFilter)(e.target.value as typeof statusFilter)}
+          onChange={(e) => setListState({ status: e.target.value, page: "1" }, { immediate: true })}
           className="w-auto max-w-[160px]"
         >
           <option value="ALL">{t.policy.allStatuses}</option>
@@ -178,14 +221,21 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
             <option key={s} value={s}>{statusLabel[s]}</option>
           ))}
         </Select>
-        <PolicyExpiryDateFilter value={expiryDate} onChange={resetToFirstPage(setExpiryDate)} />
+        <PolicyExpiryDateFilter
+          value={expiryDate}
+          onChange={(value) => setListState({ expiryDate: value, page: "1" }, { immediate: true })}
+        />
       </div>
 
       <PolicyOutstandingBalanceCheckboxes
         outstandingClientOnly={outstandingClientOnly}
-        onOutstandingClientOnlyChange={resetToFirstPage(setOutstandingClientOnly)}
+        onOutstandingClientOnlyChange={(value) =>
+          setListState({ outstandingClientOnly: value ? "1" : "", page: "1" }, { immediate: true })
+        }
         outstandingInsurerOnly={outstandingInsurerOnly}
-        onOutstandingInsurerOnlyChange={resetToFirstPage(setOutstandingInsurerOnly)}
+        onOutstandingInsurerOnlyChange={(value) =>
+          setListState({ outstandingInsurerOnly: value ? "1" : "", page: "1" }, { immediate: true })
+        }
       />
 
       <TableWrap scroll>
@@ -242,7 +292,11 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
         </Table>
       </TableWrap>
 
-      <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination
+        page={currentPage}
+        totalPages={totalPages}
+        onPageChange={(p) => setListState({ page: String(p) }, { immediate: true })}
+      />
     </div>
   );
 }

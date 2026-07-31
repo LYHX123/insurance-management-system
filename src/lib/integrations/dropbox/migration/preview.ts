@@ -15,6 +15,7 @@ import { runInBatches } from "./batch";
 import { isNotFoundError } from "./notFound";
 import type { MigrationActionResult } from "./types";
 import type { Dropbox } from "dropbox";
+import { withRateLimitBackoff } from "../rateLimitRetry";
 
 type ObjectKind =
   | "ROOT"
@@ -172,7 +173,9 @@ type CollisionState = "MISSING" | "IDENTICAL" | "CONFLICT" | "TYPE_CONFLICT";
 
 async function checkDestinationCollision(client: Dropbox, destinationPath: string, expected: ExpectedObject): Promise<CollisionState> {
   try {
-    const meta = await client.filesGetMetadata({ path: destinationPath });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses
+    // — this runs once per tracked object in the preview batch.
+    const meta = await withRateLimitBackoff(() => client.filesGetMetadata({ path: destinationPath }));
     const tag = meta.result[".tag"];
     if (expected.type === "FOLDER") {
       return tag === "folder" ? "IDENTICAL" : "TYPE_CONFLICT";
@@ -207,9 +210,13 @@ async function scanSourceForUnexpected(client: Dropbox, sourceRoot: string, expe
   while (true) {
     page++;
     if (page > MAX_PAGES) break;
-    const res = cursor
-      ? await client.filesListFolderContinue({ cursor })
-      : await client.filesListFolder({ path: sourceRoot, recursive: true, include_deleted: false });
+    // Captured into a local const so the closure below narrows correctly —
+    // `cursor` itself is a `let` reassigned later in this loop, which
+    // TypeScript can't narrow through a closure boundary.
+    const currentCursor = cursor;
+    const res = currentCursor
+      ? await withRateLimitBackoff(() => client.filesListFolderContinue({ cursor: currentCursor }))
+      : await withRateLimitBackoff(() => client.filesListFolder({ path: sourceRoot, recursive: true, include_deleted: false }));
 
     for (const e of res.result.entries) {
       if (e[".tag"] !== "folder" && e[".tag"] !== "file") continue;
@@ -258,7 +265,7 @@ export async function runCopyPreview(initiatedById?: string | null): Promise<Mig
 
   // Source root must exist.
   try {
-    await sourceClient.filesGetMetadata({ path: sourceRoot });
+    await withRateLimitBackoff(() => sourceClient.filesGetMetadata({ path: sourceRoot }));
   } catch (err) {
     if (isNotFoundError(err)) {
       await prisma.dropboxMigrationJob.update({

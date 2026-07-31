@@ -10,7 +10,7 @@ import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
+import { CollapsibleDropboxPath } from "@/components/dropbox/dropbox-path-display";
 import type { ClaimDropboxSectionView } from "@/components/claims/types";
 
 export function ClaimDropboxSection({
@@ -80,9 +80,9 @@ export function ClaimDropboxSection({
         </div>
         <p className="text-xs text-secondary">{sourceLabel}</p>
 
-        <DropboxPathDisplay label={t.claims.dropboxBusinessFolderPath} view={dropbox.businessFolder} />
-        <DropboxPathDisplay label={t.claims.dropboxClaimFolderPath} view={dropbox.claimFolder} />
-        <DropboxPathDisplay label={t.claims.dropboxClaimReferenceFolderPath} view={dropbox.claimReferenceFolder} />
+        <CollapsibleDropboxPath label={t.claims.dropboxBusinessFolderPath} view={dropbox.businessFolder} />
+        <CollapsibleDropboxPath label={t.claims.dropboxClaimFolderPath} view={dropbox.claimFolder} />
+        <CollapsibleDropboxPath label={t.claims.dropboxClaimReferenceFolderPath} view={dropbox.claimReferenceFolder} />
         {dropbox.claimReferenceFolder.isPlanned && (
           <p className="text-xs text-secondary">
             <span className="font-medium">{t.claims.dropboxPlannedPathTitle}:</span> {t.claims.dropboxPlannedPathNote}

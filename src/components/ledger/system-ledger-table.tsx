@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { ExternalLink, Download } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
@@ -14,9 +14,26 @@ import { Card } from "@/components/ui/card";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { formatMoney } from "@/components/ui/money-input";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import type { SystemLedgerRow, SystemLedgerSourceType } from "@/components/ledger/types";
 
 type PolicyCategoryValue = SystemLedgerRow["policyCategory"];
+
+// Ledger has no customerId server-filter / "View All" deep-link concept
+// (unlike Policy/Invoice/Quotation) — this is a pure client-side filter set,
+// URL-persisted so a returnTo/back-navigation restores it (Phase 8.1). This
+// table has its own independent URL state from Manual Ledger's — separate
+// route (/ledger/system), separate defaults constant.
+const SYSTEM_LEDGER_LIST_DEFAULTS = {
+  search: "",
+  sourceType: "ALL",
+  direction: "ALL",
+  customer: "ALL",
+  policyCategory: "ALL",
+  dateFrom: "",
+  dateTo: "",
+  page: "1",
+};
 
 const DIRECTION_TONE: Record<"INCOME" | "EXPENSE", "success" | "danger"> = {
   INCOME: "success",
@@ -44,14 +61,17 @@ export function SystemLedgerTable({ records }: { records: SystemLedgerRow[] }) {
   const { t, locale } = useLocale();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
 
-  const [search, setSearch] = useState("");
-  const [sourceTypeFilter, setSourceTypeFilter] = useState<"ALL" | SystemLedgerSourceType>("ALL");
-  const [directionFilter, setDirectionFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
-  const [customerFilter, setCustomerFilter] = useState("ALL");
-  const [policyCategoryFilter, setPolicyCategoryFilter] = useState<"ALL" | PolicyCategoryValue>("ALL");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(1);
+  const [listState, setListState] = useUrlListState(SYSTEM_LEDGER_LIST_DEFAULTS);
+  const {
+    search,
+    sourceType: sourceTypeFilter,
+    direction: directionFilter,
+    customer: customerFilter,
+    policyCategory: policyCategoryFilter,
+    dateFrom,
+    dateTo,
+  } = listState;
+  const page = Math.max(1, Number(listState.page) || 1);
 
   const sourceTypeLabel: Record<SystemLedgerSourceType, string> = {
     CUSTOMER_PREMIUM_RECEIPT: t.ledger.typeCustomerPremiumReceipt,
@@ -111,11 +131,6 @@ export function SystemLedgerTable({ records }: { records: SystemLedgerRow[] }) {
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const resetToFirstPage = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
-
   const exportUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (search.trim()) params.set("search", search.trim());
@@ -150,25 +165,46 @@ export function SystemLedgerTable({ records }: { records: SystemLedgerRow[] }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <SearchBar value={search} onChange={resetToFirstPage(setSearch)} placeholder={t.ledger.searchPlaceholderSystem} className="w-full max-w-sm" />
-        <Select value={sourceTypeFilter} onChange={(e) => resetToFirstPage(setSourceTypeFilter)(e.target.value as typeof sourceTypeFilter)} className="w-auto max-w-[200px]">
+        <SearchBar
+          value={search}
+          onChange={(value) => setListState({ search: value, page: "1" })}
+          placeholder={t.ledger.searchPlaceholderSystem}
+          className="w-full max-w-sm"
+        />
+        <Select
+          value={sourceTypeFilter}
+          onChange={(e) => setListState({ sourceType: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[200px]"
+        >
           <option value="ALL">{t.ledger.allTypes}</option>
           <option value="CUSTOMER_PREMIUM_RECEIPT">{sourceTypeLabel.CUSTOMER_PREMIUM_RECEIPT}</option>
           <option value="PROVIDER_PAYMENT">{sourceTypeLabel.PROVIDER_PAYMENT}</option>
           <option value="COMMISSION_INCOME">{sourceTypeLabel.COMMISSION_INCOME}</option>
         </Select>
-        <Select value={directionFilter} onChange={(e) => resetToFirstPage(setDirectionFilter)(e.target.value as typeof directionFilter)} className="w-auto max-w-[160px]">
+        <Select
+          value={directionFilter}
+          onChange={(e) => setListState({ direction: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[160px]"
+        >
           <option value="ALL">{t.ledger.allDirections}</option>
           <option value="INCOME">{t.ledger.income}</option>
           <option value="EXPENSE">{t.ledger.expense}</option>
         </Select>
-        <Select value={customerFilter} onChange={(e) => resetToFirstPage(setCustomerFilter)(e.target.value)} className="w-auto max-w-[200px]">
+        <Select
+          value={customerFilter}
+          onChange={(e) => setListState({ customer: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[200px]"
+        >
           <option value="ALL">{t.ledger.allCustomers}</option>
           {customerOptions.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </Select>
-        <Select value={policyCategoryFilter} onChange={(e) => resetToFirstPage(setPolicyCategoryFilter)(e.target.value as typeof policyCategoryFilter)} className="w-auto max-w-[180px]">
+        <Select
+          value={policyCategoryFilter}
+          onChange={(e) => setListState({ policyCategory: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[180px]"
+        >
           <option value="ALL">{t.ledger.allPolicyCategories}</option>
           {(Object.keys(policyCategoryLabel) as PolicyCategoryValue[]).map((c) => (
             <option key={c} value={c}>{policyCategoryLabel[c]}</option>
@@ -176,11 +212,21 @@ export function SystemLedgerTable({ records }: { records: SystemLedgerRow[] }) {
         </Select>
         <label className="flex items-center gap-1.5 text-sm text-secondary">
           {t.ledger.dateFrom}
-          <Input type="date" value={dateFrom} onChange={(e) => resetToFirstPage(setDateFrom)(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setListState({ dateFrom: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto"
+          />
         </label>
         <label className="flex items-center gap-1.5 text-sm text-secondary">
           {t.ledger.dateTo}
-          <Input type="date" value={dateTo} onChange={(e) => resetToFirstPage(setDateTo)(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setListState({ dateTo: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto"
+          />
         </label>
       </div>
 
@@ -233,7 +279,7 @@ export function SystemLedgerTable({ records }: { records: SystemLedgerRow[] }) {
         </Table>
       </TableWrap>
 
-      <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination page={currentPage} totalPages={totalPages} onPageChange={(p) => setListState({ page: String(p) }, { immediate: true })} />
     </div>
   );
 }

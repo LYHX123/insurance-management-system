@@ -19,7 +19,21 @@ import { formatMoney } from "@/components/ui/money-input";
 import { cancelManualEntryAction } from "@/app/(app)/ledger/actions";
 import { ManualEntryModal } from "@/components/ledger/manual-entry-modal";
 import { ManageCategoriesModal } from "@/components/ledger/manage-categories-modal";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import type { ManualEntryRow, LedgerCategoryOption, LedgerTransactionType } from "@/components/ledger/types";
+
+// Ledger has no customerId server-filter / "View All" deep-link concept
+// (unlike Policy/Invoice/Quotation) — this is a pure client-side filter set,
+// URL-persisted so a returnTo/back-navigation restores it (Phase 8.1).
+const MANUAL_LEDGER_LIST_DEFAULTS = {
+  search: "",
+  type: "ALL",
+  categoryId: "ALL",
+  createdById: "ALL",
+  dateFrom: "",
+  dateTo: "",
+  page: "1",
+};
 
 const TYPE_TONE: Record<LedgerTransactionType, "success" | "danger"> = {
   INCOME: "success",
@@ -48,13 +62,16 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
 
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"ALL" | LedgerTransactionType>("ALL");
-  const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const [createdByFilter, setCreatedByFilter] = useState("ALL");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(1);
+  const [listState, setListState] = useUrlListState(MANUAL_LEDGER_LIST_DEFAULTS);
+  const {
+    search,
+    type: typeFilter,
+    categoryId: categoryFilter,
+    createdById: createdByFilter,
+    dateFrom,
+    dateTo,
+  } = listState;
+  const page = Math.max(1, Number(listState.page) || 1);
 
   const [newEntryType, setNewEntryType] = useState<LedgerTransactionType | null>(null);
   const [editingEntry, setEditingEntry] = useState<ManualEntryRow | null>(null);
@@ -104,11 +121,6 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  const resetToFirstPage = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
 
   const handleCancel = async () => {
     if (!cancellingId) return;
@@ -165,13 +177,26 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <SearchBar value={search} onChange={resetToFirstPage(setSearch)} placeholder={t.ledger.searchPlaceholderManual} className="w-full max-w-sm" />
-        <Select value={typeFilter} onChange={(e) => resetToFirstPage(setTypeFilter)(e.target.value as typeof typeFilter)} className="w-auto max-w-[160px]">
+        <SearchBar
+          value={search}
+          onChange={(value) => setListState({ search: value, page: "1" })}
+          placeholder={t.ledger.searchPlaceholderManual}
+          className="w-full max-w-sm"
+        />
+        <Select
+          value={typeFilter}
+          onChange={(e) => setListState({ type: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[160px]"
+        >
           <option value="ALL">{t.ledger.allTypes}</option>
           <option value="INCOME">{t.ledger.income}</option>
           <option value="EXPENSE">{t.ledger.expense}</option>
         </Select>
-        <Select value={categoryFilter} onChange={(e) => resetToFirstPage(setCategoryFilter)(e.target.value)} className="w-auto max-w-[200px]">
+        <Select
+          value={categoryFilter}
+          onChange={(e) => setListState({ categoryId: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[200px]"
+        >
           <option value="ALL">{t.ledger.allCategories}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -180,7 +205,11 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
           ))}
         </Select>
         {creators.length > 1 && (
-          <Select value={createdByFilter} onChange={(e) => resetToFirstPage(setCreatedByFilter)(e.target.value)} className="w-auto max-w-[180px]">
+          <Select
+            value={createdByFilter}
+            onChange={(e) => setListState({ createdById: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto max-w-[180px]"
+          >
             <option value="ALL">{t.ledger.allCreators}</option>
             {creators.map(([id, name]) => (
               <option key={id} value={id}>{name}</option>
@@ -189,11 +218,21 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
         )}
         <label className="flex items-center gap-1.5 text-sm text-secondary">
           {t.ledger.dateFrom}
-          <Input type="date" value={dateFrom} onChange={(e) => resetToFirstPage(setDateFrom)(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setListState({ dateFrom: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto"
+          />
         </label>
         <label className="flex items-center gap-1.5 text-sm text-secondary">
           {t.ledger.dateTo}
-          <Input type="date" value={dateTo} onChange={(e) => resetToFirstPage(setDateTo)(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setListState({ dateTo: e.target.value, page: "1" }, { immediate: true })}
+            className="w-auto"
+          />
         </label>
       </div>
 
@@ -247,7 +286,7 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
         </Table>
       </TableWrap>
 
-      <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination page={currentPage} totalPages={totalPages} onPageChange={(p) => setListState({ page: String(p) }, { immediate: true })} />
 
       {(newEntryType || editingEntry) && (
         <ManualEntryModal

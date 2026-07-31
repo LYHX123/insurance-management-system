@@ -51,6 +51,8 @@ export function CreateInvoiceForm({
   customerPin,
   policies,
   defaultSelectedPolicyId,
+  sourcePolicy,
+  sourcePolicyReturnTo,
 }: {
   blocked: { reason: CreateInvoiceBlockedReason; policyId: string; category: PolicyCategory | null; recordNumber: string | null } | null;
   customerId: string;
@@ -58,10 +60,22 @@ export function CreateInvoiceForm({
   customerPin: string;
   policies: EligiblePolicyRow[];
   defaultSelectedPolicyId: string;
+  // The Policy this invoice creation was launched from — Cancel and the
+  // newly-created invoice's own back button both return here instead of
+  // the generic /invoice list (Phase 8 Part 2.B fix: this used to always
+  // send Cancel to /invoice regardless of where the user came from).
+  sourcePolicy?: { id: string; category: PolicyCategory } | null;
+  // Phase 8.1 Part 9 — the Policy Detail page's own current URL (its own
+  // tab/returnTo included), validated server-side. When present, this is
+  // used instead of the bare category route so the round trip doesn't
+  // strand the user on a Policy Detail page that's forgotten how to get
+  // back to whatever list/tab it was itself reached from.
+  sourcePolicyReturnTo?: string | null;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
+  const sourcePolicyHref = sourcePolicyReturnTo ?? (sourcePolicy ? `${POLICY_CATEGORY_ROUTE[sourcePolicy.category]}/${sourcePolicy.id}` : "/invoice");
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelectedPolicyId ? [defaultSelectedPolicyId] : []));
   const [invoiceDate, setInvoiceDate] = useState(today());
@@ -106,11 +120,11 @@ export function CreateInvoiceForm({
       setError(t.invoice[key as keyof typeof t.invoice]);
       return;
     }
-    router.push(`/invoice/${result.id}`);
+    router.push(`/invoice/${result.id}?returnTo=${encodeURIComponent(sourcePolicyHref)}`);
   };
 
   if (blocked) {
-    const backRoute = blocked.category ? `${POLICY_CATEGORY_ROUTE[blocked.category]}/${blocked.policyId}` : "/invoice";
+    const backRoute = sourcePolicyReturnTo ?? (blocked.category ? `${POLICY_CATEGORY_ROUTE[blocked.category]}/${blocked.policyId}` : "/invoice");
     const reasonText: Record<CreateInvoiceBlockedReason, string> = {
       NOT_FOUND: t.invoice.policyNotFound,
       CANCELLED_POLICY: t.invoice.createInvoiceBlockedCancelled,
@@ -207,7 +221,7 @@ export function CreateInvoiceForm({
       )}
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/invoice")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push(sourcePolicyHref)} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

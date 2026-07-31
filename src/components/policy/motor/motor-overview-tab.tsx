@@ -154,7 +154,7 @@ export function MotorOverviewTab({
       }
       return;
     }
-    router.push(`/policy/motor?deleted=${encodeURIComponent(result.recordNumber)}`);
+    router.replace(`/policy/motor?deleted=${encodeURIComponent(result.recordNumber)}`);
   };
 
   if (!editing) {

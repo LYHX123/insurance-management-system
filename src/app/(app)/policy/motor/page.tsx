@@ -6,15 +6,25 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { MotorListTable } from "@/components/policy/motor/motor-list-table";
 import type { MotorListRow } from "@/components/policy/types";
 
-export default async function MotorPolicyListPage() {
+export default async function MotorPolicyListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ customerId?: string }>;
+}) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "policy.motor")) {
     redirect("/access-denied");
   }
 
+  // Phase 8.1 Part 4 — the "View All Motor Policies" entry point from
+  // Customer Detail's Related Records tab filters at the database level,
+  // never just in the browser: customerId here narrows the actual Prisma
+  // query.
+  const { customerId } = await searchParams;
+
   const [records, receiptSums, paymentSums] = await Promise.all([
     prisma.policyRecord.findMany({
-      where: { category: "MOTOR", deletedAt: null },
+      where: { category: "MOTOR", deletedAt: null, ...(customerId ? { customerId } : {}) },
       include: {
         customer: { select: { companyName: true } },
         motorDetail: { select: { insuranceType: true, registrationNumber: true } },

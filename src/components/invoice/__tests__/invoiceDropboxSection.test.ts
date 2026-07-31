@@ -12,13 +12,13 @@ const sectionSource = readFileSync(join(__dirname, "..", "invoice-dropbox-sectio
 const listSource = readFileSync(join(__dirname, "..", "invoice-list-table.tsx"), "utf8");
 
 describe("Invoice Dropbox detail section", () => {
-  it("reuses the shared DropboxPathDisplay component rather than re-implementing path rendering", () => {
-    expect(sectionSource).toMatch(/import\s*\{\s*DropboxPathDisplay\s*\}\s*from\s*"@\/components\/dropbox\/dropbox-path-display"/);
+  it("reuses the shared CollapsibleDropboxPath component (default-collapsed, Phase 8 Part 6) rather than re-implementing path rendering", () => {
+    expect(sectionSource).toMatch(/import\s*\{\s*CollapsibleDropboxPath\s*\}\s*from\s*"@\/components\/dropbox\/dropbox-path-display"/);
     expect(sectionSource).not.toMatch(/break-all|break-words/);
   });
 
-  it("renders all four required paths (Business Folder, Invoice Folder, Invoice File) via the shared component", () => {
-    const matches = sectionSource.match(/<DropboxPathDisplay/g) ?? [];
+  it("renders all required paths (Business Folder, Invoice Folder, Invoice File) via the shared collapsible component", () => {
+    const matches = sectionSource.match(/<CollapsibleDropboxPath/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(3);
   });
 

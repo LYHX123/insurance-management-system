@@ -144,7 +144,7 @@ export function BondOverviewTab({
       }
       return;
     }
-    router.push(`/policy/bond?deleted=${encodeURIComponent(result.recordNumber)}`);
+    router.replace(`/policy/bond?deleted=${encodeURIComponent(result.recordNumber)}`);
   };
 
   if (!editing) {

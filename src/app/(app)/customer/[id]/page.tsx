@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasPermission, isAdmin } from "@/lib/permissions";
 import { getDropboxIntegrationRow } from "@/lib/integrations/dropbox/service";
 import { buildCustomerDropboxPathViewModel } from "@/lib/integrations/dropbox/customerPathViewModel";
+import { getCustomerRelatedRecords } from "@/lib/customers/relatedRecords";
 import { CustomerDetailView } from "@/components/customers/customer-detail";
 
 export default async function CustomerDetailPage({
@@ -17,7 +18,7 @@ export default async function CustomerDetailPage({
   }
 
   const { id } = await params;
-  const [customer, dropboxIntegration, dropboxPathViewModel] = await Promise.all([
+  const [customer, dropboxIntegration, dropboxPathViewModel, relatedRecordsData] = await Promise.all([
     prisma.customer.findUnique({
       where: { id },
       include: {
@@ -28,6 +29,7 @@ export default async function CustomerDetailPage({
     }),
     getDropboxIntegrationRow(),
     buildCustomerDropboxPathViewModel(id),
+    getCustomerRelatedRecords(id, session.user.id, session.user),
   ]);
 
   if (!customer) notFound();
@@ -120,6 +122,7 @@ export default async function CustomerDetailPage({
         customerDocumentsFolder: dropboxPathViewModel.customerDocumentsFolder,
         generalDocumentsFolder: dropboxPathViewModel.generalDocumentsFolder,
       }}
+      relatedRecords={relatedRecordsData}
     />
   );
 }

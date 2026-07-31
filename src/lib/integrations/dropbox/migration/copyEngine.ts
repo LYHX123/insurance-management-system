@@ -19,6 +19,7 @@ import { runInBatches, DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE } from "./batch";
 import type { MigrationActionResult } from "./types";
 import type { Dropbox } from "dropbox";
 import type { DropboxMigrationObjectLedgerModel } from "@/generated/prisma/models";
+import { withRateLimitBackoff } from "../rateLimitRetry";
 
 export async function startCopyPhase(jobId: string): Promise<MigrationActionResult<{ started: true }>> {
   const job = await prisma.dropboxMigrationJob.findUnique({ where: { id: jobId } });
@@ -44,14 +45,17 @@ export async function pauseCopyPhase(jobId: string): Promise<MigrationActionResu
 
 async function ensureDestinationFolder(client: Dropbox, path: string): Promise<{ id: string | null }> {
   try {
-    const meta = await client.filesGetMetadata({ path });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses
+    // — Stage D's copy phase is the case that originally showed this app
+    // gets rate-limited more than expected.
+    const meta = await withRateLimitBackoff(() => client.filesGetMetadata({ path }));
     if (meta.result[".tag"] !== "folder") {
       throw Object.assign(new Error("COPY_DESTINATION_MISMATCH"), { code: "COPY_DESTINATION_MISMATCH" });
     }
     return { id: meta.result.id ?? null };
   } catch (err) {
     if (isNotFoundError(err)) {
-      const created = await client.filesCreateFolderV2({ path, autorename: false });
+      const created = await withRateLimitBackoff(() => client.filesCreateFolderV2({ path, autorename: false }));
       return { id: created.result.metadata.id ?? null };
     }
     throw err;
@@ -66,7 +70,7 @@ async function copyFileViaReference(
   // Already present at destination with matching content (checked during
   // preview) — nothing to copy.
   try {
-    const existing = await destinationClient.filesGetMetadata({ path: row.destinationPath });
+    const existing = await withRateLimitBackoff(() => destinationClient.filesGetMetadata({ path: row.destinationPath }));
     if (existing.result[".tag"] === "file") {
       const fileMeta = existing.result as { size?: number; content_hash?: string; id?: string };
       if (row.expectedContentHash && fileMeta.content_hash === row.expectedContentHash) {
@@ -84,7 +88,7 @@ async function copyFileViaReference(
   const sourcePathOrId = row.sourceId ?? row.sourcePath;
   let getRefResult;
   try {
-    getRefResult = await sourceClient.filesCopyReferenceGet({ path: sourcePathOrId });
+    getRefResult = await withRateLimitBackoff(() => sourceClient.filesCopyReferenceGet({ path: sourcePathOrId }));
   } catch (err) {
     if (isNotFoundError(err)) {
       throw Object.assign(new Error("COPY_SOURCE_MISSING"), { code: "COPY_SOURCE_MISSING" });
@@ -92,10 +96,12 @@ async function copyFileViaReference(
     throw err;
   }
 
-  const saved = await destinationClient.filesCopyReferenceSave({
-    copy_reference: getRefResult.result.copy_reference,
-    path: row.destinationPath,
-  });
+  const saved = await withRateLimitBackoff(() =>
+    destinationClient.filesCopyReferenceSave({
+      copy_reference: getRefResult.result.copy_reference,
+      path: row.destinationPath,
+    })
+  );
 
   const metadata = saved.result.metadata;
   if (metadata[".tag"] !== "file") {

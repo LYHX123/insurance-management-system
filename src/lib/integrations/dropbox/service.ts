@@ -12,6 +12,7 @@ import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from 
 import { getActiveClient } from "./migration/config";
 import type { DropboxIntegrationModel } from "@/generated/prisma/models";
 import type { DropboxIntegrationView } from "./types";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 
 export async function getDropboxIntegrationRow(): Promise<DropboxIntegrationModel> {
   return prisma.dropboxIntegration.upsert({
@@ -123,7 +124,9 @@ export async function verifyOrCreateRootFolder(client: Dropbox, rootFolder: stri
   const normalized = normalizeRootFolder(rootFolder);
 
   try {
-    const metadata = await client.filesGetMetadata({ path: normalized });
+    // Single admin-triggered action (OAuth connect / Save Root Folder) —
+    // never called from a batch loop, so bounded tightly.
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path: normalized }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] === "folder") {
       return { path: normalized, folderId: metadata.result.id ?? null };
     }
@@ -140,7 +143,7 @@ export async function verifyOrCreateRootFolder(client: Dropbox, rootFolder: stri
   }
 
   try {
-    const created = await client.filesCreateFolderV2({ path: normalized, autorename: false });
+    const created = await withRateLimitBackoff(() => client.filesCreateFolderV2({ path: normalized, autorename: false }), INTERACTIVE_BACKOFF);
     return { path: normalized, folderId: created.result.metadata.id ?? null };
   } catch {
     throw new DropboxIntegrationError("ROOT_FOLDER_CREATE_FAILED", "Failed to create the Dropbox root folder.");
@@ -164,7 +167,8 @@ export async function completeOAuthConnection(input: CompleteConnectionInput): P
 
   let account;
   try {
-    const response = await client.usersGetCurrentAccount();
+    // One-time OAuth callback, not a batch call — bounded tightly.
+    const response = await withRateLimitBackoff(() => client.usersGetCurrentAccount(), INTERACTIVE_BACKOFF);
     account = response.result;
   } catch (err) {
     throw mapDropboxError(err);
@@ -242,11 +246,13 @@ export async function testDropboxConnection(): Promise<TestConnectionResult> {
   const { client, row } = auth;
 
   try {
-    const accountResponse = await client.usersGetCurrentAccount();
+    // Single admin-triggered "Test Connection" click — bounded tightly so
+    // it never hangs.
+    const accountResponse = await withRateLimitBackoff(() => client.usersGetCurrentAccount(), INTERACTIVE_BACKOFF);
     const account = accountResponse.result;
 
     const normalizedRoot = normalizeRootFolder(row.rootFolder);
-    const metadata = await client.filesGetMetadata({ path: normalizedRoot });
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path: normalizedRoot }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "folder") {
       throw new DropboxIntegrationError("ROOT_FOLDER_NOT_FOUND", "The configured root folder no longer exists.");
     }
@@ -292,7 +298,8 @@ export async function disconnectDropbox(): Promise<DisconnectResult> {
   const auth = await getAuthenticatedDropboxClient();
   if (auth.ok) {
     try {
-      await auth.client.authTokenRevoke();
+      // Single admin-triggered "Disconnect" click — bounded tightly.
+      await withRateLimitBackoff(() => auth.client.authTokenRevoke(), INTERACTIVE_BACKOFF);
     } catch {
       warning = "Dropbox token revocation could not be confirmed; the local connection was cleared regardless.";
     }

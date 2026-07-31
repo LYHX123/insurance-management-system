@@ -13,8 +13,8 @@ import { ChevronDown, ChevronRight, RefreshCw, ShieldCheck } from "lucide-react"
 import { useLocale } from "@/i18n/locale-provider";
 import { IconButton } from "@/components/ui/icon-button";
 import { Badge } from "@/components/ui/badge";
-import { DropboxPathDisplay, STATE_TONE } from "@/components/dropbox/dropbox-path-display";
-import type { ClaimDocumentDropboxInfo, DropboxPathState } from "@/components/claims/types";
+import { DropboxPathDisplay, STATE_TONE, useDropboxStateLabels } from "@/components/dropbox/dropbox-path-display";
+import type { ClaimDocumentDropboxInfo } from "@/components/claims/types";
 
 export function ClaimDocumentDropboxBadge({
   dropbox,
@@ -26,17 +26,7 @@ export function ClaimDocumentDropboxBadge({
   onToggle: () => void;
 }) {
   const { t } = useLocale();
-
-  const stateLabel: Record<DropboxPathState, string> = {
-    synced: t.dropbox.stateSynced,
-    planned: t.dropbox.statePlanned,
-    pending: t.dropbox.statePending,
-    syncing: t.dropbox.stateSyncing,
-    error: t.dropbox.stateError,
-    conflict: t.dropbox.stateConflict,
-    not_connected: t.dropbox.stateNotConnected,
-    unavailable: t.dropbox.stateUnavailable,
-  };
+  const stateLabel = useDropboxStateLabels();
 
   return (
     <div className="flex flex-col items-start gap-1">

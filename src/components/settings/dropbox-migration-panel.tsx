@@ -17,6 +17,7 @@ import {
   runCopyBatchAction,
   runVerificationBatchAction,
   activateDestinationNamespaceAction,
+  verifyActiveStorageAction,
 } from "@/app/(app)/settings/dropboxMigrationActions";
 import type { DropboxMigrationNamespaceView } from "@/lib/integrations/dropbox/migration/config";
 import type { DropboxMigrationJobView } from "@/lib/integrations/dropbox/migration/types";
@@ -66,6 +67,7 @@ export function DropboxMigrationPanel({
 
   const [copyProgress, setCopyProgress] = useState<{ succeeded: number; failed: number; remaining: number } | null>(null);
   const [verifyProgress, setVerifyProgress] = useState<{ verified: number; failed: number; remaining: number } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const stopRequested = useRef(false);
 
   const showError = (code: string) => {
@@ -195,6 +197,105 @@ export function DropboxMigrationPanel({
   };
 
   const isActive = namespace.activeNamespaceMode === "TEAM_FOLDER_NAMESPACE";
+  const isCompleted = status === "COMPLETED";
+
+  const handleVerifyActiveStorage = async () => {
+    setError(null);
+    setMessage(null);
+    setBusy("verify-active");
+    const result = await verifyActiveStorageAction();
+    setBusy(null);
+    if (!result.success) return showError(result.error);
+    setMessage(t.settings.dropboxMigrationVerifyActiveSuccess);
+  };
+
+  if (isCompleted) {
+    return (
+      <Card className="max-w-2xl p-6">
+        <div className="flex flex-col gap-5">
+          <div>
+            <h2 className="section-title">{t.settings.dropboxMigrationCompletedTitle}</h2>
+            <p className="mt-1 text-sm text-zinc-500">{t.settings.dropboxMigrationSectionDescription}</p>
+          </div>
+
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <dt className="text-secondary">{t.settings.dropboxMigrationTargetLocationLabel}</dt>
+              <dd className="font-medium text-zinc-800">{namespace.destinationNamespaceDisplayName ?? t.settings.dropboxMigrationTargetLocationValue}</dd>
+              <dd className="text-xs text-zinc-500">{namespace.activeRootFolder}</dd>
+            </div>
+            <div>
+              <dt className="text-secondary">{t.settings.dropboxMigrationLegacySourceLabel}</dt>
+              <dd className="font-medium text-zinc-800">{t.settings.dropboxMigrationCurrentLocationValue}</dd>
+              <dd className="text-xs text-zinc-500">{latestJob?.sourceRootPath ?? "/Insurance Management System"}</dd>
+            </div>
+            <div>
+              <dt className="text-secondary">{t.settings.dropboxMigrationStatusLabel}</dt>
+              <dd>
+                <Badge tone="success">{statusLabel(status)}</Badge>
+              </dd>
+            </div>
+            {latestJob?.completedAt && (
+              <div>
+                <dt className="text-secondary">{t.settings.dropboxMigrationCompletedAt}</dt>
+                <dd className="font-medium text-zinc-800">{new Date(latestJob.completedAt).toLocaleString()}</dd>
+              </div>
+            )}
+          </dl>
+
+          {error && <p role="alert" className="form-error">{error}</p>}
+          {message && <p className="text-sm text-emerald-700">{message}</p>}
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={handleVerifyActiveStorage} disabled={busy !== null}>
+              {t.settings.dropboxMigrationVerifyActiveStorage}
+            </Button>
+            <Button type="button" variant="secondary" onClick={handleDiagnostic} disabled={busy !== null}>
+              {t.settings.dropboxMigrationRunDiagnostic}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setShowHistory((v) => !v)}>
+              {showHistory ? t.settings.dropboxMigrationHideHistory : t.settings.dropboxMigrationViewHistory}
+            </Button>
+          </div>
+
+          {showHistory && (
+            <div className="rounded-md border border-zinc-200 p-3 text-sm text-zinc-600">
+              <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-secondary">{t.settings.dropboxMigrationObjectsTransferred}</dt>
+                  <dd>{(latestJob?.previewTotals.folders ?? 0) + (latestJob?.previewTotals.files ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-secondary">Customer</dt>
+                  <dd>{latestJob?.previewTotals.customerFolders ?? 0} / {latestJob?.previewTotals.customerDocuments ?? 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-secondary">Quotation</dt>
+                  <dd>{latestJob?.previewTotals.quotationFolders ?? 0} / {latestJob?.previewTotals.quotationFiles ?? 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-secondary">Policy</dt>
+                  <dd>{latestJob?.previewTotals.policyFolders ?? 0} / {latestJob?.previewTotals.policyFiles ?? 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-secondary">Invoice</dt>
+                  <dd>{latestJob?.previewTotals.invoiceFolders ?? 0} / {latestJob?.previewTotals.invoiceFiles ?? 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-secondary">Claim</dt>
+                  <dd>
+                    {(latestJob?.previewTotals.motorClaimFolders ?? 0) + (latestJob?.previewTotals.nonMotorClaimFolders ?? 0)} /{" "}
+                    {(latestJob?.previewTotals.motorClaimFiles ?? 0) + (latestJob?.previewTotals.nonMotorClaimFiles ?? 0)}
+                  </dd>
+                </div>
+              </dl>
+              {latestJob?.previewSummary && <p className="mt-3 text-xs text-zinc-500">{latestJob.previewSummary}</p>}
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="max-w-2xl p-6">

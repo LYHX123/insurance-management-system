@@ -22,6 +22,7 @@ import {
 } from "./quotationDropboxNaming";
 import { computeQuotationContentFingerprint } from "./quotationContentFingerprint";
 import { generateQuotationExcel, TemplateGenerationError } from "@/lib/quotationTemplateEngine";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 
 const STALE_SYNCING_THRESHOLD_MS = 2 * 60 * 1000;
 const QUOTATION_SUBFOLDER_NAME = "Quotation";
@@ -318,7 +319,8 @@ function isNotFoundError(err: unknown): boolean {
 
 async function tryGetMetadata(client: Dropbox, path: string): Promise<{ tag: string; id: string | null; displayPath: string; rev?: string } | null> {
   try {
-    const metadata = await client.filesGetMetadata({ path });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path }));
     const result = metadata.result;
     return {
       tag: result[".tag"],
@@ -432,7 +434,7 @@ export async function syncQuotationVersionToDropbox(versionId: string): Promise<
     assertInsideRoot(quotationFolderPath, auth.row.rootFolder);
     const existingSubfolder = await tryGetMetadata(auth.client, quotationFolderPath);
     if (!existingSubfolder) {
-      await auth.client.filesCreateFolderV2({ path: quotationFolderPath, autorename: false });
+      await withRateLimitBackoff(() => auth.client.filesCreateFolderV2({ path: quotationFolderPath, autorename: false }));
     } else if (existingSubfolder.tag !== "folder") {
       return failVersionResult(versionId, "CONFLICT", "BUSINESS_FOLDER_CONFLICT", "A file exists where the Quotation subfolder should be.");
     }
@@ -486,7 +488,7 @@ export async function syncQuotationVersionToDropbox(versionId: string): Promise<
       uploadMode = existing.rev ? { ".tag": "update", update: existing.rev } : { ".tag": "add" };
     }
 
-    const uploaded = await auth.client.filesUpload({ path: targetPath, mode: uploadMode, autorename: false, contents: buffer });
+    const uploaded = await withRateLimitBackoff(() => auth.client.filesUpload({ path: targetPath, mode: uploadMode, autorename: false, contents: buffer }));
     const result = uploaded.result;
 
     await prisma.quotationDropboxVersion.update({
@@ -537,7 +539,7 @@ export async function ensureBusinessFolder(
   ): Promise<{ created: true; folderId: string | null; displayPath: string } | { created: false; isFile: boolean }> => {
     const path = joinDropboxPath(customerFolderPath, folderName);
     try {
-      const created = await client.filesCreateFolderV2({ path, autorename: false });
+      const created = await withRateLimitBackoff(() => client.filesCreateFolderV2({ path, autorename: false }));
       return { created: true, folderId: created.result.metadata.id ?? null, displayPath: created.result.metadata.path_display ?? path };
     } catch (err) {
       const existing = await tryGetMetadata(client, path).catch(() => null);
@@ -608,7 +610,9 @@ export async function verifyBusinessFolder(quotationId: string): Promise<Quotati
   }
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: businessFile.dropboxFolderId });
+    // Read-only single-record check (Part 9/10 convention) — bounded
+    // tightly so an admin's Verify click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: businessFile.dropboxFolderId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "folder") {
       return failBusinessFileResult(businessFile.id, "ERROR", "BUSINESS_FOLDER_CONFLICT", "The linked Dropbox object is not a folder.");
     }
@@ -678,7 +682,9 @@ export async function verifyQuotationVersion(versionId: string): Promise<Quotati
   }
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: version.excelDropboxFileId });
+    // Read-only single-record check (Part 9/10 convention) — bounded
+    // tightly so an admin's Verify click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: version.excelDropboxFileId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "file") {
       return failVersionResult(versionId, "ERROR", "DROPBOX_FILE_IS_FOLDER", "The linked Dropbox object is a folder, not a file.");
     }

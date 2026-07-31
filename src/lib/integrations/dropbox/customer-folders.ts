@@ -10,6 +10,7 @@ import { getAuthenticatedDropboxClient } from "./service";
 import { joinDropboxPath, assertInsideRoot } from "./paths";
 import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from "./errors";
 import { buildCustomerFolderName } from "./customer-folder-names";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 import type { CustomerDropboxFolderModel } from "@/generated/prisma/models";
 
 // Insurance-type folders (Motor/Non Motor/Bond/Work Permit) are deliberately
@@ -54,7 +55,11 @@ async function tryGetFolderMetadata(
   isFileCode: DropboxErrorCode
 ): Promise<{ id: string | null; displayPath: string } | null> {
   try {
-    const metadata = await client.filesGetMetadata({ path });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses
+    // — Stage D's migration copy phase showed this app gets rate-limited
+    // more than expected; the same retry applies here, idempotently (a
+    // retried GET has no side effect to duplicate).
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path }));
     if (metadata.result[".tag"] === "folder") {
       return { id: metadata.result.id ?? null, displayPath: metadata.result.path_display ?? path };
     }
@@ -83,7 +88,7 @@ async function ensureFolder(
   if (existing) return existing;
 
   try {
-    const created = await client.filesCreateFolderV2({ path, autorename: false });
+    const created = await withRateLimitBackoff(() => client.filesCreateFolderV2({ path, autorename: false }));
     return { id: created.result.metadata.id ?? null, displayPath: created.result.metadata.path_display ?? path };
   } catch (err) {
     if (err instanceof DropboxIntegrationError) throw err;
@@ -218,7 +223,8 @@ export async function verifyCustomerFolder(customerId: string): Promise<FolderOp
   }
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: row.dropboxFolderId });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: row.dropboxFolderId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "folder") {
       throw new DropboxIntegrationError("CUSTOMER_FOLDER_NOT_FOUND", "The customer folder no longer exists or is not a folder.");
     }
@@ -315,7 +321,11 @@ export async function renameCustomerFolder(customerId: string): Promise<FolderOp
   try {
     const customersPath = await ensureCustomersFolder(auth.client, auth.row.rootFolder);
     const newPath = joinDropboxPath(customersPath, newFolderName);
-    const moved = await auth.client.filesMoveV2({ from_path: row.dropboxFolderId, to_path: newPath, autorename: false });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    const moved = await withRateLimitBackoff(
+      () => auth.client.filesMoveV2({ from_path: row.dropboxFolderId!, to_path: newPath, autorename: false }),
+      INTERACTIVE_BACKOFF
+    );
     const movedMetadata = moved.result.metadata;
     // A successful folder move always yields folder metadata in practice;
     // the SDK's union type also allows "deleted" for other Relocation use
@@ -364,7 +374,9 @@ export async function rebuildCustomerSubfolders(customerId: string): Promise<Fol
   if (!auth.ok) return { success: false, status: "ERROR", code: auth.code, message: auth.message };
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: row.dropboxFolderId });
+    // Single admin-triggered "Rebuild" action on one customer — bounded
+    // tightly so the click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: row.dropboxFolderId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "folder") {
       throw new DropboxIntegrationError("CUSTOMER_FOLDER_NOT_FOUND", "The customer folder no longer exists or is not a folder.");
     }

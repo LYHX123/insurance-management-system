@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Trash2, UserCog, CheckCircle2, RotateCcw, Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Pencil, Trash2, UserCog, CheckCircle2, RotateCcw, Plus } from "lucide-react";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
 import { useLocale } from "@/i18n/locale-provider";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -31,6 +31,7 @@ export function TaskDetailPanel({
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium", timeStyle: "short" });
 
   const isCreator = task.createdById === currentUserId;
@@ -53,7 +54,14 @@ export function TaskDetailPanel({
     setIsConfirmBusy(false);
     setConfirmKind(null);
     if (result.success && confirmKind === "delete") {
-      router.push(`/task/${categorySlug}`);
+      // replace, not push — a deleted task must not be reachable again via
+      // the browser back button (Phase 8 Part 11). Preserve the current
+      // search/status query string (Phase 8.1 Part 4) — those live in the
+      // URL now (useUrlListState), so a bare category URL here would
+      // silently reset the list's filters after a delete.
+      const qs = searchParams.toString();
+      router.replace(`/task/${categorySlug}${qs ? `?${qs}` : ""}`);
+      return;
     }
     router.refresh();
   };
@@ -80,10 +88,7 @@ export function TaskDetailPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto rounded-surface border border-zinc-200 bg-white p-card shadow-sm">
-      <Link href={`/task/${categorySlug}`} className="inline-flex w-fit items-center gap-1.5 text-sm text-emerald-700 hover:underline md:hidden">
-        <ArrowLeft size={14} />
-        {t.task.backToTasks}
-      </Link>
+      <SmartBackLink fallbackHref={`/task/${categorySlug}`} label={t.task.backToTasks} className="md:hidden" />
 
       {/* Header */}
       <div className="flex flex-col gap-2 border-b border-zinc-100 pb-4">

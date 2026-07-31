@@ -12,6 +12,7 @@ import { getMigrationDestinationClient, mapMigrationError } from "./config";
 import { getOrCreateActiveMigrationJob } from "./job";
 import { isNotFoundError } from "./notFound";
 import type { MigrationActionResult } from "./types";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "../rateLimitRetry";
 
 function buildTempFolderName(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -45,7 +46,9 @@ export async function runDestinationWriteAccessTest(initiatedById?: string | nul
   // given the timestamp) fails loudly instead of silently writing elsewhere.
   let createdId: string | null;
   try {
-    const created = await client.filesCreateFolderV2({ path, autorename: false });
+    // Single admin-triggered probe (Settings -> write-access test) — bounded
+    // tightly so the click never hangs.
+    const created = await withRateLimitBackoff(() => client.filesCreateFolderV2({ path, autorename: false }), INTERACTIVE_BACKOFF);
     createdId = created.result.metadata.id ?? null;
   } catch (err) {
     const mapped = mapMigrationError(err);
@@ -60,7 +63,7 @@ export async function runDestinationWriteAccessTest(initiatedById?: string | nul
   // match, per the spec's explicit "refuse to delete if the returned
   // ID/path does not match the just-created object" requirement.
   try {
-    const meta = await client.filesGetMetadata({ path });
+    const meta = await withRateLimitBackoff(() => client.filesGetMetadata({ path }), INTERACTIVE_BACKOFF);
     const matches = meta.result[".tag"] === "folder" && meta.result.id === createdId;
     if (!matches) {
       // Deliberately does NOT attempt cleanup here — we are not certain
@@ -83,7 +86,7 @@ export async function runDestinationWriteAccessTest(initiatedById?: string | nul
 
   // 3. Delete — only this exact path, never a broad/recursive delete call.
   try {
-    const deleted = await client.filesDeleteV2({ path });
+    const deleted = await withRateLimitBackoff(() => client.filesDeleteV2({ path }), INTERACTIVE_BACKOFF);
     const deletedTag = deleted.result.metadata?.[".tag"];
     const deletedId = deletedTag === "folder" || deletedTag === "file" ? (deleted.result.metadata as { id?: string }).id : undefined;
     if (deletedId && deletedId !== createdId) {
@@ -103,7 +106,7 @@ export async function runDestinationWriteAccessTest(initiatedById?: string | nul
   // 4. Confirm it's actually gone.
   let cleanedUp = false;
   try {
-    await client.filesGetMetadata({ path });
+    await withRateLimitBackoff(() => client.filesGetMetadata({ path }), INTERACTIVE_BACKOFF);
   } catch (err) {
     cleanedUp = isNotFoundError(err);
   }

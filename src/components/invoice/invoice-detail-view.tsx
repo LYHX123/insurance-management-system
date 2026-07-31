@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,10 +66,7 @@ export function InvoiceDetailView({ detail, dropbox, isAdmin }: { detail: Invoic
   return (
     <div className="flex flex-col gap-section">
       <div>
-        <Link href="/invoice" className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline">
-          <ArrowLeft size={14} />
-          {t.invoice.backToList}
-        </Link>
+        <SmartBackLink fallbackHref="/invoice" label={t.invoice.backToList} />
         <PageHeader
           title={
             <span className="inline-flex items-center gap-2">

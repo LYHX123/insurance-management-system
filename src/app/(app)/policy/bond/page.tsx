@@ -6,15 +6,24 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { BondListTable } from "@/components/policy/bond/bond-list-table";
 import type { BondListRow } from "@/components/policy/types";
 
-export default async function BondPolicyListPage() {
+export default async function BondPolicyListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ customerId?: string }>;
+}) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "policy.bond")) {
     redirect("/access-denied");
   }
 
+  // Phase 8.1 Part 4 — the "View All Bond Policies" entry point from Customer
+  // Detail's Related Records tab filters at the database level, never just
+  // in the browser: customerId here narrows the actual Prisma query.
+  const { customerId } = await searchParams;
+
   const [records, receiptSums, paymentSums] = await Promise.all([
     prisma.policyRecord.findMany({
-      where: { category: "BOND", deletedAt: null },
+      where: { category: "BOND", deletedAt: null, ...(customerId ? { customerId } : {}) },
       include: {
         customer: { select: { companyName: true } },
         bondDetail: { select: { bondType: true, customBondType: true, policyNumber: true } },

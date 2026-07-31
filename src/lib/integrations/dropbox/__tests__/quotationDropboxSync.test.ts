@@ -503,7 +503,11 @@ describe("generateAndSyncQuotationExcel (Phase 4 Part 6/8/17.D/E)", () => {
   });
 
   it("E4: rate limited -> safe ERROR with RATE_LIMITED code on the version row", async () => {
-    filesUpload.mockRejectedValue({ status: 429, error: {} });
+    // Phase 8 Part 8/12: filesUpload is now wrapped in withRateLimitBackoff,
+    // so a persistent 429 is retried (BATCH_BACKOFF) before failing — a
+    // tiny retry_after keeps this test fast instead of waiting out real
+    // exponential backoff (same convention as rateLimitRetry.test.ts).
+    filesUpload.mockRejectedValue({ status: 429, error: { retry_after: 0.001 } });
     const { syncQuotationVersionToDropbox, generateAndSyncQuotationExcel } = await import("../quotationDropboxSync");
 
     await generateAndSyncQuotationExcel("quo-1");

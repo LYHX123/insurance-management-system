@@ -57,8 +57,13 @@ async function resolveUserNames(ids: Set<string>): Promise<Map<string, string>> 
 // concatenate approach used for Daily Task's ACTIVE/COMPLETED groups, since
 // a single Prisma orderBy array cannot express two different secondary keys
 // per status group.
-export async function getMotorClaims(userId: string): Promise<MotorClaimRow[]> {
-  const baseWhere = { deletedAt: null, participants: { some: { userId } } } as const;
+// Phase 8.1 Part 4 — customerId is an optional additional narrowing filter
+// (the "View All Motor Claims" deep-link from Customer Detail's Related
+// Records tab), always merged alongside the existing participant-scoping
+// filter below, never replacing it: a user must remain unable to see a
+// Claim they aren't a participants member of, customerId or not.
+export async function getMotorClaims(userId: string, customerId?: string): Promise<MotorClaimRow[]> {
+  const baseWhere = { deletedAt: null, participants: { some: { userId } }, ...(customerId ? { customerId } : {}) } as const;
   const include = {
     customer: { select: { companyName: true } },
     project: { select: { projectName: true } },
@@ -104,8 +109,10 @@ export async function getMotorClaims(userId: string): Promise<MotorClaimRow[]> {
   }));
 }
 
-export async function getNonMotorClaims(userId: string): Promise<NonMotorClaimRow[]> {
-  const baseWhere = { deletedAt: null, participants: { some: { userId } } } as const;
+// Same customerId-merged-alongside-participants contract as getMotorClaims
+// above — see that function's doc comment.
+export async function getNonMotorClaims(userId: string, customerId?: string): Promise<NonMotorClaimRow[]> {
+  const baseWhere = { deletedAt: null, participants: { some: { userId } }, ...(customerId ? { customerId } : {}) } as const;
   const include = {
     customer: { select: { companyName: true } },
     project: { select: { projectName: true } },

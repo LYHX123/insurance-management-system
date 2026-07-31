@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Eye, Settings, Plus, Paperclip, Trash2, X } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
@@ -16,7 +16,15 @@ import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
 import { deleteQuotationCaseAction } from "@/app/(app)/quotation/actions";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import type { QuotationListRow, QuotationCaseStatus } from "@/components/quotations/types";
+
+// customerId is server-filtered (see quotation/page.tsx), not client-side —
+// it's tracked here purely so useUrlListState's own router.replace calls
+// (triggered by search/status/date changes) never silently drop it from the
+// URL (Phase 8.1 Part 4).
+const QUOTATION_LIST_DEFAULTS = { search: "", status: "ALL", dateFrom: "", dateTo: "", customerId: "" };
 
 const CASE_STATUSES: QuotationCaseStatus[] = [
   "DRAFT",
@@ -41,10 +49,11 @@ const CASE_STATUS_TONE: Record<QuotationCaseStatus, "neutral" | "brand" | "succe
 export function QuotationsTable({ quotations }: { quotations: QuotationListRow[] }) {
   const { t, locale } = useLocale();
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | QuotationCaseStatus>("ALL");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [listState, setListState] = useUrlListState(QUOTATION_LIST_DEFAULTS);
+  const { search, status: statusFilter, dateFrom, dateTo, customerId } = listState;
+  const returnTo = buildReturnTo(pathname, searchParams.toString());
   const [deleteTarget, setDeleteTarget] = useState<QuotationListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -122,7 +131,7 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                 {t.quotations.manageInsuranceTypes}
               </Button>
             </Link>
-            <Link href="/quotation/new">
+            <Link href={`/quotation/new?returnTo=${encodeURIComponent(returnTo)}`}>
               <Button>
                 <Plus size={16} />
                 {t.quotations.addQuotation}
@@ -132,16 +141,29 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
         }
       />
 
+      {customerId && (
+        <div className="flex items-center gap-2 text-sm text-zinc-600">
+          <Badge tone="brand">{t.common.filteredByCustomer}</Badge>
+          <button
+            type="button"
+            className="text-emerald-700 hover:underline"
+            onClick={() => setListState({ customerId: "" }, { immediate: true })}
+          >
+            {t.common.clearFilter}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
-          onChange={setSearch}
+          onChange={(value) => setListState({ search: value })}
           placeholder={t.quotations.searchPlaceholder}
           className="w-full max-w-sm"
         />
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          onChange={(e) => setListState({ status: e.target.value }, { immediate: true })}
           className="w-auto max-w-[200px]"
         >
           <option value="ALL">{t.quotations.allStatuses}</option>
@@ -154,14 +176,14 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
         <Input
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => setListState({ dateFrom: e.target.value }, { immediate: true })}
           className="w-auto"
           aria-label={t.quotations.dateFrom}
         />
         <Input
           type="date"
           value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          onChange={(e) => setListState({ dateTo: e.target.value }, { immediate: true })}
           className="w-auto"
           aria-label={t.quotations.dateTo}
         />
@@ -188,7 +210,7 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
             {filtered.map((q) => (
               <tr key={q.caseId}>
                 <td className="font-medium text-zinc-800">
-                  <Link href={`/quotation/case/${q.caseId}`} className="text-emerald-700 hover:underline">
+                  <Link href={`/quotation/case/${q.caseId}?returnTo=${encodeURIComponent(returnTo)}`} className="text-emerald-700 hover:underline">
                     {q.quotationNumber}
                   </Link>
                   {q.documentCount > 0 && (

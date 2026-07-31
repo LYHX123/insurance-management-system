@@ -6,15 +6,25 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { WorkPermitListTable } from "@/components/policy/work-permit/work-permit-list-table";
 import type { WorkPermitListRow } from "@/components/policy/types";
 
-export default async function WorkPermitPolicyListPage() {
+export default async function WorkPermitPolicyListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ customerId?: string }>;
+}) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "policy.work_permit")) {
     redirect("/access-denied");
   }
 
+  // Phase 8.1 Part 4 — the "View All Work Permit Policies" entry point from
+  // Customer Detail's Related Records tab filters at the database level,
+  // never just in the browser: customerId here narrows the actual Prisma
+  // query.
+  const { customerId } = await searchParams;
+
   const [records, receiptSums, paymentSums] = await Promise.all([
     prisma.policyRecord.findMany({
-      where: { category: "WORK_PERMIT", deletedAt: null },
+      where: { category: "WORK_PERMIT", deletedAt: null, ...(customerId ? { customerId } : {}) },
       include: {
         customer: { select: { companyName: true } },
         workPermitDetail: { select: { permitType: true, otherPermitType: true } },

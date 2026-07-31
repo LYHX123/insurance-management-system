@@ -7,7 +7,7 @@ import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
+import { DropboxPathDisplay, CollapsibleDropboxPath } from "@/components/dropbox/dropbox-path-display";
 import {
   retryQuotationDropboxSyncAction,
   reuploadQuotationVersionAction,
@@ -181,8 +181,8 @@ export function QuotationDropboxSection({
 
         {dropboxPaths && (
           <div className="flex flex-col gap-3">
-            <DropboxPathDisplay label={t.quotations.dropboxBusinessFolderPath} view={dropboxPaths.businessFolder} />
-            <DropboxPathDisplay label={t.quotations.dropboxQuotationFolderPath} view={dropboxPaths.quotationFolder} />
+            <CollapsibleDropboxPath label={t.quotations.dropboxBusinessFolderPath} view={dropboxPaths.businessFolder} />
+            <CollapsibleDropboxPath label={t.quotations.dropboxQuotationFolderPath} view={dropboxPaths.quotationFolder} />
             {dropboxPaths.versions.length > 0 && (
               <div className="flex flex-col gap-2">
                 <button

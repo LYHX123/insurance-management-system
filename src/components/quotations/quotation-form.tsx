@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { isSafeReturnTo } from "@/lib/navigation/returnTo";
 import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
@@ -569,8 +570,16 @@ export function QuotationForm({
 }) {
   const { t } = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isEdit = !!quotation;
   const isStartingFirstQuotation = !isEdit && !!startFirstQuotationFor;
+  // Phase 8.1 Part 10 — the Case's own Revisions-tab URL (or whatever else
+  // linked into this edit), so Cancel and a successful save both return to
+  // where the user actually came from instead of always landing on the
+  // standalone revision-detail page with no way back further.
+  const rawReturnTo = searchParams.get("returnTo");
+  const editReturnTo = isSafeReturnTo(rawReturnTo) ? rawReturnTo : null;
+  const editBackHref = editReturnTo ?? (quotation ? `/quotation/${quotation.id}` : "/quotation");
 
   const [customerId, setCustomerId] = useState(quotation?.customerId ?? startFirstQuotationFor?.customerId ?? "");
   const [projectId, setProjectId] = useState(quotation?.projectId ?? startFirstQuotationFor?.projectId ?? "");
@@ -1597,7 +1606,7 @@ export function QuotationForm({
         setError(t.quotations[key as keyof typeof t.quotations]);
         return;
       }
-      router.push(`/quotation/${quotation.id}`);
+      router.push(editReturnTo ? `/quotation/${quotation.id}?returnTo=${encodeURIComponent(editReturnTo)}` : `/quotation/${quotation.id}`);
       return;
     }
 
@@ -2181,7 +2190,7 @@ export function QuotationForm({
           onClick={() =>
             router.push(
               isEdit
-                ? `/quotation/${quotation.id}`
+                ? editBackHref
                 : isStartingFirstQuotation
                   ? `/quotation/case/${startFirstQuotationFor.quotationCaseId}`
                   : "/quotation"

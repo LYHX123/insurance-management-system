@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
+import { useSmartBackHref } from "@/lib/navigation/useSmartBack";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ function emptyDocument(): DocumentDraft {
 export function NewCustomerForm() {
   const { t } = useLocale();
   const router = useRouter();
+  const cancelHref = useSmartBackHref("/customer");
 
   const [companyName, setCompanyName] = useState("");
   const [pinNumber, setPinNumber] = useState("");
@@ -342,7 +344,7 @@ export function NewCustomerForm() {
       )}
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => router.push("/customer")} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={() => router.push(cancelHref)} disabled={isSubmitting}>
           {t.common.cancel}
         </Button>
         <Button type="submit" disabled={isSubmitting}>

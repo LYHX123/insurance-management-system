@@ -11,7 +11,7 @@ import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
+import { CollapsibleDropboxPath } from "@/components/dropbox/dropbox-path-display";
 import { syncMissingPolicyDocumentsAction, verifyPolicyBusinessFolderAction } from "@/app/(app)/policy/dropboxActions";
 import type { PolicyDropboxSectionView } from "@/components/policy/types";
 
@@ -68,8 +68,8 @@ export function PolicyDropboxSection({
           <dd className="text-body font-medium">{dropbox.businessFolderName || "—"}</dd>
         </div>
 
-        <DropboxPathDisplay label={t.policy.dropboxBusinessFolderPath} view={dropbox.businessFolder} />
-        <DropboxPathDisplay label={t.policy.dropboxPolicyFolderPath} view={dropbox.policyFolder} />
+        <CollapsibleDropboxPath label={t.policy.dropboxBusinessFolderPath} view={dropbox.businessFolder} />
+        <CollapsibleDropboxPath label={t.policy.dropboxPolicyFolderPath} view={dropbox.policyFolder} />
 
         <p className="text-xs text-secondary">
           {dropbox.source === "QUOTATION_CASE" ? t.policy.dropboxLinkedQuotationBusinessFile : t.policy.dropboxPolicyFallbackBusinessFile}

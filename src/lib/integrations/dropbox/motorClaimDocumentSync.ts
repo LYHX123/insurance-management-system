@@ -23,6 +23,7 @@ import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from 
 import { buildStandardizedMotorClaimDocumentFilename } from "./claimDocumentFilenames";
 import { sanitizeBusinessTitle, toFilenameSegment } from "./quotationDropboxNaming";
 import type { MotorClaimDocumentType } from "@/generated/prisma/enums";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 
 const STALE_SYNCING_THRESHOLD_MS = 2 * 60 * 1000;
 export const CLAIM_SUBFOLDER_NAME = "Claim";
@@ -75,7 +76,8 @@ function isNotFoundError(err: unknown): boolean {
 
 async function tryGetMetadata(client: Dropbox, path: string): Promise<{ tag: string; id: string | null; displayPath: string; rev?: string } | null> {
   try {
-    const metadata = await client.filesGetMetadata({ path });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path }));
     const result = metadata.result;
     return {
       tag: result[".tag"],
@@ -150,7 +152,7 @@ async function ensureNestedFolder(client: Dropbox, parentPath: string, folderNam
     assertInsideRoot(folderPath, rootFolder);
     const existing = await tryGetMetadata(client, folderPath);
     if (!existing) {
-      await client.filesCreateFolderV2({ path: folderPath, autorename: false });
+      await withRateLimitBackoff(() => client.filesCreateFolderV2({ path: folderPath, autorename: false }));
     } else if (existing.tag !== "folder") {
       return { ok: false, code: conflictCode, message: `A file exists where the ${folderName} folder should be.` };
     }
@@ -324,7 +326,7 @@ export async function syncMotorClaimDocumentToDropbox(motorClaimDocumentId: stri
       uploadMode = existing.rev ? { ".tag": "update", update: existing.rev } : { ".tag": "add" };
     }
 
-    const uploaded = await auth.client.filesUpload({ path: targetPath, mode: uploadMode, autorename: false, contents: buffer });
+    const uploaded = await withRateLimitBackoff(() => auth.client.filesUpload({ path: targetPath, mode: uploadMode, autorename: false, contents: buffer }));
     const result = uploaded.result;
 
     await prisma.motorClaimDocumentDropboxSync.update({
@@ -380,7 +382,9 @@ export async function verifyMotorClaimBusinessFolder(motorClaimId: string): Prom
   if (!auth.ok) return { success: false, status: "ERROR", code: "DROPBOX_NOT_CONNECTED", message: auth.message };
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: ref.dropboxFolderId });
+    // Read-only single-record check — bounded tightly so an admin's Verify
+    // click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: ref.dropboxFolderId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "folder") {
       return { success: false, status: "ERROR", code: "BUSINESS_FOLDER_CONFLICT", message: "The linked Dropbox object is not a folder." };
     }
@@ -418,7 +422,9 @@ export async function verifyMotorClaimDocumentSync(motorClaimDocumentId: string)
   if (!auth.ok) return { success: false, status: "ERROR", code: "DROPBOX_NOT_CONNECTED", message: auth.message };
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: syncRow.dropboxFileId });
+    // Read-only single-record check — bounded tightly so an admin's Verify
+    // click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: syncRow.dropboxFileId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "file") {
       return failResult(motorClaimDocumentId, "ERROR", "DROPBOX_FILE_IS_FOLDER", "The linked Dropbox object is a folder, not a file.");
     }

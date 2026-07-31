@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { getDropboxEnv } from "../constants";
 import { getMigrationDestinationClient, mapMigrationError } from "./config";
 import { runInBatches } from "./batch";
-import { withRateLimitBackoff } from "./rateLimitRetry";
+import { withRateLimitBackoff } from "../rateLimitRetry";
 import type { MigrationActionResult } from "./types";
 import type { Dropbox } from "dropbox";
 import type { DropboxMigrationObjectLedgerModel } from "@/generated/prisma/models";

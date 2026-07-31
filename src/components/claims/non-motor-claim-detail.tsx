@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, UserCog, XCircle, RotateCcw, Trash2 } from "lucide-react";
+import { Pencil, UserCog, XCircle, RotateCcw, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
+import { useSmartBackHref } from "@/lib/navigation/useSmartBack";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -85,6 +87,10 @@ export function NonMotorClaimDetailView({
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium", timeStyle: "short" });
+  // Phase 8.1 Part 4 — same resolution SmartBackLink uses below: the
+  // validated `returnTo` this page was opened with (a filtered list URL),
+  // falling back to the bare category route only when none was supplied.
+  const backHref = useSmartBackHref("/task/non-motor-claim");
 
   const isCreator = claim.createdById === currentUserId;
   const isOpen = claim.status === "OPEN";
@@ -129,7 +135,13 @@ export function NonMotorClaimDetailView({
     setIsConfirmBusy(false);
     setConfirmKind(null);
     if (result.success && confirmKind === "delete") {
-      router.push("/task/non-motor-claim");
+      // replace, not push — a deleted claim must not be reachable again via
+      // the browser back button (Phase 8 Part 11). Uses the same resolved
+      // returnTo as SmartBackLink so the filtered list URL (search/status/
+      // pagination) survives the round trip instead of resetting to a bare
+      // category URL (Phase 8.1 Part 4).
+      router.replace(backHref);
+      return;
     }
     router.refresh();
   };
@@ -151,10 +163,7 @@ export function NonMotorClaimDetailView({
 
   return (
     <div className="flex flex-col gap-section">
-      <Link href="/task/non-motor-claim" className="inline-flex w-fit items-center gap-1.5 text-sm text-emerald-700 hover:underline">
-        <ArrowLeft size={14} />
-        {t.task.tabNonMotorClaim}
-      </Link>
+      <SmartBackLink fallbackHref="/task/non-motor-claim" label={t.task.tabNonMotorClaim} />
 
       <PageHeader
         title={

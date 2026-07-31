@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Download, Trash2, GitBranch, Send, CheckCircle2, XCircle, FilePlus, ExternalLink } from "lucide-react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Pencil, Download, Trash2, GitBranch, Send, CheckCircle2, XCircle, FilePlus, ExternalLink } from "lucide-react";
+import { SmartBackLink } from "@/components/ui/smart-back-link";
+import { useSmartBackHref } from "@/lib/navigation/useSmartBack";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -30,6 +32,7 @@ import type {
   RelatedPolicyBusinessStatus,
 } from "@/components/quotations/types";
 import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import { QuotationDropboxSection, type QuotationDropboxView, type QuotationDropboxPathsView } from "@/components/quotations/quotation-dropbox-status";
 
 // Phase 3B: all four Policy categories now exist (see PolicyCategory) — the
@@ -118,6 +121,15 @@ export function QuotationDetailView({
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const backHref = useSmartBackHref("/quotation");
+  // The URL of THIS page as it's currently displayed (including whatever
+  // returnTo it itself was reached with) — used as the returnTo handed to
+  // any child flow (Create Policy, Open Policy) launched from here, so a
+  // page reached via a multi-hop chain (list -> case -> revision) doesn't
+  // lose the rest of the chain just because this hop forgot to forward it.
+  const selfReturnTo = buildReturnTo(pathname, searchParams.toString());
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -176,7 +188,9 @@ export function QuotationDetailView({
       setDeleteError(revisionErrorLabel[result.error] ?? t.quotations.deleteQuotationFailed);
       return;
     }
-    router.push("/quotation");
+    // replace, not push — a deleted quotation must not be reachable again
+    // via the browser back button (Phase 8 Part 11).
+    router.replace(backHref);
   };
 
   const handleCreateRevision = async (reason: string) => {
@@ -190,7 +204,7 @@ export function QuotationDetailView({
       return;
     }
     setShowCreateRevision(false);
-    router.push(`/quotation/${result.id}/edit`);
+    router.push(`/quotation/${result.id}/edit?returnTo=${encodeURIComponent(selfReturnTo)}`);
   };
 
   const handleIssue = async () => {
@@ -291,7 +305,7 @@ export function QuotationDetailView({
       </Button>
 
       {!isLocked && (
-        <Link href={`/quotation/${quotation.id}/edit`}>
+        <Link href={`/quotation/${quotation.id}/edit?returnTo=${encodeURIComponent(selfReturnTo)}`}>
           <Button variant="secondary">
             <Pencil size={16} />
             {t.common.edit}
@@ -350,13 +364,7 @@ export function QuotationDetailView({
         </div>
       ) : (
         <div>
-          <Link
-            href="/quotation"
-            className="mb-2 inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline"
-          >
-            <ArrowLeft size={14} />
-            {t.quotations.backToList}
-          </Link>
+          <SmartBackLink fallbackHref="/quotation" label={t.quotations.backToList} />
           <PageHeader
             title={
               <span className="inline-flex items-center gap-2">
@@ -466,7 +474,9 @@ export function QuotationDetailView({
               <button
                 key={route}
                 type="button"
-                onClick={() => router.push(`${route}?fromQuotationId=${quotation.id}`)}
+                onClick={() =>
+                  router.push(`${route}?fromQuotationId=${quotation.id}&returnTo=${encodeURIComponent(selfReturnTo)}`)
+                }
                 className="flex items-center justify-between rounded-control border border-zinc-200 p-3 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50"
               >
                 <span className="font-medium text-zinc-800">{label}</span>
@@ -695,7 +705,10 @@ export function QuotationDetailView({
                       <td className="text-zinc-500">{p.customerName}</td>
                       <td>
                         {route ? (
-                          <Link href={`${route}/${p.id}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline">
+                          <Link
+                            href={`${route}/${p.id}?returnTo=${encodeURIComponent(selfReturnTo)}`}
+                            className="inline-flex items-center gap-1 text-emerald-700 hover:underline"
+                          >
                             <ExternalLink size={14} />
                             {t.quotations.openPolicy}
                           </Link>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, Pencil, FolderPlus, Upload, Trash2, Plus, Ban, CheckCircle2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
@@ -17,7 +17,11 @@ import { EditCustomerModal } from "@/components/customers/edit-customer-modal";
 import { ProjectFormModal } from "@/components/customers/project-form-modal";
 import { UploadDocumentModal } from "@/components/customers/upload-document-modal";
 import { deleteCustomerAction, toggleCustomerStatusAction } from "@/app/(app)/customer/actions";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import type { CustomerListRow } from "@/components/customers/types";
+
+const CUSTOMER_LIST_DEFAULTS = { search: "", status: "ALL" };
 
 type ModalState =
   | { type: "edit"; customer: CustomerListRow }
@@ -29,11 +33,17 @@ type ModalState =
 export function CustomersTable({ customers }: { customers: CustomerListRow[] }) {
   const { t } = useLocale();
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [listState, setListState] = useUrlListState(CUSTOMER_LIST_DEFAULTS);
+  const { search, status: statusFilter } = listState;
   const [modal, setModal] = useState<ModalState>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Captures this list's current filters/search so detail/create pages can
+  // offer a safe way back that restores them (Phase 8 Part 3).
+  const returnTo = buildReturnTo(pathname, searchParams.toString());
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -82,7 +92,7 @@ export function CustomersTable({ customers }: { customers: CustomerListRow[] }) 
       <PageHeader
         title={t.customers.title}
         actions={
-          <Link href="/customer/new">
+          <Link href={`/customer/new?returnTo=${encodeURIComponent(returnTo)}`}>
             <Button>
               <Plus size={16} />
               {t.customers.addCustomer}
@@ -103,13 +113,13 @@ export function CustomersTable({ customers }: { customers: CustomerListRow[] }) 
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
-          onChange={setSearch}
+          onChange={(value) => setListState({ search: value })}
           placeholder={t.customers.searchPlaceholder}
           className="w-full max-w-sm"
         />
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          onChange={(e) => setListState({ status: e.target.value }, { immediate: true })}
           className="w-auto max-w-[200px]"
         >
           <option value="ALL">{t.customers.allStatuses}</option>
@@ -141,7 +151,7 @@ export function CustomersTable({ customers }: { customers: CustomerListRow[] }) 
               <tr key={customer.id}>
                 <td className="font-medium text-zinc-800">{customer.customerNumber}</td>
                 <td>
-                  <Link href={`/customer/${customer.id}`} className="text-emerald-700 hover:underline">
+                  <Link href={`/customer/${customer.id}?returnTo=${encodeURIComponent(returnTo)}`} className="text-emerald-700 hover:underline">
                     {customer.companyName}
                   </Link>
                 </td>
@@ -159,7 +169,7 @@ export function CustomersTable({ customers }: { customers: CustomerListRow[] }) 
                 </td>
                 <td>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Link href={`/customer/${customer.id}`}>
+                    <Link href={`/customer/${customer.id}?returnTo=${encodeURIComponent(returnTo)}`}>
                       <IconButton title={t.customers.view}>
                         <Eye size={16} />
                       </IconButton>

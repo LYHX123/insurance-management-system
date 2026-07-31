@@ -11,7 +11,7 @@ import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { DropboxPathDisplay } from "@/components/dropbox/dropbox-path-display";
+import { CollapsibleDropboxPath } from "@/components/dropbox/dropbox-path-display";
 import { retryInvoiceDocumentSyncAction, verifyInvoiceDocumentAction, verifyInvoiceBusinessFolderAction } from "@/app/(app)/invoice/dropboxActions";
 import type { InvoiceDropboxSectionView } from "@/components/invoice/types";
 
@@ -61,8 +61,8 @@ export function InvoiceDropboxSection({
         </div>
         <p className="text-xs text-secondary">{sourceLabel}</p>
 
-        <DropboxPathDisplay label={t.invoice.dropboxBusinessFolderPath} view={dropbox.businessFolder} />
-        <DropboxPathDisplay label={t.invoice.dropboxInvoiceFolderPath} view={dropbox.invoiceFolder} />
+        <CollapsibleDropboxPath label={t.invoice.dropboxBusinessFolderPath} view={dropbox.businessFolder} />
+        <CollapsibleDropboxPath label={t.invoice.dropboxInvoiceFolderPath} view={dropbox.invoiceFolder} />
 
         {dropbox.standardizedFileName && (
           <div>
@@ -70,7 +70,7 @@ export function InvoiceDropboxSection({
             <dd className="text-body font-medium">{dropbox.standardizedFileName}</dd>
           </div>
         )}
-        <DropboxPathDisplay label={t.invoice.dropboxInvoiceFilePath} view={dropbox.invoiceFile} />
+        <CollapsibleDropboxPath label={t.invoice.dropboxInvoiceFilePath} view={dropbox.invoiceFile} />
         {dropbox.invoiceFile.isPlanned && (
           <p className="text-xs text-secondary">
             <span className="font-medium">{t.invoice.dropboxPlannedPathTitle}:</span> {t.invoice.dropboxPlannedPathNote}

@@ -12,6 +12,7 @@ import { syncCustomerFolder } from "./customer-folders";
 import { joinDropboxPath, assertInsideRoot } from "./paths";
 import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from "./errors";
 import { buildStandardizedDropboxFilename, isPlausibleStandardizedFilename } from "./customerDocumentFilenames";
+import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 import type { CustomerDocumentType } from "@/generated/prisma/enums";
 
 // A row stuck in SYNCING past this age is treated as abandoned (crashed
@@ -112,7 +113,8 @@ function classifyStatus(code: DropboxErrorCode): "ERROR" | "CONFLICT" {
 
 async function tryGetMetadata(client: Dropbox, path: string): Promise<{ tag: string; id: string | null; displayPath: string } | null> {
   try {
-    const metadata = await client.filesGetMetadata({ path });
+    // Phase 8 Part 8: bounded backoff on Dropbox rate-limit (429) responses.
+    const metadata = await withRateLimitBackoff(() => client.filesGetMetadata({ path }));
     return {
       tag: metadata.result[".tag"],
       id: "id" in metadata.result ? (metadata.result.id ?? null) : null,
@@ -258,17 +260,19 @@ export async function syncCustomerDocument(customerDocumentId: string): Promise<
       // Safe conditional overwrite: mode 'update' only succeeds if the rev
       // we just read is still current, so a concurrent external edit is
       // never silently clobbered.
-      const currentMetadata = await auth.client.filesGetMetadata({ path: targetPath });
+      const currentMetadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: targetPath }));
       const rev = "rev" in currentMetadata.result ? currentMetadata.result.rev : undefined;
       uploadMode = rev ? { ".tag": "update", update: rev } : { ".tag": "add" };
     }
 
-    const uploaded = await auth.client.filesUpload({
-      path: targetPath,
-      mode: uploadMode,
-      autorename: false,
-      contents: file.buffer,
-    });
+    const uploaded = await withRateLimitBackoff(() =>
+      auth.client.filesUpload({
+        path: targetPath,
+        mode: uploadMode,
+        autorename: false,
+        contents: file.buffer,
+      })
+    );
     const result = uploaded.result;
 
     await prisma.customerDocumentDropboxSync.update({
@@ -332,7 +336,9 @@ export async function verifyCustomerDocumentSync(customerDocumentId: string): Pr
   }
 
   try {
-    const metadata = await auth.client.filesGetMetadata({ path: syncRow.dropboxFileId });
+    // Read-only single-record check (Part 9 convention) — bounded tightly so
+    // an admin's Verify click never hangs.
+    const metadata = await withRateLimitBackoff(() => auth.client.filesGetMetadata({ path: syncRow.dropboxFileId! }), INTERACTIVE_BACKOFF);
     if (metadata.result[".tag"] !== "file") {
       return failResult(customerDocumentId, "ERROR", "DROPBOX_FILE_IS_FOLDER", "The linked Dropbox object is a folder, not a file.");
     }

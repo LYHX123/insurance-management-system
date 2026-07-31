@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Eye, Download } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
@@ -13,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { formatMoney } from "@/components/ui/money-input";
+import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildReturnTo } from "@/lib/navigation/returnTo";
 import type { InvoiceListRow, InvoiceStatus } from "@/components/invoice/types";
 
 const STATUS_TONE: Record<InvoiceStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -22,13 +25,19 @@ const STATUS_TONE: Record<InvoiceStatus, "neutral" | "brand" | "success" | "warn
 
 const PAGE_SIZE = 25;
 
+// customerId is server-filtered (see invoice/page.tsx), not client-side —
+// tracked here purely so useUrlListState's own router.replace calls never
+// silently drop it from the URL (Phase 8.1 Part 4).
+const INVOICE_LIST_DEFAULTS = { search: "", customer: "ALL", status: "ALL", invoiceDate: "", page: "1", customerId: "" };
+
 export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
   const { t, locale } = useLocale();
-  const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | InvoiceStatus>("ALL");
-  const [invoiceDateFilter, setInvoiceDateFilter] = useState("");
-  const [page, setPage] = useState(1);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [listState, setListState] = useUrlListState(INVOICE_LIST_DEFAULTS);
+  const { search, customer: customerFilter, status: statusFilter, invoiceDate: invoiceDateFilter, customerId } = listState;
+  const page = Number(listState.page) || 1;
+  const returnTo = buildReturnTo(pathname, searchParams.toString());
 
   const statusLabel: Record<InvoiceStatus, string> = {
     ISSUED: t.invoice.statusIssued,
@@ -61,23 +70,31 @@ export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const resetToFirstPage = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
-
   return (
     <div className="flex flex-col gap-section">
       <PageHeader title={t.invoice.title} />
 
+      {customerId && (
+        <div className="flex items-center gap-2 text-sm text-zinc-600">
+          <Badge tone="brand">{t.common.filteredByCustomer}</Badge>
+          <button
+            type="button"
+            className="text-emerald-700 hover:underline"
+            onClick={() => setListState({ customerId: "" }, { immediate: true })}
+          >
+            {t.common.clearFilter}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
-          onChange={resetToFirstPage(setSearch)}
+          onChange={(value) => setListState({ search: value, page: "1" })}
           placeholder={t.invoice.searchPlaceholder}
           className="w-full max-w-sm"
         />
-        <Select value={customerFilter} onChange={(e) => resetToFirstPage(setCustomerFilter)(e.target.value)} className="w-auto max-w-[220px]">
+        <Select value={customerFilter} onChange={(e) => setListState({ customer: e.target.value, page: "1" }, { immediate: true })} className="w-auto max-w-[220px]">
           <option value="ALL">{t.invoice.allCustomers}</option>
           {customerOptions.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -85,7 +102,7 @@ export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
         </Select>
         <Select
           value={statusFilter}
-          onChange={(e) => resetToFirstPage(setStatusFilter)(e.target.value as typeof statusFilter)}
+          onChange={(e) => setListState({ status: e.target.value, page: "1" }, { immediate: true })}
           className="w-auto max-w-[160px]"
         >
           <option value="ALL">{t.invoice.allStatuses}</option>
@@ -96,7 +113,7 @@ export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
         <Input
           type="date"
           value={invoiceDateFilter}
-          onChange={(e) => resetToFirstPage(setInvoiceDateFilter)(e.target.value)}
+          onChange={(e) => setListState({ invoiceDate: e.target.value, page: "1" }, { immediate: true })}
           className="w-auto"
           aria-label={t.invoice.invoiceDate}
         />
@@ -120,7 +137,7 @@ export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
             {pageRows.map((r) => (
               <tr key={r.id}>
                 <td className="font-medium text-zinc-800">
-                  <Link href={`/invoice/${r.id}`} className="text-emerald-700 hover:underline">
+                  <Link href={`/invoice/${r.id}?returnTo=${encodeURIComponent(returnTo)}`} className="text-emerald-700 hover:underline">
                     {r.invoiceNumber}
                   </Link>
                 </td>
@@ -133,7 +150,7 @@ export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
                 </td>
                 <td>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Link href={`/invoice/${r.id}`}>
+                    <Link href={`/invoice/${r.id}?returnTo=${encodeURIComponent(returnTo)}`}>
                       <IconButton title={t.invoice.view}>
                         <Eye size={16} />
                       </IconButton>
@@ -151,7 +168,7 @@ export function InvoiceListTable({ records }: { records: InvoiceListRow[] }) {
         </Table>
       </TableWrap>
 
-      <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination page={currentPage} totalPages={totalPages} onPageChange={(p) => setListState({ page: String(p) }, { immediate: true })} />
     </div>
   );
 }
