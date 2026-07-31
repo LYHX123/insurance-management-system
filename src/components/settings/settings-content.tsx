@@ -10,9 +10,11 @@ import { SystemPreferencesForm } from "./system-preferences-form";
 import { ReminderSettingsForm } from "./reminder-settings-form";
 import { DropboxIntegrationForm } from "./dropbox-integration-form";
 import { DropboxMigrationPanel } from "./dropbox-migration-panel";
+import { ProductionInitializationPanel } from "./production-initialization-panel";
 import type { Locale } from "@/generated/prisma/enums";
 import type { DropboxIntegrationView } from "@/lib/integrations/dropbox/types";
 import type { DropboxMigrationPageData } from "@/lib/integrations/dropbox/migration/view";
+import type { ProductionInitStatusInfo } from "@/lib/productionInit/types";
 
 export type SettingsData = {
   companyName: string | null;
@@ -45,10 +47,16 @@ export function SettingsContent({
   settings,
   dropbox,
   dropboxMigration,
+  productionInit,
 }: {
   settings: SettingsData;
   dropbox: DropboxIntegrationView;
   dropboxMigration: DropboxMigrationPageData;
+  // Null when ENABLE_PRODUCTION_INITIALIZATION is not "true" on this
+  // deployment — the panel (and its entry point) simply doesn't render at
+  // all in that case, never just hidden by CSS (this feature's spec, Part
+  // 2: "前端入口不可见").
+  productionInit: ProductionInitStatusInfo | null;
 }) {
   const { t } = useLocale();
   const router = useRouter();
@@ -86,7 +94,12 @@ export function SettingsContent({
       <Tabs tabs={tabs} active={tab} onChange={handleTabChange} />
 
       {tab === "companyInfo" && <CompanyInfoForm settings={settings} />}
-      {tab === "systemPreferences" && <SystemPreferencesForm settings={settings} />}
+      {tab === "systemPreferences" && (
+        <div className="flex flex-col gap-4">
+          <SystemPreferencesForm settings={settings} />
+          {productionInit && <ProductionInitializationPanel initialStatus={productionInit} />}
+        </div>
+      )}
       {tab === "reminderSettings" && <ReminderSettingsForm settings={settings} />}
       {tab === "dropbox" && (
         <div className="flex flex-col gap-4">

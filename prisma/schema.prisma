@@ -3250,9 +3250,9 @@ model NonMotorClaimDropboxBusinessFile {
 // own reference subfolder under "Claim/" — this snapshot records that
 // subfolder's name so retries never need to re-derive it (Part 4).
 model MotorClaimDocumentDropboxSync {
-  id                   String              @id @default(cuid())
-  motorClaimDocumentId String              @unique
-  motorClaimDocument   MotorClaimDocument  @relation(fields: [motorClaimDocumentId], references: [id], onDelete: Cascade)
+  id                   String             @id @default(cuid())
+  motorClaimDocumentId String             @unique
+  motorClaimDocument   MotorClaimDocument @relation(fields: [motorClaimDocumentId], references: [id], onDelete: Cascade)
 
   businessFileId     String?
   businessFileSource ClaimDropboxBusinessFileSource?
@@ -3282,9 +3282,9 @@ model MotorClaimDocumentDropboxSync {
 }
 
 model NonMotorClaimDocumentDropboxSync {
-  id                      String                 @id @default(cuid())
-  nonMotorClaimDocumentId String                 @unique
-  nonMotorClaimDocument   NonMotorClaimDocument  @relation(fields: [nonMotorClaimDocumentId], references: [id], onDelete: Cascade)
+  id                      String                @id @default(cuid())
+  nonMotorClaimDocumentId String                @unique
+  nonMotorClaimDocument   NonMotorClaimDocument @relation(fields: [nonMotorClaimDocumentId], references: [id], onDelete: Cascade)
 
   businessFileId     String?
   businessFileSource ClaimDropboxBusinessFileSource?
@@ -3547,4 +3547,78 @@ model DropboxMigrationObjectLedger {
 
   @@unique([migrationJobId, sourcePath])
   @@index([migrationJobId, status])
+}
+
+// =============================================================================
+// Production Initialization (Settings > System, ADMIN-only) — a one-way,
+// triple-confirmed action that clears all business data (Customer through
+// Claims, Ledger, Task, historical import batches, and the five business
+// number counters) while leaving User/SystemSettings/DropboxIntegration/
+// DropboxNamespaceConfig/InsuranceType/LedgerCategory/the Dropbox migration
+// history untouched, and never deletes any real Dropbox file. See
+// src/lib/productionInit/execute.ts's doc comment for the full deletion
+// order and the reasoning behind it (derived from this schema's actual
+// onDelete: Restrict/Cascade/SetNull relations, not assumed).
+// =============================================================================
+
+enum SystemInitializationStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+// Audit trail for the action described above. This table, and every row in
+// it, is itself explicitly EXCLUDED from what Production Initialization
+// deletes — see runProductionInitialization's doc comment — so "did this
+// system ever get wiped, by whom, when, with what result" always survives
+// the wipe it describes, including failed attempts.
+//
+// deletedCounts/preservedCountsBefore/preservedCountsAfter are the one
+// deliberate exception to this schema's established "flat, typed columns,
+// never Json" convention (see PolicyActivity.summary's doc comment for that
+// general rule) — this is a flexible, append-only diagnostic snapshot read
+// only by this feature's own admin UI, never joined/filtered/aggregated
+// against, so a fixed set of typed columns would only add migration churn
+// every time a deletable/preserved model is added or renamed, with no real
+// benefit over a plain count-by-name map.
+model SystemInitializationLog {
+  id String @id @default(cuid())
+
+  // Plain unenforced id string (this schema's existing convention for a
+  // single user reference, see e.g. PolicyActivity.performedById) plus a
+  // point-in-time name snapshot, so this row stays fully meaningful even if
+  // the acting admin's account is later renamed or disabled.
+  executedByUserId       String
+  executedByNameSnapshot String
+
+  status      SystemInitializationStatus @default(RUNNING)
+  startedAt   DateTime                   @default(now())
+  completedAt DateTime?
+
+  // Admin-selected reason, validated server-side against a fixed whitelist
+  // (see src/lib/productionInit/constants.ts's PRODUCTION_INIT_REASONS —
+  // never an arbitrary client-supplied string). Nullable only because rows
+  // created before this field existed have none; every row created going
+  // forward always has one (required at the API layer, not just here).
+  // Never read by the deletion/rollback logic itself — purely descriptive.
+  reason String?
+
+  deletedCounts         Json?
+  preservedCountsBefore Json?
+  preservedCountsAfter  Json?
+
+  // Safe, short, human-readable summary only — NEVER a raw stack trace,
+  // database error, or any Dropbox/credential value. Full technical detail
+  // goes to server (process) logs only, never this table.
+  errorSummary String?
+
+  appVersion String?
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([startedAt])
 }

@@ -5,6 +5,8 @@ import { getSystemSettings } from "@/lib/settings/service";
 import { getDropboxIntegrationRow, toIntegrationView } from "@/lib/integrations/dropbox/service";
 import { getDropboxEnv } from "@/lib/integrations/dropbox/constants";
 import { getMigrationPageData } from "@/lib/integrations/dropbox/migration/view";
+import { isProductionInitializationEnabled } from "@/lib/productionInit/constants";
+import { getProductionInitializationStatus } from "@/lib/productionInit/status";
 import { SettingsContent } from "@/components/settings/settings-content";
 
 export default async function SettingsPage() {
@@ -25,6 +27,13 @@ export default async function SettingsPage() {
     !getDropboxEnv().ok
   );
   const dropboxMigration = await getMigrationPageData();
+
+  // Server-only boolean — the raw env var value itself is never sent to
+  // the client (this feature's spec, Part 2/3). When disabled, the status
+  // query is skipped entirely (no need to touch that table at all) and the
+  // panel receives `null`, which means "don't render this section".
+  const productionInitEnabled = isProductionInitializationEnabled();
+  const productionInit = productionInitEnabled ? await getProductionInitializationStatus() : null;
 
   const plainSettings = {
     companyName: settings.companyName,
@@ -50,5 +59,5 @@ export default async function SettingsPage() {
     loginReminderPopupEnabled: settings.loginReminderPopupEnabled,
   };
 
-  return <SettingsContent settings={plainSettings} dropbox={dropbox} dropboxMigration={dropboxMigration} />;
+  return <SettingsContent settings={plainSettings} dropbox={dropbox} dropboxMigration={dropboxMigration} productionInit={productionInit} />;
 }
