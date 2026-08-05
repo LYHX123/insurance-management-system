@@ -3,20 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { getRemindersAction } from "@/lib/reminders/actions";
 import type { ReminderItem } from "@/lib/reminders/service";
+import { buildReminderDismissKey, shouldAutoOpenReminders } from "@/lib/reminders/autoOpen";
 import { ReminderBell } from "./reminder-bell";
 import { ReminderPanel } from "./reminder-panel";
-
-// Closing the popup only dismisses the *automatic* open-on-load for the
-// rest of this browser session (Part 14) — it never marks any underlying
-// business condition as resolved, and the bell keeps working regardless.
-const SESSION_DISMISS_KEY = "reminders-auto-dismissed";
 
 // Rendered once inside the persistent authenticated layout (Topbar), so the
 // effect below runs exactly once per full page load / session — Next.js
 // keeps this component mounted across client-side navigations within the
 // (app) route group, which is what keeps this from re-fetching or
-// re-opening on every route change (Part 14/Part 17.9).
-export function RemindersWidget() {
+// re-opening on every route change (Part 14/Part 17.9). See
+// src/lib/reminders/autoOpen.ts for the dismiss-key scoping and open/no-open
+// decision (kept as pure, unit-tested functions).
+export function RemindersWidget({ accountKey }: { accountKey: string }) {
+  const dismissKey = buildReminderDismissKey(accountKey);
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const hasLoaded = useRef(false);
@@ -29,8 +28,8 @@ export function RemindersWidget() {
       setReminders(result.items);
       hasLoaded.current = true;
 
-      const alreadyDismissed = sessionStorage.getItem(SESSION_DISMISS_KEY) === "1";
-      if (result.loginReminderPopupEnabled && !alreadyDismissed && result.items.length > 0) {
+      const alreadyDismissed = sessionStorage.getItem(dismissKey) === "1";
+      if (shouldAutoOpenReminders({ loginReminderPopupEnabled: result.loginReminderPopupEnabled, itemCount: result.items.length, alreadyDismissed })) {
         setIsOpen(true);
       }
     });
@@ -38,11 +37,11 @@ export function RemindersWidget() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dismissKey]);
 
   const handleClose = () => {
     setIsOpen(false);
-    sessionStorage.setItem(SESSION_DISMISS_KEY, "1");
+    sessionStorage.setItem(dismissKey, "1");
   };
 
   return (

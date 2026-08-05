@@ -22,7 +22,7 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-4">
-        <RemindersWidget />
+        <RemindersWidget accountKey={fullName} />
         <div className="text-right">
           <p className="text-sm font-medium text-zinc-800">{fullName}</p>
           <p className="text-xs text-zinc-500">{role}</p>
