@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { QuotationCaseView } from "@/components/quotations/quotation-case-view";
 
 export default async function QuotationCasePage({
@@ -98,6 +98,7 @@ export default async function QuotationCasePage({
 
   return (
     <QuotationCaseView
+      canEdit={canEdit(session.user, "quotation")}
       quotationCase={{
         id: quotationCase.id,
         quotationNumber: quotationCase.quotationNumber,

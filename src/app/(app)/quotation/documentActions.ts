@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { documentStorageService, sha256Checksum } from "@/lib/quotationDocuments/storage";
 import { validateUploadedFile } from "@/lib/quotationDocuments/validateUpload";
 import { generateStoredFileName } from "@/lib/quotationDocuments/constants";
@@ -16,7 +16,7 @@ const DOCUMENT_TYPES = Object.values(QuotationDocumentType);
 
 async function requireQuotationPermission() {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "quotation")) {
+  if (!session?.user || !canEdit(session.user, "quotation")) {
     return null;
   }
   return session;

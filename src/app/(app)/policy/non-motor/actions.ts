@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
@@ -24,7 +24,7 @@ type ActionResult<T = object> = ({ success: true } & T) | { success: false; erro
 // small, single-purpose validators are duplicated.
 async function requirePolicyPermission() {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "policy.non_motor")) return null;
+  if (!session?.user || !canEdit(session.user, "policy.non_motor")) return null;
   return session;
 }
 

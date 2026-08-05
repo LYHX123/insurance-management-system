@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import {
   POLICY_FOR_INVOICE_INCLUDE,
   checkPolicyInvoiceEligibility,
@@ -28,7 +28,7 @@ export default async function NewInvoicePage({
   searchParams: Promise<{ fromPolicyId?: string; returnTo?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "invoice")) {
+  if (!session?.user || !canEdit(session.user, "invoice")) {
     redirect("/access-denied");
   }
 

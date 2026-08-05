@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,12 @@ import { createUserAction, updateUserAction } from "@/app/(app)/users/actions";
 import {
   PERMISSION_GROUPS,
   isAdminRole,
+  isEditCapableResource,
+  levelForStoredPermissions,
+  levelToStoredKeys,
   type PermissionKey,
+  type PermissionLevel,
+  type ViewEditResourceKey,
 } from "@/lib/permissions";
 import type { UserRow } from "@/components/users/types";
 
@@ -19,35 +24,52 @@ const languages = ["en", "zh"] as const;
 const KENYAN_PHONE_REGEX = /^(?:\+254\d{9}|0\d{9})$/;
 const MIN_PASSWORD_LENGTH = 8;
 
-const SELECT_ALL_LABEL_KEY: Record<string, "selectAllPolicy" | "selectAllLedger" | "selectAllTaskClaim"> = {
-  policy: "selectAllPolicy",
-  ledger: "selectAllLedger",
-  task: "selectAllTaskClaim",
-};
+const LEVELS: readonly PermissionLevel[] = ["NONE", "VIEW", "EDIT"];
 
-function IndeterminateCheckbox({
-  checked,
-  indeterminate,
+// One None/View/Edit segmented control for a single resource — Edit is
+// visually styled to make clear it already includes View (Part 7/Part 4:
+// "Edit视觉上表示已经包含View"), never a separate combination to pick.
+function LevelSelector({
+  level,
   onChange,
-  className,
+  editCapable,
+  levelLabel,
+  notEditableHint,
 }: {
-  checked: boolean;
-  indeterminate: boolean;
-  onChange: () => void;
-  className?: string;
+  level: PermissionLevel;
+  onChange: (level: PermissionLevel) => void;
+  editCapable: boolean;
+  levelLabel: Record<PermissionLevel, string>;
+  notEditableHint?: string;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = indeterminate;
-  }, [indeterminate]);
+  const options = editCapable ? LEVELS : (["NONE", "VIEW"] as const);
   return (
-    <input
-      ref={ref}
-      type="checkbox"
-      className={className}
-      checked={checked}
-      onChange={onChange}
-    />
+    <div className="inline-flex overflow-hidden rounded-control border border-zinc-300" role="radiogroup">
+      {options.map((opt) => {
+        const active = level === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            title={opt === "EDIT" ? undefined : opt === "VIEW" && !editCapable ? notEditableHint : undefined}
+            onClick={() => onChange(opt)}
+            className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+              active
+                ? opt === "EDIT"
+                  ? "bg-emerald-700 text-white"
+                  : opt === "VIEW"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-zinc-200 text-zinc-700"
+                : "bg-white text-zinc-500 hover:bg-zinc-50"
+            }`}
+          >
+            {levelLabel[opt]}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -84,16 +106,20 @@ export function UserFormModal({
 
   const roleIsAdmin = isAdminRole(role);
 
-  const togglePermission = (key: PermissionKey) => {
+  const toggleBooleanPermission = (key: PermissionKey) => {
     setPermissions((prev) =>
       prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key]
     );
   };
 
-  const toggleGroup = (children: readonly PermissionKey[], nextChecked: boolean) => {
+  // Replaces whatever this resource currently holds (bare legacy key, or
+  // .view/.edit) with the keys for the newly selected level — each resource
+  // can only ever be at exactly one level at a time (Part 7: "每项只能选择
+  // 一个等级"), never an accumulation of checkboxes.
+  const setResourceLevel = (resource: ViewEditResourceKey, level: PermissionLevel) => {
     setPermissions((prev) => {
-      const withoutGroup = prev.filter((p) => !children.includes(p as PermissionKey));
-      return nextChecked ? [...withoutGroup, ...children] : withoutGroup;
+      const withoutResource = prev.filter((p) => p !== resource && p !== `${resource}.view` && p !== `${resource}.edit`);
+      return [...withoutResource, ...levelToStoredKeys(resource, level)];
     });
   };
 
@@ -241,63 +267,70 @@ export function UserFormModal({
               {t.users.adminFullAccessNotice}
             </p>
           ) : (
-            <div className="flex flex-col gap-3 rounded-control border border-zinc-200 p-3">
+            <div className="flex flex-col gap-4 rounded-control border border-zinc-200 p-3">
               {PERMISSION_GROUPS.map((group) => {
-                if (group.standalone) {
-                  const key = group.children[0];
+                if (group.kind === "boolean") {
                   return (
                     <label
-                      key={key}
+                      key={group.menuKey}
                       className="flex items-center gap-2 text-sm text-zinc-700"
                     >
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
-                        checked={permissions.includes(key)}
-                        onChange={() => togglePermission(key)}
+                        checked={permissions.includes(group.booleanKey)}
+                        onChange={() => toggleBooleanPermission(group.booleanKey)}
                       />
                       {t.sidebar[group.menuKey]}
                     </label>
                   );
                 }
 
-                const allChecked = group.children.every((c) =>
-                  permissions.includes(c)
-                );
-                const someChecked = group.children.some((c) =>
-                  permissions.includes(c)
-                );
-
-                return (
-                  <div key={group.menuKey} className="flex flex-col gap-1.5">
-                    <p className="text-sm font-medium text-zinc-800">
-                      {t.sidebar[group.menuKey]}
-                    </p>
-                    <label className="flex items-center gap-2 text-sm text-zinc-700">
-                      <IndeterminateCheckbox
-                        className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
-                        checked={allChecked}
-                        indeterminate={!allChecked && someChecked}
-                        onChange={() => toggleGroup(group.children, !allChecked)}
+                // Single-resource module (Customer/Quotation/Invoice): module
+                // name and selector on one row, no separate sub-module list.
+                if (group.standalone) {
+                  const resource = group.children[0];
+                  return (
+                    <div key={group.menuKey} className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-zinc-800">{t.sidebar[group.menuKey]}</p>
+                      <LevelSelector
+                        level={levelForStoredPermissions(permissions, resource)}
+                        onChange={(level) => setResourceLevel(resource, level)}
+                        editCapable={isEditCapableResource(resource)}
+                        levelLabel={{
+                          NONE: t.users.permissionLevelNone,
+                          VIEW: t.users.permissionLevelView,
+                          EDIT: t.users.permissionLevelEdit,
+                        }}
+                        notEditableHint={t.users.permissionLevelViewNotEditable}
                       />
-                      {t.users[SELECT_ALL_LABEL_KEY[group.menuKey]]}
-                    </label>
-                    <div className="flex flex-col gap-1.5 pl-6">
+                    </div>
+                  );
+                }
+
+                // Multi-resource module (Policy/Ledger/Task & Claim): module
+                // name as a section header, one row + selector per sub-module.
+                return (
+                  <div key={group.menuKey} className="flex flex-col gap-2">
+                    <p className="text-sm font-medium text-zinc-800">{t.sidebar[group.menuKey]}</p>
+                    <div className="flex flex-col gap-2 pl-4">
                       {group.children.map((child) => (
-                        <label
-                          key={child}
-                          className="flex items-center gap-2 text-sm text-zinc-700"
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
-                            checked={permissions.includes(child)}
-                            onChange={() => togglePermission(child)}
+                        <div key={child} className="flex items-center justify-between gap-3">
+                          <p className="text-sm text-zinc-700">
+                            {t.users.permissionChildLabels[child as keyof typeof t.users.permissionChildLabels]}
+                          </p>
+                          <LevelSelector
+                            level={levelForStoredPermissions(permissions, child)}
+                            onChange={(level) => setResourceLevel(child, level)}
+                            editCapable={isEditCapableResource(child)}
+                            levelLabel={{
+                              NONE: t.users.permissionLevelNone,
+                              VIEW: t.users.permissionLevelView,
+                              EDIT: t.users.permissionLevelEdit,
+                            }}
+                            notEditableHint={t.users.permissionLevelViewNotEditable}
                           />
-                          {t.users.permissionChildLabels[
-                            child as keyof typeof t.users.permissionChildLabels
-                          ]}
-                        </label>
+                        </div>
                       ))}
                     </div>
                   </div>

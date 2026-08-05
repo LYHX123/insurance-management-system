@@ -22,7 +22,7 @@ const PAYMENT_STATUS_TONE: Record<PolicyPaymentStatus, "neutral" | "brand" | "su
   OVERPAID: "brand",
 };
 
-export function MotorFinancialTab({ detail }: { detail: MotorDetail }) {
+export function MotorFinancialTab({ detail, canEdit }: { detail: MotorDetail; canEdit: boolean }) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -41,7 +41,7 @@ export function MotorFinancialTab({ detail }: { detail: MotorDetail }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <HistoricalImportWarningCard detail={detail} onResolved={() => router.refresh()} />
+      <HistoricalImportWarningCard detail={detail} onResolved={() => router.refresh()} canEdit={canEdit} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
@@ -55,12 +55,14 @@ export function MotorFinancialTab({ detail }: { detail: MotorDetail }) {
               <dd><Badge tone={PAYMENT_STATUS_TONE[detail.customerPaymentStatus]}>{paymentStatusLabel[detail.customerPaymentStatus]}</Badge></dd>
             </div>
           </dl>
-          <div className="mt-4 flex justify-end">
-            <Button variant="secondary" onClick={() => setShowAddReceipt(true)}>
-              <Plus size={16} />
-              {t.policy.addReceipt}
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="mt-4 flex justify-end">
+              <Button variant="secondary" onClick={() => setShowAddReceipt(true)}>
+                <Plus size={16} />
+                {t.policy.addReceipt}
+              </Button>
+            </div>
+          )}
           <div className="mt-4">
             <h3 className="mb-2 text-sm font-medium text-zinc-700">{t.policy.receiptHistory}</h3>
             <TableWrap scroll>
@@ -100,12 +102,14 @@ export function MotorFinancialTab({ detail }: { detail: MotorDetail }) {
               <dd><Badge tone={PAYMENT_STATUS_TONE[detail.insurerPaymentStatus]}>{paymentStatusLabel[detail.insurerPaymentStatus]}</Badge></dd>
             </div>
           </dl>
-          <div className="mt-4 flex justify-end">
-            <Button variant="secondary" onClick={() => setShowAddPayment(true)}>
-              <Plus size={16} />
-              {t.policy.addPayment}
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="mt-4 flex justify-end">
+              <Button variant="secondary" onClick={() => setShowAddPayment(true)}>
+                <Plus size={16} />
+                {t.policy.addPayment}
+              </Button>
+            </div>
+          )}
           <div className="mt-4">
             <h3 className="mb-2 text-sm font-medium text-zinc-700">{t.policy.paymentHistory}</h3>
             <TableWrap scroll>
@@ -138,9 +142,11 @@ export function MotorFinancialTab({ detail }: { detail: MotorDetail }) {
       <Card>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="section-title">{t.policy.commissionCardTitle}</h2>
-          <Button variant="secondary" onClick={() => setShowEditCommission(true)}>
-            {t.policy.editCommission}
-          </Button>
+          {canEdit && (
+            <Button variant="secondary" onClick={() => setShowEditCommission(true)}>
+              {t.policy.editCommission}
+            </Button>
+          )}
         </div>
         {message && (
           <div className="mb-4 rounded-control border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>

@@ -31,11 +31,13 @@ export function NonMotorDetailView({
   detail,
   customers,
   isAdmin,
+  canEdit,
   dropbox,
 }: {
   detail: NonMotorDetail;
   customers: CustomerOption[];
   isAdmin: boolean;
+  canEdit: boolean;
   dropbox: PolicyDropboxSectionView;
 }) {
   const { t } = useLocale();
@@ -99,12 +101,12 @@ export function NonMotorDetailView({
         {tabButton("activity", t.policy.activityTab)}
       </div>
 
-      {tab === "overview" && <NonMotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} />}
-      {tab === "financial" && <NonMotorFinancialTab detail={detail} />}
+      {tab === "overview" && <NonMotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />}
+      {tab === "financial" && <NonMotorFinancialTab detail={detail} canEdit={canEdit} />}
       {tab === "documents" && (
         <div className="flex flex-col gap-4">
           <PolicyDropboxSection policyRecordId={detail.id} dropbox={dropbox} isAdmin={isAdmin} />
-          <MotorDocumentsTab policyRecordId={detail.id} documents={detail.documents} isAdmin={isAdmin} />
+          <MotorDocumentsTab policyRecordId={detail.id} documents={detail.documents} isAdmin={isAdmin} canEdit={canEdit} />
         </div>
       )}
       {tab === "activity" && <MotorActivityTab activities={detail.activities} />}

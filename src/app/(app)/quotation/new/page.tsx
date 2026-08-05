@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { CreateQuotationCaseForm } from "@/components/quotations/create-quotation-case-form";
 
 // Phase 2B: "New Quotation" creates a lightweight QuotationCase first (no
@@ -11,7 +11,7 @@ import { CreateQuotationCaseForm } from "@/components/quotations/create-quotatio
 // src/app/(app)/quotation/case/[caseId]/start/page.tsx.
 export default async function NewQuotationPage() {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "quotation")) {
+  if (!session?.user || !canEdit(session.user, "quotation")) {
     redirect("/access-denied");
   }
 

@@ -53,6 +53,7 @@ export function CustomerDetailView({
   dropboxFolder,
   dropboxConnected,
   isAdmin,
+  canEdit,
   dropboxPaths,
   relatedRecords,
 }: {
@@ -62,6 +63,7 @@ export function CustomerDetailView({
   dropboxFolder: CustomerDropboxFolderView;
   dropboxConnected: boolean;
   isAdmin: boolean;
+  canEdit: boolean;
   dropboxPaths: { customerFolder: DropboxPathViewPlain; customerDocumentsFolder: DropboxPathViewPlain; generalDocumentsFolder: DropboxPathViewPlain };
   relatedRecords: CustomerRelatedRecordsData;
 }) {
@@ -227,13 +229,15 @@ export function CustomerDetailView({
                           <Download size={16} />
                         </IconButton>
                       </a>
-                      <IconButton
-                        tone="danger"
-                        title={t.common.delete}
-                        onClick={() => setModal({ type: "delete-document", document: doc })}
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
+                      {canEdit && (
+                        <IconButton
+                          tone="danger"
+                          title={t.common.delete}
+                          onClick={() => setModal({ type: "delete-document", document: doc })}
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -260,10 +264,12 @@ export function CustomerDetailView({
           title={customer.companyName}
           description={customer.customerNumber}
           actions={
-            <Button variant="secondary" onClick={() => setModal({ type: "edit-customer" })}>
-              <Pencil size={16} />
-              {t.common.edit}
-            </Button>
+            canEdit ? (
+              <Button variant="secondary" onClick={() => setModal({ type: "edit-customer" })}>
+                <Pencil size={16} />
+                {t.common.edit}
+              </Button>
+            ) : undefined
           }
         />
       </div>
@@ -341,12 +347,14 @@ export function CustomerDetailView({
 
       {tab === "projects" && (
         <div className="flex flex-col gap-4">
-          <div className="flex justify-end">
-            <Button onClick={() => setModal({ type: "add-project" })}>
-              <Plus size={16} />
-              {t.customers.addProject}
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex justify-end">
+              <Button onClick={() => setModal({ type: "add-project" })}>
+                <Plus size={16} />
+                {t.customers.addProject}
+              </Button>
+            </div>
+          )}
 
           <TableWrap scroll>
             <Table className="min-w-[700px]">
@@ -376,22 +384,26 @@ export function CustomerDetailView({
                         <IconButton title={t.customers.viewProject} onClick={() => setModal({ type: "view-project", project })}>
                           <Eye size={16} />
                         </IconButton>
-                        <IconButton title={t.customers.editProject} onClick={() => setModal({ type: "edit-project", project })}>
-                          <Pencil size={16} />
-                        </IconButton>
-                        <IconButton
-                          title={t.customers.uploadDocument}
-                          onClick={() => setModal({ type: "upload-document", projectId: project.id })}
-                        >
-                          <Upload size={16} />
-                        </IconButton>
-                        <IconButton
-                          tone="danger"
-                          title={t.customers.deleteProject}
-                          onClick={() => setModal({ type: "delete-project", project })}
-                        >
-                          <Trash2 size={16} />
-                        </IconButton>
+                        {canEdit && (
+                          <>
+                            <IconButton title={t.customers.editProject} onClick={() => setModal({ type: "edit-project", project })}>
+                              <Pencil size={16} />
+                            </IconButton>
+                            <IconButton
+                              title={t.customers.uploadDocument}
+                              onClick={() => setModal({ type: "upload-document", projectId: project.id })}
+                            >
+                              <Upload size={16} />
+                            </IconButton>
+                            <IconButton
+                              tone="danger"
+                              title={t.customers.deleteProject}
+                              onClick={() => setModal({ type: "delete-project", project })}
+                            >
+                              <Trash2 size={16} />
+                            </IconButton>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -404,12 +416,14 @@ export function CustomerDetailView({
 
       {tab === "documents" && (
         <div className="flex flex-col gap-6">
-          <div className="flex justify-end">
-            <Button onClick={() => setModal({ type: "upload-document" })}>
-              <Plus size={16} />
-              {t.customers.uploadDocument}
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex justify-end">
+              <Button onClick={() => setModal({ type: "upload-document" })}>
+                <Plus size={16} />
+                {t.customers.uploadDocument}
+              </Button>
+            </div>
+          )}
 
           <div>
             <h2 className="section-title mb-3">{t.customers.companyDocuments}</h2>

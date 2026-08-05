@@ -57,6 +57,7 @@ export default async function MotorClaimDetailPage({ params }: { params: Promise
         claimReferenceFolder: dropbox.claimReferenceFolder,
       }}
       isAdmin={session?.user ? isAdmin(session.user) : false}
+      canEdit={access.canEdit}
     />
   );
 }

@@ -40,6 +40,7 @@ export function ClaimDocumentsSection({
   claimIdFieldName,
   documents,
   isAdmin,
+  canEdit,
   isOpen,
   documentTypeOptions,
   documentTypeLabel,
@@ -53,6 +54,7 @@ export function ClaimDocumentsSection({
   claimIdFieldName: string;
   documents: ClaimDocumentRowLike[];
   isAdmin: boolean;
+  canEdit: boolean;
   isOpen: boolean;
   documentTypeOptions: { value: string; label: string }[];
   documentTypeLabel: Record<string, string>;
@@ -97,7 +99,7 @@ export function ClaimDocumentsSection({
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="section-title">{t.claims.documentsTitle}</h2>
-          {isOpen && (
+          {canEdit && isOpen && (
             <Button onClick={() => setShowUpload(true)}>
               <Upload size={16} />
               {t.claims.uploadDocument}
@@ -149,7 +151,7 @@ export function ClaimDocumentsSection({
                                   <Download size={16} />
                                 </IconButton>
                               </a>
-                              {isOpen && (
+                              {canEdit && isOpen && (
                                 <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
                                   <Trash2 size={16} />
                                 </IconButton>
@@ -191,7 +193,7 @@ export function ClaimDocumentsSection({
                           <Download size={16} />
                         </IconButton>
                       </a>
-                      {isOpen && (
+                      {canEdit && isOpen && (
                         <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
                           <Trash2 size={16} />
                         </IconButton>

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import { QuotationsTable } from "@/components/quotations/quotations-table";
 
@@ -96,5 +96,5 @@ export default async function QuotationPage({
     };
   });
 
-  return <QuotationsTable quotations={rows} />;
+  return <QuotationsTable quotations={rows} canEdit={canEdit(session.user, "quotation")} />;
 }

@@ -74,6 +74,7 @@ export function NonMotorClaimDetailView({
   policyOptions,
   dropbox,
   isAdmin,
+  canEdit,
 }: {
   claim: NonMotorClaimDetail;
   currentUserId: string;
@@ -83,6 +84,7 @@ export function NonMotorClaimDetailView({
   policyOptions: ClaimPolicyOption[];
   dropbox: ClaimDropboxSectionView;
   isAdmin: boolean;
+  canEdit: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -241,7 +243,7 @@ export function NonMotorClaimDetailView({
           </div>
         </dl>
 
-        {isCreator && (
+        {canEdit && isCreator && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-4">
             {isOpen ? (
               <>
@@ -283,6 +285,7 @@ export function NonMotorClaimDetailView({
         claimIdFieldName="nonMotorClaimId"
         documents={claim.documents}
         isAdmin={isAdmin}
+        canEdit={canEdit}
         isOpen={isOpen}
         documentTypeOptions={documentTypeOptions}
         documentTypeLabel={documentTypeLabel}
@@ -307,6 +310,7 @@ export function NonMotorClaimDetailView({
         isOpen={isOpen}
         currentUserId={currentUserId}
         isCreator={isCreator}
+        canEdit={canEdit}
         addAction={addNonMotorClaimUpdateAction}
         editAction={editNonMotorClaimUpdateAction}
         deleteAction={deleteNonMotorClaimUpdateAction}

@@ -1,12 +1,12 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import type { ClaimStatus } from "@/generated/prisma/enums";
 
 export type ClaimAuthResult =
   | { kind: "no-module-access" }
   | { kind: "not-found" }
-  | { kind: "ok"; userId: string; claimId: string; createdById: string; status: ClaimStatus; isCreator: boolean };
+  | { kind: "ok"; userId: string; claimId: string; createdById: string; status: ClaimStatus; isCreator: boolean; canEdit: boolean };
 
 // The single security primitive every Motor Claim server action and the
 // Motor Claim detail route go through — mirrors src/lib/task/access.ts's
@@ -35,6 +35,7 @@ export async function checkMotorClaimAccess(claimId: string): Promise<ClaimAuthR
     createdById: claim.createdById,
     status: claim.status,
     isCreator: claim.createdById === session.user.id,
+    canEdit: canEdit(session.user, "claim.motor"),
   };
 }
 
@@ -57,5 +58,6 @@ export async function checkNonMotorClaimAccess(claimId: string): Promise<ClaimAu
     createdById: claim.createdById,
     status: claim.status,
     isCreator: claim.createdById === session.user.id,
+    canEdit: canEdit(session.user, "claim.non_motor"),
   };
 }

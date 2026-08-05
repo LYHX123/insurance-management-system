@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { MotorListTable } from "@/components/policy/motor/motor-list-table";
 import type { MotorListRow } from "@/components/policy/types";
@@ -68,5 +68,5 @@ export default async function MotorPolicyListPage({
     };
   });
 
-  return <MotorListTable records={rows} />;
+  return <MotorListTable records={rows} canEdit={canEdit(session.user, "policy.motor")} />;
 }

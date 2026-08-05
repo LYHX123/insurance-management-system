@@ -17,6 +17,10 @@ const en = {
     // filter chip (Quotation/Invoice/Policy x4/Motor Claim/Non-Motor Claim).
     filteredByCustomer: "Filtered by customer",
     clearFilter: "Clear",
+    // VIEW/EDIT permission upgrade — shared tooltip for a write button a
+    // VIEW-only user can see but not use (disabled + tooltip, never hidden
+    // entirely when its existence is useful context; see permissions.ts).
+    viewOnlyPermissionTooltip: "View-only permission",
   },
   sidebar: {
     dashboard: "Dashboard",
@@ -142,6 +146,13 @@ const en = {
     selectAllPolicy: "Select All Policy Permissions",
     selectAllLedger: "Select All Ledger Permissions",
     selectAllTaskClaim: "Select All Task & Claim Permissions",
+    // VIEW/EDIT permission upgrade (Part 7 of the user management UI): a
+    // three-way None/View/Edit selector per module/sub-module, replacing the
+    // old single checkbox — Edit visually implies View is included.
+    permissionLevelNone: "None",
+    permissionLevelView: "View",
+    permissionLevelEdit: "Edit",
+    permissionLevelViewNotEditable: "This module cannot be manually edited.",
     permissionChildLabels: {
       "policy.motor": "Motor",
       "policy.non_motor": "Non Motor",

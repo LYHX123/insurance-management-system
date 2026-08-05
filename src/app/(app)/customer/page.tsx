@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { CustomersTable } from "@/components/customers/customers-table";
 
 export default async function CustomerPage() {
@@ -35,5 +35,5 @@ export default async function CustomerPage() {
     projects: c.projects,
   }));
 
-  return <CustomersTable customers={rows} />;
+  return <CustomersTable customers={rows} canEdit={canEdit(session.user, "customer")} />;
 }

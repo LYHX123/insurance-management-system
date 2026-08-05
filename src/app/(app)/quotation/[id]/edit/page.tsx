@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { QuotationForm } from "@/components/quotations/quotation-form";
 
 export default async function EditQuotationPage({
@@ -10,7 +10,7 @@ export default async function EditQuotationPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "quotation")) {
+  if (!session?.user || !canEdit(session.user, "quotation")) {
     redirect("/access-denied");
   }
 

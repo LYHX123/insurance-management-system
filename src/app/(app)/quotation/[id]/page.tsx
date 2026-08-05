@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { hasPermission, isAdmin } from "@/lib/permissions";
+import { canEdit, hasPermission, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { getQuotationDetailData } from "@/lib/quotationRevisions/getQuotationDetail";
 import { getDropboxIntegrationRow } from "@/lib/integrations/dropbox/service";
@@ -65,6 +65,7 @@ export default async function QuotationDetailPage({
       dropboxConnected={dropboxConnected}
       dropboxPaths={dropboxPaths}
       isAdmin={isAdmin(session.user)}
+      canEdit={canEdit(session.user, "quotation")}
     />
   );
 }

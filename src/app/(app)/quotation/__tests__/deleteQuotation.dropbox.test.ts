@@ -12,7 +12,11 @@ vi.mock("@/lib/auth", () => ({ auth: (...args: unknown[]) => auth(...args) }));
 
 vi.mock("@/lib/permissions", async () => {
   const actual = await vi.importActual<typeof import("@/lib/permissions")>("@/lib/permissions");
-  return { ...actual, hasPermission: () => true };
+  // Permission logic itself is out of scope for this Dropbox-sync-behavior
+  // test (the fake session object below has no status/permissions fields) —
+  // both the VIEW-level and EDIT-level checks are stubbed open, same as
+  // before the VIEW/EDIT upgrade added the canEdit() check.
+  return { ...actual, hasPermission: () => true, canEdit: () => true };
 });
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

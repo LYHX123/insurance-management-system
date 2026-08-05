@@ -48,6 +48,7 @@ export default async function NonMotorClaimDetailPage({ params }: { params: Prom
         claimReferenceFolder: dropbox.claimReferenceFolder,
       }}
       isAdmin={session?.user ? isAdmin(session.user) : false}
+      canEdit={access.canEdit}
     />
   );
 }

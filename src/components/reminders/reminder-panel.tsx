@@ -51,9 +51,17 @@ export function ReminderPanel({
     <div
       role="dialog"
       aria-label={t.reminders.panelTitle}
-      className="fixed right-4 bottom-4 z-40 flex max-h-[70vh] w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-surface border border-zinc-200 bg-white shadow-lg"
+      // Fixed footprint that never grows with the reminder count: max-height
+      // is capped (mobile ~70vh, desktop ~60vh) and the middle section below
+      // scrolls internally instead. `min-h-0` on that flex child is required
+      // — without it a flex item's default min-height is its content size,
+      // which silently defeats the parent's max-height and was the actual
+      // cause of the panel growing without bound. `bottom` adds the safe-area
+      // inset so it doesn't sit under a mobile home-indicator/gesture bar.
+      style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+      className="fixed right-4 z-40 flex max-h-[70vh] w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-surface border border-zinc-200 bg-white shadow-lg sm:max-h-[60vh]"
     >
-      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-zinc-900">{t.reminders.panelTitle}</h3>
           {reminders.length > 0 && <Badge tone="brand">{reminders.length}</Badge>}
@@ -68,7 +76,7 @@ export function ReminderPanel({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {reminders.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">{t.reminders.noReminders}</p>
         ) : (
@@ -111,7 +119,7 @@ export function ReminderPanel({
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="border-t border-zinc-200 py-2 text-center text-xs font-medium text-emerald-700 hover:bg-zinc-50"
+          className="shrink-0 border-t border-zinc-200 py-2 text-center text-xs font-medium text-emerald-700 hover:bg-zinc-50"
         >
           {t.reminders.viewAllReminders} (+{remaining})
         </button>
@@ -120,7 +128,7 @@ export function ReminderPanel({
         <button
           type="button"
           onClick={() => setShowAll(false)}
-          className="border-t border-zinc-200 py-2 text-center text-xs font-medium text-zinc-500 hover:bg-zinc-50"
+          className="shrink-0 border-t border-zinc-200 py-2 text-center text-xs font-medium text-zinc-500 hover:bg-zinc-50"
         >
           {t.reminders.showLess}
         </button>

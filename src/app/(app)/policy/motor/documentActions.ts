@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission, POLICY_CATEGORY_PERMISSION, POLICY_CATEGORY_ROUTES } from "@/lib/permissions";
+import { canEdit, POLICY_CATEGORY_PERMISSION, POLICY_CATEGORY_ROUTES } from "@/lib/permissions";
 import { policyDocumentStorage } from "@/lib/policyDocuments/storage";
 import { validateUploadedFile } from "@/lib/policyDocuments/validateUpload";
 import { generateStoredFileName } from "@/lib/policyDocuments/constants";
@@ -32,7 +32,7 @@ function categoryRouteSlug(category: PolicyCategory): string {
 // category's permission, not hardcoded to "policy.motor".
 async function requirePolicyPermission(category: PolicyCategory) {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, POLICY_CATEGORY_PERMISSION[category])) return null;
+  if (!session?.user || !canEdit(session.user, POLICY_CATEGORY_PERMISSION[category])) return null;
   return session;
 }
 

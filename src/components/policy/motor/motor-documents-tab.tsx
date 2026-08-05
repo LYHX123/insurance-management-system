@@ -24,10 +24,12 @@ export function MotorDocumentsTab({
   policyRecordId,
   documents,
   isAdmin = false,
+  canEdit,
 }: {
   policyRecordId: string;
   documents: PolicyDocumentRow[];
   isAdmin?: boolean;
+  canEdit: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -80,10 +82,12 @@ export function MotorDocumentsTab({
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="section-title">{t.policy.documentsTab}</h2>
-          <Button onClick={() => setShowUpload(true)}>
-            <Upload size={16} />
-            {t.policy.uploadDocument}
-          </Button>
+          {canEdit && (
+            <Button onClick={() => setShowUpload(true)}>
+              <Upload size={16} />
+              {t.policy.uploadDocument}
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -142,9 +146,11 @@ export function MotorDocumentsTab({
                                   <Download size={16} />
                                 </IconButton>
                               </a>
-                              <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
-                                <Trash2 size={16} />
-                              </IconButton>
+                              {canEdit && (
+                                <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -183,9 +189,11 @@ export function MotorDocumentsTab({
                           <Download size={16} />
                         </IconButton>
                       </a>
-                      <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
-                        <Trash2 size={16} />
-                      </IconButton>
+                      {canEdit && (
+                        <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
+                          <Trash2 size={16} />
+                        </IconButton>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">

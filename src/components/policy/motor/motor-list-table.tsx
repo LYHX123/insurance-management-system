@@ -50,7 +50,7 @@ const MOTOR_LIST_DEFAULTS = {
   customerId: "",
 };
 
-export function MotorListTable({ records }: { records: MotorListRow[] }) {
+export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; canEdit: boolean }) {
   const { t, locale } = useLocale();
   const [listState, setListState] = useUrlListState(MOTOR_LIST_DEFAULTS);
   const {
@@ -142,21 +142,25 @@ export function MotorListTable({ records }: { records: MotorListRow[] }) {
         title={t.policy.tabMotor}
         actions={
           <>
-            <Link href="/policy/motor/import">
-              <Button variant="secondary">
-                <Upload size={16} />
-                {t.policy.importHistorical}
-              </Button>
-            </Link>
+            {canEdit && (
+              <Link href="/policy/motor/import">
+                <Button variant="secondary">
+                  <Upload size={16} />
+                  {t.policy.importHistorical}
+                </Button>
+              </Link>
+            )}
             <IconButton title={t.comingSoon.title} disabled>
               <Download size={16} />
             </IconButton>
-            <Link href="/policy/motor/new">
-              <Button>
-                <Plus size={16} />
-                {t.policy.addMotorRecord}
-              </Button>
-            </Link>
+            {canEdit && (
+              <Link href="/policy/motor/new">
+                <Button>
+                  <Plus size={16} />
+                  {t.policy.addMotorRecord}
+                </Button>
+              </Link>
+            )}
           </>
         }
       />

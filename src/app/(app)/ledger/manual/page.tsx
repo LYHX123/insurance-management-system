@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { ManualLedgerTable } from "@/components/ledger/manual-ledger-table";
 import type { ManualEntryRow, LedgerCategoryOption } from "@/components/ledger/types";
 
@@ -52,5 +52,5 @@ export default async function LedgerManualPage() {
     createdAt: e.createdAt.toISOString(),
   }));
 
-  return <ManualLedgerTable records={rows} categories={categoryOptions} />;
+  return <ManualLedgerTable records={rows} categories={categoryOptions} canEdit={canEdit(session.user, "ledger.manual_record")} />;
 }

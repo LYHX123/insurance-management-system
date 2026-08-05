@@ -52,7 +52,7 @@ const BOND_LIST_DEFAULTS = {
   customerId: "",
 };
 
-export function BondListTable({ records }: { records: BondListRow[] }) {
+export function BondListTable({ records, canEdit }: { records: BondListRow[]; canEdit: boolean }) {
   const { t, locale } = useLocale();
   const [listState, setListState] = useUrlListState(BOND_LIST_DEFAULTS);
   const {
@@ -147,14 +147,14 @@ export function BondListTable({ records }: { records: BondListRow[] }) {
       <PageHeader
         title={t.policy.tabBond}
         actions={
-          <>
+          canEdit ? (
             <Link href="/policy/bond/new">
               <Button>
                 <Plus size={16} />
                 {t.policy.addBondRecord}
               </Button>
             </Link>
-          </>
+          ) : undefined
         }
       />
 

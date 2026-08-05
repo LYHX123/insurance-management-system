@@ -22,11 +22,16 @@ export function TaskDetailPanel({
   categorySlug,
   task,
   currentUserId,
+  canEdit: hasEditPermission,
   activeUsers,
 }: {
   categorySlug: TaskCategorySlug;
   task: TaskDetail;
   currentUserId: string;
+  // Renamed on destructure — this component already has an unrelated local
+  // `canEdit` (per-step "is this specific step still editable" boolean, see
+  // the steps.map below); this prop is the module-level VIEW/EDIT permission.
+  canEdit: boolean;
   activeUsers: ActiveUserOption[];
 }) {
   const { t, locale } = useLocale();
@@ -104,7 +109,7 @@ export function TaskDetailPanel({
         </p>
 
         <div className="mt-1 flex flex-wrap gap-2">
-          {isCreator && isActive && (
+          {hasEditPermission && isCreator && isActive && (
             <>
               <Button variant="secondary" onClick={() => setShowEditTitle(true)}>
                 <Pencil size={16} />
@@ -124,7 +129,7 @@ export function TaskDetailPanel({
               </Button>
             </>
           )}
-          {isCreator && !isActive && (
+          {hasEditPermission && isCreator && !isActive && (
             <>
               <Button variant="secondary" onClick={() => setConfirmKind("reopen")}>
                 <RotateCcw size={16} />
@@ -142,7 +147,7 @@ export function TaskDetailPanel({
       {/* Step timeline */}
       <div className="flex flex-col gap-3">
         {task.steps.map((step, index) => {
-          const canEdit = isActive && (step.createdById === currentUserId || isCreator);
+          const canEditStep = hasEditPermission && isActive && (step.createdById === currentUserId || isCreator);
           const isLastVisible = task.steps.length <= 1;
           return (
             <Card key={step.id}>
@@ -162,7 +167,7 @@ export function TaskDetailPanel({
                       </span>
                     )}
                   </div>
-                  {canEdit && (
+                  {canEditStep && (
                     <div className="mt-1 flex items-center gap-1">
                       <IconButton title={t.common.edit} onClick={() => setEditingStep(step)}>
                         <Pencil size={14} />
@@ -183,7 +188,7 @@ export function TaskDetailPanel({
         })}
       </div>
 
-      {isActive && (
+      {hasEditPermission && isActive && (
         <div>
           <Button variant="secondary" onClick={() => setShowAddStep(true)}>
             <Plus size={16} />

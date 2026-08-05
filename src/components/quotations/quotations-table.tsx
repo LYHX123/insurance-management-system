@@ -46,7 +46,7 @@ const CASE_STATUS_TONE: Record<QuotationCaseStatus, "neutral" | "brand" | "succe
   CONVERTED_TO_POLICY: "success",
 };
 
-export function QuotationsTable({ quotations }: { quotations: QuotationListRow[] }) {
+export function QuotationsTable({ quotations, canEdit }: { quotations: QuotationListRow[]; canEdit: boolean }) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
@@ -131,12 +131,14 @@ export function QuotationsTable({ quotations }: { quotations: QuotationListRow[]
                 {t.quotations.manageInsuranceTypes}
               </Button>
             </Link>
-            <Link href={`/quotation/new?returnTo=${encodeURIComponent(returnTo)}`}>
-              <Button>
-                <Plus size={16} />
-                {t.quotations.addQuotation}
-              </Button>
-            </Link>
+            {canEdit && (
+              <Link href={`/quotation/new?returnTo=${encodeURIComponent(returnTo)}`}>
+                <Button>
+                  <Plus size={16} />
+                  {t.quotations.addQuotation}
+                </Button>
+              </Link>
+            )}
           </>
         }
       />

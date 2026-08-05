@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { checkTaskAccess } from "@/lib/task/access";
 import { isTaskCategorySlug, SLUG_TO_CATEGORY, type TaskCategorySlug } from "@/lib/task/category";
 
@@ -35,7 +35,7 @@ export type CreateTaskInput = {
 
 export async function createTaskAction(input: CreateTaskInput): Promise<ActionResult<{ id: string; categorySlug: TaskCategorySlug }>> {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "task.daily_task")) {
+  if (!session?.user || !canEdit(session.user, "task.daily_task")) {
     return { success: false, error: "FORBIDDEN" };
   }
 
@@ -95,6 +95,7 @@ export async function createTaskAction(input: CreateTaskInput): Promise<ActionRe
 export async function updateTaskTitleAction(taskId: string, title: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
 
@@ -115,6 +116,7 @@ export async function updateTaskTitleAction(taskId: string, title: string): Prom
 export async function updateParticipantsAction(taskId: string, participantIds: string[]): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
 
@@ -162,6 +164,7 @@ export async function updateParticipantsAction(taskId: string, participantIds: s
 export async function addStepAction(taskId: string, content: string): Promise<ActionResult<{ id: string }>> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
 
   const trimmed = content?.trim();
@@ -188,6 +191,7 @@ export async function updateStepAction(stepId: string, content: string): Promise
 
   const access = await checkTaskAccess(step.taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
   if (step.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
 
@@ -217,6 +221,7 @@ export async function deleteStepAction(stepId: string): Promise<ActionResult> {
 
   const access = await checkTaskAccess(step.taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
   if (step.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
 
@@ -249,6 +254,7 @@ export async function deleteStepAction(stepId: string): Promise<ActionResult> {
 export async function completeTaskAction(taskId: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.task.updateMany({
@@ -264,6 +270,7 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
 export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.task.updateMany({
@@ -283,6 +290,7 @@ export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
 export async function deleteTaskAction(taskId: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.task.updateMany({

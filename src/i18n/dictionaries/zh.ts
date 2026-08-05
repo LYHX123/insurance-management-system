@@ -17,6 +17,7 @@ const zh: Dictionary = {
     status: "状态",
     filteredByCustomer: "已按客户筛选",
     clearFilter: "清除",
+    viewOnlyPermissionTooltip: "仅查看权限",
   },
   sidebar: {
     dashboard: "仪表盘",
@@ -142,6 +143,10 @@ const zh: Dictionary = {
     selectAllPolicy: "选择全部保单权限",
     selectAllLedger: "选择全部账本权限",
     selectAllTaskClaim: "选择全部任务与理赔权限",
+    permissionLevelNone: "无权限",
+    permissionLevelView: "只读",
+    permissionLevelEdit: "可编辑",
+    permissionLevelViewNotEditable: "该模块不支持手工编辑。",
     permissionChildLabels: {
       "policy.motor": "车险",
       "policy.non_motor": "非车险",

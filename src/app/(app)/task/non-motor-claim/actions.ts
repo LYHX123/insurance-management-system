@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { checkNonMotorClaimAccess } from "@/lib/claims/access";
 import { generateNonMotorClaimNumber } from "@/lib/claims/nonMotorClaimNumber";
 import { isNonMotorClaimProgress, type NonMotorClaimProgressValue } from "@/lib/claims/enums";
@@ -20,7 +20,7 @@ const CONTENT_MAX_LENGTH = 4000;
 
 async function requireTaskPermission() {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "claim.non_motor")) return null;
+  if (!session?.user || !canEdit(session.user, "claim.non_motor")) return null;
   return session;
 }
 
@@ -192,6 +192,7 @@ export async function createNonMotorClaimAction(
 export async function updateNonMotorClaimAction(id: string, input: NonMotorClaimInput): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
@@ -261,6 +262,7 @@ export async function updateNonMotorClaimAction(id: string, input: NonMotorClaim
 export async function updateNonMotorClaimParticipantsAction(claimId: string, participantIds: string[]): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(claimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
@@ -301,6 +303,7 @@ export async function updateNonMotorClaimParticipantsAction(claimId: string, par
 export async function addNonMotorClaimUpdateAction(claimId: string, content: string): Promise<ActionResult<{ id: string }>> {
   const access = await checkNonMotorClaimAccess(claimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const trimmed = content?.trim();
@@ -331,6 +334,7 @@ export async function editNonMotorClaimUpdateAction(updateId: string, content: s
 
   const access = await checkNonMotorClaimAccess(entry.nonMotorClaimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
   if (entry.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
 
@@ -361,6 +365,7 @@ export async function deleteNonMotorClaimUpdateAction(updateId: string): Promise
 
   const access = await checkNonMotorClaimAccess(entry.nonMotorClaimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
   if (entry.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
 
@@ -390,6 +395,7 @@ export async function deleteNonMotorClaimUpdateAction(updateId: string): Promise
 export async function closeNonMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.$transaction(async (tx) => {
@@ -411,6 +417,7 @@ export async function closeNonMotorClaimAction(id: string): Promise<ActionResult
 export async function reopenNonMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.$transaction(async (tx) => {
@@ -432,6 +439,7 @@ export async function reopenNonMotorClaimAction(id: string): Promise<ActionResul
 export async function deleteNonMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.nonMotorClaim.updateMany({

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission, type PermissionKey } from "@/lib/permissions";
+import { canEdit, hasPermission, type PermissionKey } from "@/lib/permissions";
 import { isTaskCategorySlug, SLUG_TO_CATEGORY, type TaskCategorySlug } from "@/lib/task/category";
 import { getVisibleTasksForCategory } from "@/lib/task/queries";
 import { getMotorClaims, getNonMotorClaims, getActiveClaimCustomers } from "@/lib/claims/queries";
@@ -57,6 +57,7 @@ export default async function TaskCategoryPage({
         customers={customers}
         insurers={insurers}
         currentUserId={session.user.id}
+        canEdit={canEdit(session.user, "claim.motor")}
         activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
       />
     );
@@ -75,6 +76,7 @@ export default async function TaskCategoryPage({
         customers={customers}
         insurers={insurers}
         currentUserId={session.user.id}
+        canEdit={canEdit(session.user, "claim.non_motor")}
         activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
       />
     );
@@ -97,6 +99,7 @@ export default async function TaskCategoryPage({
       tasks={tasks}
       selectedTask={null}
       currentUserId={session.user.id}
+      canEdit={canEdit(session.user, "task.daily_task")}
       activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
     />
   );

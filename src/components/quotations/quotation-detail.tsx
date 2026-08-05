@@ -97,6 +97,7 @@ export function QuotationDetailView({
   dropboxConnected = false,
   dropboxPaths = null,
   isAdmin = false,
+  canEdit = false,
 }: {
   quotation: QuotationDetail;
   /** True when rendered inside the QuotationCase page's "Quotation Details"
@@ -118,6 +119,7 @@ export function QuotationDetailView({
    * business folder, Quotation subfolder, and per-version Excel files. */
   dropboxPaths?: QuotationDropboxPathsView | null;
   isAdmin?: boolean;
+  canEdit?: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -294,56 +296,60 @@ export function QuotationDetailView({
         </Button>
       </a>
 
-      <Button
-        variant="secondary"
-        onClick={() => setShowCreatePolicy(true)}
-        disabled={!isPolicyEligible}
-        title={!isPolicyEligible ? t.quotations.policyCreationIneligibleHint : undefined}
-      >
-        <FilePlus size={16} />
-        {t.quotations.createPolicy}
-      </Button>
-
-      {!isLocked && (
-        <Link href={`/quotation/${quotation.id}/edit?returnTo=${encodeURIComponent(selfReturnTo)}`}>
-          <Button variant="secondary">
-            <Pencil size={16} />
-            {t.common.edit}
+      {canEdit && (
+        <>
+          <Button
+            variant="secondary"
+            onClick={() => setShowCreatePolicy(true)}
+            disabled={!isPolicyEligible}
+            title={!isPolicyEligible ? t.quotations.policyCreationIneligibleHint : undefined}
+          >
+            <FilePlus size={16} />
+            {t.quotations.createPolicy}
           </Button>
-        </Link>
-      )}
 
-      {hasRevisionInfo && isLocked && (
-        <Button variant="secondary" onClick={() => setShowCreateRevision(true)}>
-          <GitBranch size={16} />
-          {t.quotations.createRevisionFromThisVersion}
-        </Button>
-      )}
+          {!isLocked && (
+            <Link href={`/quotation/${quotation.id}/edit?returnTo=${encodeURIComponent(selfReturnTo)}`}>
+              <Button variant="secondary">
+                <Pencil size={16} />
+                {t.common.edit}
+              </Button>
+            </Link>
+          )}
 
-      {revisionStatus === "DRAFT" && (
-        <Button variant="primary" onClick={() => setConfirmingIssue(true)}>
-          <Send size={16} />
-          {t.quotations.issueRevision}
-        </Button>
-      )}
-      {revisionStatus === "ISSUED" && (
-        <Button variant="primary" onClick={() => setConfirmingAccept(true)}>
-          <CheckCircle2 size={16} />
-          {t.quotations.markAccepted}
-        </Button>
-      )}
-      {(revisionStatus === "DRAFT" || revisionStatus === "ISSUED") && (
-        <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
-          <XCircle size={16} />
-          {t.quotations.cancelRevision}
-        </Button>
-      )}
+          {hasRevisionInfo && isLocked && (
+            <Button variant="secondary" onClick={() => setShowCreateRevision(true)}>
+              <GitBranch size={16} />
+              {t.quotations.createRevisionFromThisVersion}
+            </Button>
+          )}
 
-      {(!hasRevisionInfo || revisionStatus === "DRAFT") && (
-        <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
-          <Trash2 size={16} />
-          {t.common.delete}
-        </Button>
+          {revisionStatus === "DRAFT" && (
+            <Button variant="primary" onClick={() => setConfirmingIssue(true)}>
+              <Send size={16} />
+              {t.quotations.issueRevision}
+            </Button>
+          )}
+          {revisionStatus === "ISSUED" && (
+            <Button variant="primary" onClick={() => setConfirmingAccept(true)}>
+              <CheckCircle2 size={16} />
+              {t.quotations.markAccepted}
+            </Button>
+          )}
+          {(revisionStatus === "DRAFT" || revisionStatus === "ISSUED") && (
+            <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
+              <XCircle size={16} />
+              {t.quotations.cancelRevision}
+            </Button>
+          )}
+
+          {(!hasRevisionInfo || revisionStatus === "DRAFT") && (
+            <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+              <Trash2 size={16} />
+              {t.common.delete}
+            </Button>
+          )}
+        </>
       )}
     </>
   );

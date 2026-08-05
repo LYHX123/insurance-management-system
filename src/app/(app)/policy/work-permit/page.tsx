@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { WorkPermitListTable } from "@/components/policy/work-permit/work-permit-list-table";
 import type { WorkPermitListRow } from "@/components/policy/types";
@@ -69,5 +69,5 @@ export default async function WorkPermitPolicyListPage({
       };
     });
 
-  return <WorkPermitListTable records={rows} />;
+  return <WorkPermitListTable records={rows} canEdit={canEdit(session.user, "policy.work_permit")} />;
 }

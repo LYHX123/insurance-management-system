@@ -57,7 +57,15 @@ function SummaryStat({ label, value, tone = "neutral" }: { label: string; value:
   );
 }
 
-export function ManualLedgerTable({ records, categories }: { records: ManualEntryRow[]; categories: LedgerCategoryOption[] }) {
+export function ManualLedgerTable({
+  records,
+  categories,
+  canEdit,
+}: {
+  records: ManualEntryRow[];
+  categories: LedgerCategoryOption[];
+  canEdit: boolean;
+}) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -148,24 +156,30 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
         title={t.ledger.tabManual}
         actions={
           <>
-            <Button variant="secondary" onClick={() => setShowCategories(true)}>
-              <Settings size={16} />
-              {t.ledger.manageCategories}
-            </Button>
+            {canEdit && (
+              <Button variant="secondary" onClick={() => setShowCategories(true)}>
+                <Settings size={16} />
+                {t.ledger.manageCategories}
+              </Button>
+            )}
             <a href={exportUrl}>
               <Button variant="secondary">
                 <Download size={16} />
                 {t.ledger.exportExcel}
               </Button>
             </a>
-            <Button onClick={() => setNewEntryType("INCOME")}>
-              <Plus size={16} />
-              {t.ledger.newIncome}
-            </Button>
-            <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setNewEntryType("EXPENSE")}>
-              <Plus size={16} />
-              {t.ledger.newExpense}
-            </Button>
+            {canEdit && (
+              <>
+                <Button onClick={() => setNewEntryType("INCOME")}>
+                  <Plus size={16} />
+                  {t.ledger.newIncome}
+                </Button>
+                <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setNewEntryType("EXPENSE")}>
+                  <Plus size={16} />
+                  {t.ledger.newExpense}
+                </Button>
+              </>
+            )}
           </>
         }
       />
@@ -272,12 +286,16 @@ export function ManualLedgerTable({ records, categories }: { records: ManualEntr
                 <td className="text-zinc-500">{r.createdByName}</td>
                 <td>
                   <div className="flex items-center justify-end gap-1.5">
-                    <IconButton title={t.common.edit} onClick={() => setEditingEntry(r)}>
-                      <Pencil size={16} />
-                    </IconButton>
-                    <IconButton title={t.ledger.cancelManualRecord} onClick={() => setCancellingId(r.id)}>
-                      <X size={16} />
-                    </IconButton>
+                    {canEdit && (
+                      <>
+                        <IconButton title={t.common.edit} onClick={() => setEditingEntry(r)}>
+                          <Pencil size={16} />
+                        </IconButton>
+                        <IconButton title={t.ledger.cancelManualRecord} onClick={() => setCancellingId(r.id)}>
+                          <X size={16} />
+                        </IconButton>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

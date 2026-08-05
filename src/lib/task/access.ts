@@ -1,12 +1,12 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import type { TaskStatus } from "@/generated/prisma/enums";
 
 export type TaskAuthResult =
   | { kind: "no-module-access" }
   | { kind: "not-found" }
-  | { kind: "ok"; userId: string; taskId: string; createdById: string; status: TaskStatus; isCreator: boolean };
+  | { kind: "ok"; userId: string; taskId: string; createdById: string; status: TaskStatus; isCreator: boolean; canEdit: boolean };
 
 // The single security primitive every Task server action and the Task
 // detail page route through. The Prisma query itself restricts rows to
@@ -36,5 +36,8 @@ export async function checkTaskAccess(taskId: string): Promise<TaskAuthResult> {
     createdById: task.createdById,
     status: task.status,
     isCreator: task.createdById === session.user.id,
+    // VIEW-only users can still reach "ok" (they may view/browse the task) —
+    // every mutating action re-checks this field before writing.
+    canEdit: canEdit(session.user, "task.daily_task"),
   };
 }

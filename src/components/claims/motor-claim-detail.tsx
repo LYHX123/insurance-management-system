@@ -75,6 +75,7 @@ export function MotorClaimDetailView({
   policyOptions,
   dropbox,
   isAdmin,
+  canEdit,
 }: {
   claim: MotorClaimDetail;
   currentUserId: string;
@@ -84,6 +85,7 @@ export function MotorClaimDetailView({
   policyOptions: ClaimPolicyOption[];
   dropbox: ClaimDropboxSectionView;
   isAdmin: boolean;
+  canEdit: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -236,7 +238,7 @@ export function MotorClaimDetailView({
           </div>
         </dl>
 
-        {isCreator && (
+        {canEdit && isCreator && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-4">
             {isOpen ? (
               <>
@@ -278,6 +280,7 @@ export function MotorClaimDetailView({
         claimIdFieldName="motorClaimId"
         documents={claim.documents}
         isAdmin={isAdmin}
+        canEdit={canEdit}
         isOpen={isOpen}
         documentTypeOptions={documentTypeOptions}
         documentTypeLabel={documentTypeLabel}
@@ -302,6 +305,7 @@ export function MotorClaimDetailView({
         isOpen={isOpen}
         currentUserId={currentUserId}
         isCreator={isCreator}
+        canEdit={canEdit}
         addAction={addMotorClaimUpdateAction}
         editAction={editMotorClaimUpdateAction}
         deleteAction={deleteMotorClaimUpdateAction}

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { CreateNonMotorRecordForm } from "@/components/policy/non-motor/create-non-motor-record-form";
 import type { CreateNonMotorRecordPrefill } from "@/components/policy/non-motor/create-non-motor-record-form";
 import { QUOTATION_SECTION_KIND_TO_NON_MOTOR_COVER_TYPE } from "@/lib/policy/nonMotorCoverTypes";
@@ -32,7 +32,7 @@ export default async function NewNonMotorRecordPage({
   searchParams: Promise<{ fromQuotationId?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "policy.non_motor")) {
+  if (!session?.user || !canEdit(session.user, "policy.non_motor")) {
     redirect("/access-denied");
   }
 

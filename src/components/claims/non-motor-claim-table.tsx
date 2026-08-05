@@ -50,12 +50,14 @@ export function NonMotorClaimTable({
   customers,
   insurers,
   currentUserId,
+  canEdit,
   activeUsers,
 }: {
   claims: NonMotorClaimRow[];
   customers: ClaimCustomerOption[];
   insurers: string[];
   currentUserId: string;
+  canEdit: boolean;
   activeUsers: ActiveUserOption[];
 }) {
   const { t, locale } = useLocale();
@@ -170,10 +172,12 @@ export function NonMotorClaimTable({
       <PageHeader
         title={t.task.tabNonMotorClaim}
         actions={
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus size={16} />
-            {t.claims.createClaim}
-          </Button>
+          canEdit ? (
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus size={16} />
+              {t.claims.createClaim}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -304,19 +308,21 @@ export function NonMotorClaimTable({
                           <Eye size={16} />
                         </IconButton>
                       </Link>
-                      {!isClosed && (
+                      {canEdit && !isClosed && (
                         <IconButton title={t.claims.closeClaim} onClick={() => setConfirmAction({ kind: "close", claim: c })}>
                           <XCircle size={16} />
                         </IconButton>
                       )}
-                      {isClosed && (
+                      {canEdit && isClosed && (
                         <IconButton title={t.claims.reopenClaim} onClick={() => setConfirmAction({ kind: "reopen", claim: c })}>
                           <RotateCcw size={16} />
                         </IconButton>
                       )}
-                      <IconButton title={t.claims.deleteClaim} onClick={() => setConfirmAction({ kind: "delete", claim: c })}>
-                        <Trash2 size={16} />
-                      </IconButton>
+                      {canEdit && (
+                        <IconButton title={t.claims.deleteClaim} onClick={() => setConfirmAction({ kind: "delete", claim: c })}>
+                          <Trash2 size={16} />
+                        </IconButton>
+                      )}
                     </div>
                   </td>
                 </tr>

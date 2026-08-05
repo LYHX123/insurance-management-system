@@ -61,9 +61,11 @@ function formatFileSize(bytes: number): string {
 export function QuotationDocumentsTab({
   quotationCaseId,
   documents,
+  canEdit,
 }: {
   quotationCaseId: string;
   documents: QuotationDocumentRow[];
+  canEdit: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -182,10 +184,12 @@ export function QuotationDocumentsTab({
             <h2 className="section-title">{t.quotations.underwritingDocuments}</h2>
             <p className="text-secondary">{t.quotations.underwritingDocumentsSubtitle}</p>
           </div>
-          <Button onClick={() => setShowUpload(true)}>
-            <Upload size={16} />
-            {t.quotations.uploadDocuments}
-          </Button>
+          {canEdit && (
+            <Button onClick={() => setShowUpload(true)}>
+              <Upload size={16} />
+              {t.quotations.uploadDocuments}
+            </Button>
+          )}
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -265,12 +269,16 @@ export function QuotationDocumentsTab({
                         <Download size={16} />
                       </IconButton>
                     </a>
-                    <IconButton title={t.quotations.editDocumentDetails} onClick={() => setEditTarget(doc)}>
-                      <Pencil size={16} />
-                    </IconButton>
-                    <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
-                      <Trash2 size={16} />
-                    </IconButton>
+                    {canEdit && (
+                      <>
+                        <IconButton title={t.quotations.editDocumentDetails} onClick={() => setEditTarget(doc)}>
+                          <Pencil size={16} />
+                        </IconButton>
+                        <IconButton tone="danger" title={t.common.delete} onClick={() => setDeleteTarget(doc)}>
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

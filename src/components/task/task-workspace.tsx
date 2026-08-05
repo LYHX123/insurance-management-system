@@ -30,12 +30,14 @@ export function TaskWorkspace({
   tasks,
   selectedTask,
   currentUserId,
+  canEdit,
   activeUsers,
 }: {
   categorySlug: TaskCategorySlug;
   tasks: TaskListItem[];
   selectedTask: TaskDetail | null;
   currentUserId: string;
+  canEdit: boolean;
   activeUsers: ActiveUserOption[];
 }) {
   const { t, locale } = useLocale();
@@ -84,10 +86,12 @@ export function TaskWorkspace({
       <div className={`min-h-0 flex-col gap-3 md:flex md:w-[38%] md:shrink-0 ${hasSelection ? "hidden" : "flex"}`}>
         <div className="flex items-center justify-between gap-2">
           <h2 className="section-title">{categoryLabel[categorySlug]}</h2>
-          <Button onClick={() => setShowNewTask(true)}>
-            <Plus size={16} />
-            {t.task.newTask}
-          </Button>
+          {canEdit && (
+            <Button onClick={() => setShowNewTask(true)}>
+              <Plus size={16} />
+              {t.task.newTask}
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -145,7 +149,7 @@ export function TaskWorkspace({
           when nothing is selected yet. */}
       <div className={`min-h-0 flex-1 flex-col md:flex ${hasSelection ? "flex" : "hidden"}`}>
         {selectedTask ? (
-          <TaskDetailPanel categorySlug={categorySlug} task={selectedTask} currentUserId={currentUserId} activeUsers={activeUsers} />
+          <TaskDetailPanel categorySlug={categorySlug} task={selectedTask} currentUserId={currentUserId} canEdit={canEdit} activeUsers={activeUsers} />
         ) : (
           <div className="flex h-full min-h-[240px] items-center justify-center rounded-surface border border-dashed border-zinc-300 bg-white text-sm text-secondary">
             {t.task.selectTaskPrompt}

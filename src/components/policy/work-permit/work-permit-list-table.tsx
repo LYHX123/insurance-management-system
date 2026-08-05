@@ -57,7 +57,7 @@ const WORK_PERMIT_LIST_DEFAULTS = {
 // Premium/Client Balance/Status/Actions only. The "outstanding agent
 // balance" checkbox still works via WorkPermitListRow.insurerBalance, which
 // is carried on every row purely for filtering (see that type's comment).
-export function WorkPermitListTable({ records }: { records: WorkPermitListRow[] }) {
+export function WorkPermitListTable({ records, canEdit }: { records: WorkPermitListRow[]; canEdit: boolean }) {
   const { t, locale } = useLocale();
   const [listState, setListState] = useUrlListState(WORK_PERMIT_LIST_DEFAULTS);
   const {
@@ -126,12 +126,14 @@ export function WorkPermitListTable({ records }: { records: WorkPermitListRow[] 
       <PageHeader
         title={t.policy.tabWorkPermit}
         actions={
-          <Link href="/policy/work-permit/new">
-            <Button>
-              <Plus size={16} />
-              {t.policy.addWorkPermitRecord}
-            </Button>
-          </Link>
+          canEdit ? (
+            <Link href="/policy/work-permit/new">
+              <Button>
+                <Plus size={16} />
+                {t.policy.addWorkPermitRecord}
+              </Button>
+            </Link>
+          ) : undefined
         }
       />
 

@@ -36,10 +36,12 @@ export function NonMotorOverviewTab({
   detail,
   customers,
   isAdmin,
+  canEdit,
 }: {
   detail: NonMotorDetail;
   customers: CustomerOption[];
   isAdmin: boolean;
+  canEdit: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -144,12 +146,14 @@ export function NonMotorOverviewTab({
     return (
       <div className="flex flex-col gap-4">
         <Card>
-          <div className="mb-4 flex justify-end">
-            <Button variant="secondary" onClick={() => setEditing(true)}>
-              <Pencil size={16} />
-              {t.policy.editOverview}
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="mb-4 flex justify-end">
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                <Pencil size={16} />
+                {t.policy.editOverview}
+              </Button>
+            </div>
+          )}
           <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {field(t.policy.recordNumber, detail.recordNumber)}
             {field(t.policy.processingDate, dateFormatter.format(new Date(detail.processingDate)))}
@@ -215,9 +219,9 @@ export function NonMotorOverviewTab({
           relatedInvoice={detail.relatedInvoice}
         />
 
-        {(detail.businessStatus !== "CANCELLED" || isAdmin) && (
+        {((detail.businessStatus !== "CANCELLED" && canEdit) || isAdmin) && (
           <div className="flex justify-end gap-2">
-            {detail.businessStatus !== "CANCELLED" && (
+            {detail.businessStatus !== "CANCELLED" && canEdit && (
               <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
                 {t.policy.cancelPolicy}
               </Button>

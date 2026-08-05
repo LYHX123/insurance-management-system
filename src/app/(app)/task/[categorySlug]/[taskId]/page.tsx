@@ -49,6 +49,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ cat
       tasks={tasks}
       selectedTask={detail}
       currentUserId={access.userId}
+      canEdit={access.canEdit}
       activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
     />
   );

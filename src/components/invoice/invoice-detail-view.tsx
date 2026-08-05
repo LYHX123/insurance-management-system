@@ -35,7 +35,17 @@ const ERROR_KEY: Record<string, string> = {
   ALREADY_CANCELLED: "alreadyCancelled",
 };
 
-export function InvoiceDetailView({ detail, dropbox, isAdmin }: { detail: InvoiceDetail; dropbox: InvoiceDropboxSectionView; isAdmin: boolean }) {
+export function InvoiceDetailView({
+  detail,
+  dropbox,
+  isAdmin,
+  canEdit,
+}: {
+  detail: InvoiceDetail;
+  dropbox: InvoiceDropboxSectionView;
+  isAdmin: boolean;
+  canEdit: boolean;
+}) {
   const { t, locale } = useLocale();
   const router = useRouter();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -83,7 +93,7 @@ export function InvoiceDetailView({ detail, dropbox, isAdmin }: { detail: Invoic
                   {t.invoice.downloadExcel}
                 </Button>
               </a>
-              {detail.status === "ISSUED" && (
+              {canEdit && detail.status === "ISSUED" && (
                 <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
                   {t.invoice.cancelInvoice}
                 </Button>

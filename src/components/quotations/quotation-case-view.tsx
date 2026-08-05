@@ -50,7 +50,9 @@ export function QuotationCaseView({
   quotationCase,
   revisions,
   documents,
+  canEdit,
 }: {
+  canEdit: boolean;
   quotationCase: {
     id: string;
     quotationNumber: string;
@@ -282,10 +284,12 @@ export function QuotationCaseView({
               <GitCompare size={16} />
               {t.quotations.compareRevisions}
             </Button>
-            <Button onClick={() => setShowCreateRevision(true)} disabled={revisions.length === 0} title={revisions.length === 0 ? t.quotations.startFirstQuotationHint : undefined}>
-              <GitBranch size={16} />
-              {t.quotations.createRevision}
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setShowCreateRevision(true)} disabled={revisions.length === 0} title={revisions.length === 0 ? t.quotations.startFirstQuotationHint : undefined}>
+                <GitBranch size={16} />
+                {t.quotations.createRevision}
+              </Button>
+            )}
           </div>
 
           {rowError && <div className="rounded-control border border-red-200 bg-red-50 p-3 text-sm text-red-700">{rowError}</div>}
@@ -353,17 +357,17 @@ export function QuotationCaseView({
                             <Download size={16} />
                           </IconButton>
                         </a>
-                        {r.revisionStatus === "DRAFT" && (
+                        {canEdit && r.revisionStatus === "DRAFT" && (
                           <IconButton title={t.quotations.issueRevision} onClick={() => setIssueTarget(r.id)}>
                             <Send size={16} />
                           </IconButton>
                         )}
-                        {r.revisionStatus === "ISSUED" && (
+                        {canEdit && r.revisionStatus === "ISSUED" && (
                           <IconButton title={t.quotations.markAccepted} onClick={() => setAcceptTarget(r.id)}>
                             <CheckCircle2 size={16} />
                           </IconButton>
                         )}
-                        {(r.revisionStatus === "DRAFT" || r.revisionStatus === "ISSUED") && (
+                        {canEdit && (r.revisionStatus === "DRAFT" || r.revisionStatus === "ISSUED") && (
                           <IconButton
                             tone="danger"
                             title={t.quotations.cancelRevision}
@@ -387,7 +391,7 @@ export function QuotationCaseView({
         </div>
       )}
 
-      {tab === "documents" && <QuotationDocumentsTab quotationCaseId={quotationCase.id} documents={documents} />}
+      {tab === "documents" && <QuotationDocumentsTab quotationCaseId={quotationCase.id} documents={documents} canEdit={canEdit} />}
 
       {showCreateRevision && (
         <Modal

@@ -50,7 +50,7 @@ const NON_MOTOR_LIST_DEFAULTS = {
   customerId: "",
 };
 
-export function NonMotorListTable({ records }: { records: NonMotorListRow[] }) {
+export function NonMotorListTable({ records, canEdit }: { records: NonMotorListRow[]; canEdit: boolean }) {
   const { t, locale } = useLocale();
   const [listState, setListState] = useUrlListState(NON_MOTOR_LIST_DEFAULTS);
   const {
@@ -155,20 +155,22 @@ export function NonMotorListTable({ records }: { records: NonMotorListRow[] }) {
       <PageHeader
         title={t.policy.tabNonMotor}
         actions={
-          <>
-            <Link href="/policy/non-motor/import">
-              <Button variant="secondary">
-                <Upload size={16} />
-                {t.policy.importHistorical}
-              </Button>
-            </Link>
-            <Link href="/policy/non-motor/new">
-              <Button>
-                <Plus size={16} />
-                {t.policy.addNonMotorRecord}
-              </Button>
-            </Link>
-          </>
+          canEdit ? (
+            <>
+              <Link href="/policy/non-motor/import">
+                <Button variant="secondary">
+                  <Upload size={16} />
+                  {t.policy.importHistorical}
+                </Button>
+              </Link>
+              <Link href="/policy/non-motor/new">
+                <Button>
+                  <Plus size={16} />
+                  {t.policy.addNonMotorRecord}
+                </Button>
+              </Link>
+            </>
+          ) : undefined
         }
       />
 

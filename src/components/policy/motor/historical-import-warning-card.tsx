@@ -14,7 +14,15 @@ import type { MotorDetail, PolicyBalanceWarningReason } from "@/components/polic
 // Motor list or Dashboard (see this phase's spec). Rendered only when at
 // least one side is UNVERIFIED; a VERIFIED side never shows a warning at
 // all, even inside this card once expanded.
-export function HistoricalImportWarningCard({ detail, onResolved }: { detail: MotorDetail; onResolved: () => void }) {
+export function HistoricalImportWarningCard({
+  detail,
+  onResolved,
+  canEdit,
+}: {
+  detail: MotorDetail;
+  onResolved: () => void;
+  canEdit: boolean;
+}) {
   const { t, locale } = useLocale();
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
   const [expanded, setExpanded] = useState(false);
@@ -68,9 +76,11 @@ export function HistoricalImportWarningCard({ detail, onResolved }: { detail: Mo
             <span className="text-secondary">{t.policy.originalRowNumber}: </span>
             {detail.originalRowNumber ?? "—"}
           </div>
-          <Button variant="secondary" className="mt-2 self-start" onClick={() => setResolving(side)}>
-            {t.policy.resolveBalance}
-          </Button>
+          {canEdit && (
+            <Button variant="secondary" className="mt-2 self-start" onClick={() => setResolving(side)}>
+              {t.policy.resolveBalance}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-1 text-sm text-zinc-600">

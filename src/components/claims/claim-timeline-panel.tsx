@@ -38,6 +38,7 @@ export function ClaimTimelinePanel({
   isOpen,
   currentUserId,
   isCreator,
+  canEdit: hasEditPermission,
   addAction,
   editAction,
   deleteAction,
@@ -47,6 +48,10 @@ export function ClaimTimelinePanel({
   isOpen: boolean;
   currentUserId: string;
   isCreator: boolean;
+  // Renamed on destructure — this component already has an unrelated local
+  // `canEdit` (per-entry "is this specific update still editable" boolean);
+  // this prop is the module-level VIEW/EDIT permission.
+  canEdit: boolean;
   addAction: (claimId: string, content: string) => Promise<ActionResult & { id?: string }>;
   editAction: (updateId: string, content: string) => Promise<ActionResult>;
   deleteAction: (updateId: string) => Promise<ActionResult>;
@@ -109,7 +114,7 @@ export function ClaimTimelinePanel({
       <h2 className="section-title">{t.claims.claimTimeline}</h2>
 
       {timeline.map((entry, index) => {
-        const canEdit = isOpen && !entry.isInitial && (entry.createdById === currentUserId || isCreator);
+        const canEditEntry = hasEditPermission && isOpen && !entry.isInitial && (entry.createdById === currentUserId || isCreator);
         return (
           <Card key={entry.id}>
             <div className="flex gap-3">
@@ -128,7 +133,7 @@ export function ClaimTimelinePanel({
                     </span>
                   )}
                 </div>
-                {canEdit && (
+                {canEditEntry && (
                   <div className="mt-1 flex items-center gap-1">
                     <IconButton title={t.claims.editClaimUpdate} onClick={() => openEdit(entry)}>
                       <Pencil size={14} />
@@ -144,7 +149,7 @@ export function ClaimTimelinePanel({
         );
       })}
 
-      {isOpen && (
+      {hasEditPermission && isOpen && (
         <div>
           <Button variant="secondary" onClick={openAdd}>
             <Plus size={16} />

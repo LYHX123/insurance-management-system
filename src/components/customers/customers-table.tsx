@@ -30,7 +30,7 @@ type ModalState =
   | { type: "delete"; customer: CustomerListRow }
   | null;
 
-export function CustomersTable({ customers }: { customers: CustomerListRow[] }) {
+export function CustomersTable({ customers, canEdit }: { customers: CustomerListRow[]; canEdit: boolean }) {
   const { t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
@@ -92,12 +92,14 @@ export function CustomersTable({ customers }: { customers: CustomerListRow[] }) 
       <PageHeader
         title={t.customers.title}
         actions={
-          <Link href={`/customer/new?returnTo=${encodeURIComponent(returnTo)}`}>
-            <Button>
-              <Plus size={16} />
-              {t.customers.addCustomer}
-            </Button>
-          </Link>
+          canEdit ? (
+            <Link href={`/customer/new?returnTo=${encodeURIComponent(returnTo)}`}>
+              <Button>
+                <Plus size={16} />
+                {t.customers.addCustomer}
+              </Button>
+            </Link>
+          ) : undefined
         }
       />
 
@@ -174,35 +176,39 @@ export function CustomersTable({ customers }: { customers: CustomerListRow[] }) 
                         <Eye size={16} />
                       </IconButton>
                     </Link>
-                    <IconButton title={t.common.edit} onClick={() => setModal({ type: "edit", customer })}>
-                      <Pencil size={16} />
-                    </IconButton>
-                    <IconButton
-                      title={t.customers.addProject}
-                      onClick={() => setModal({ type: "add-project", customer })}
-                    >
-                      <FolderPlus size={16} />
-                    </IconButton>
-                    <IconButton
-                      title={t.customers.uploadDocument}
-                      onClick={() => setModal({ type: "upload", customer })}
-                    >
-                      <Upload size={16} />
-                    </IconButton>
-                    <IconButton
-                      title={customer.status === "ACTIVE" ? t.customers.deactivate : t.customers.activate}
-                      disabled={isSubmitting}
-                      onClick={() => handleToggleStatus(customer)}
-                    >
-                      {customer.status === "ACTIVE" ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                    </IconButton>
-                    <IconButton
-                      tone="danger"
-                      title={t.common.delete}
-                      onClick={() => setModal({ type: "delete", customer })}
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
+                    {canEdit && (
+                      <>
+                        <IconButton title={t.common.edit} onClick={() => setModal({ type: "edit", customer })}>
+                          <Pencil size={16} />
+                        </IconButton>
+                        <IconButton
+                          title={t.customers.addProject}
+                          onClick={() => setModal({ type: "add-project", customer })}
+                        >
+                          <FolderPlus size={16} />
+                        </IconButton>
+                        <IconButton
+                          title={t.customers.uploadDocument}
+                          onClick={() => setModal({ type: "upload", customer })}
+                        >
+                          <Upload size={16} />
+                        </IconButton>
+                        <IconButton
+                          title={customer.status === "ACTIVE" ? t.customers.deactivate : t.customers.activate}
+                          disabled={isSubmitting}
+                          onClick={() => handleToggleStatus(customer)}
+                        >
+                          {customer.status === "ACTIVE" ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                        </IconButton>
+                        <IconButton
+                          tone="danger"
+                          title={t.common.delete}
+                          onClick={() => setModal({ type: "delete", customer })}
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

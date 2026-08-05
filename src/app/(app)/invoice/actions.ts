@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import { generateInvoiceNumber } from "@/lib/invoice/recordNumber";
 import { recordPolicyActivity } from "@/lib/policy/activity";
@@ -23,7 +23,7 @@ type ActionResult<T = object> = ({ success: true } & T) | { success: false; erro
 
 async function requireInvoicePermission() {
   const session = await auth();
-  if (!session?.user || !hasPermission(session.user, "invoice")) return null;
+  if (!session?.user || !canEdit(session.user, "invoice")) return null;
   return session;
 }
 

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission, isAdmin } from "@/lib/permissions";
+import { canEdit, hasPermission, isAdmin } from "@/lib/permissions";
 import { getDropboxIntegrationRow } from "@/lib/integrations/dropbox/service";
 import { buildCustomerDropboxPathViewModel } from "@/lib/integrations/dropbox/customerPathViewModel";
 import { getCustomerRelatedRecords } from "@/lib/customers/relatedRecords";
@@ -117,6 +117,7 @@ export default async function CustomerDetailPage({
       dropboxFolder={dropboxFolder}
       dropboxConnected={dropboxIntegration.status === "CONNECTED"}
       isAdmin={isAdmin(session.user)}
+      canEdit={canEdit(session.user, "customer")}
       dropboxPaths={{
         customerFolder: dropboxPathViewModel.customerFolder,
         customerDocumentsFolder: dropboxPathViewModel.customerDocumentsFolder,

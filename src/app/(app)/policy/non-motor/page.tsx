@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasPermission } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { NonMotorListTable } from "@/components/policy/non-motor/non-motor-list-table";
 import type { NonMotorListRow } from "@/components/policy/types";
@@ -69,5 +69,5 @@ export default async function NonMotorPolicyListPage({
       };
     });
 
-  return <NonMotorListTable records={rows} />;
+  return <NonMotorListTable records={rows} canEdit={canEdit(session.user, "policy.non_motor")} />;
 }
