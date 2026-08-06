@@ -49,11 +49,11 @@ export function AttentionRequiredSection({ items, totalCount }: { items: Reminde
         {items.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">{t.dashboard.noAttentionItems}</p>
         ) : (
-          <ul className="divide-y divide-zinc-100">
+          <ul className="max-h-[420px] divide-y divide-zinc-100 overflow-y-auto overflow-x-hidden md:max-h-[560px]">
             {visible.map((item) => {
               const Icon = SEVERITY_ICON[item.severity];
               return (
-                <li key={item.id} className="flex items-start gap-3 px-4 py-3">
+                <li key={item.id} className="flex items-start gap-3 px-4 py-2">
                   <Icon size={18} className="mt-0.5 shrink-0 text-zinc-400" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
