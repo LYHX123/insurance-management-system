@@ -23,8 +23,12 @@ const ACCEPT =
 const ERROR_KEY: Record<string, string> = {
   CUSTOM_DOCUMENT_NAME_REQUIRED: "customDocumentNameRequired",
   FILE_REQUIRED: "fileRequired",
+  FILE_EMPTY: "fileRequired",
   FILE_TOO_LARGE: "fileTooLarge",
   UNSUPPORTED_FILE_TYPE: "unsupportedFileType",
+  FILE_SIGNATURE_MISMATCH: "unsupportedFileType",
+  DANGEROUS_FILE_CONTENT: "unsupportedFileType",
+  UNSAFE_FILE_NAME: "unsupportedFileType",
 };
 
 export function UploadDocumentModal({

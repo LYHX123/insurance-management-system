@@ -145,6 +145,23 @@ describe("Customer document Preview/Download route — Unicode filename fix", ()
     expect(JSON.stringify(body)).not.toMatch(/[A-Za-z]:\\|\/uploads\//);
   });
 
+  // CASE H1-8 (Production Readiness Audit V1, finding H1): the download
+  // route must set X-Content-Type-Options: nosniff, same as every other
+  // document download route (policy/quotation/claim/invoice/ledger export).
+  it("H1-8: response includes X-Content-Type-Options: nosniff", async () => {
+    documents.set("doc-1", {
+      id: "doc-1",
+      originalFileName: "Registration Certificate.pdf",
+      mimeType: "application/pdf",
+      fileSize: 13,
+      storageKey: "cust-1/doc-1.pdf",
+    });
+
+    const response = await callRoute();
+
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+
   it("returns 403 when the caller lacks the customer permission", async () => {
     hasPermission.mockReturnValue(false);
     documents.set("doc-1", {

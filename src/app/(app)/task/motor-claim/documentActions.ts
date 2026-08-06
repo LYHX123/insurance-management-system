@@ -33,11 +33,14 @@ export async function uploadMotorClaimDocumentAction(formData: FormData): Promis
   }
   if (!(file instanceof File)) return { success: false, error: "NO_FILE" };
 
-  // Any participant, not creator-only, may upload — same gating
-  // addMotorClaimUpdateAction uses for adding a timeline entry — but only
-  // while the Claim is OPEN.
+  // Production Readiness Audit V1, finding H2: uploading is a write
+  // operation and must require EDIT, same as every other mutating action in
+  // actions.ts (updateMotorClaimAction, addMotorClaimUpdateAction, etc.) —
+  // access.kind === "ok" alone only proves module VIEW-or-above + claim
+  // participation, not EDIT.
   const access = await checkMotorClaimAccess(motorClaimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -94,6 +97,7 @@ export async function deleteMotorClaimDocumentAction(documentId: string): Promis
 
   const access = await checkMotorClaimAccess(document.motorClaimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   // DB row deleted first (dropboxSync row cascades away) — the Dropbox file

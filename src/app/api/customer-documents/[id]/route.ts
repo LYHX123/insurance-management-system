@@ -34,6 +34,7 @@ export async function GET(
       "Content-Disposition": buildContentDisposition({ mode, filename: document.originalFileName }),
       "Content-Length": String(document.fileSize),
       "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

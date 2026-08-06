@@ -1,5 +1,11 @@
 import { randomUUID } from "crypto";
 import path from "path";
+// Reused directly (not duplicated) — the byte-signature allowlist this
+// module needs (pdf/doc/docx/xls/xlsx/jpeg/png) is a subset of what
+// quotationDocuments' fileSignature.ts already validates, and this check is
+// domain-agnostic (bytes in, boolean out). Same reuse pattern already used
+// by policyDocuments/validateUpload.ts and claimDocuments/validateUpload.ts.
+import { looksDangerous, matchesFileSignature } from "@/lib/quotationDocuments/fileSignature";
 
 export function formatCustomerNumber(sequenceNumber: number): string {
   return `CUST-${String(sequenceNumber).padStart(4, "0")}`;
@@ -21,6 +27,51 @@ export const ALLOWED_DOCUMENT_MIME_TYPES: Record<string, string> = {
 
 export function isAllowedDocumentMimeType(mimeType: string): boolean {
   return mimeType in ALLOWED_DOCUMENT_MIME_TYPES;
+}
+
+export type CustomerDocumentUploadValidationError =
+  | "FILE_EMPTY"
+  | "FILE_TOO_LARGE"
+  | "UNSUPPORTED_FILE_TYPE"
+  | "FILE_SIGNATURE_MISMATCH"
+  | "DANGEROUS_FILE_CONTENT"
+  | "UNSAFE_FILE_NAME";
+
+// Rejects path-traversal / control-character filenames — the physical
+// on-disk filename is always server-generated (generateStoredFileName
+// above), but a malicious originalFileName is still stored for display, so
+// it must not carry traversal sequences or be usable to spoof another
+// file's identity in the UI. Same check as policyDocuments/quotationDocuments'
+// validateUpload.ts.
+function isUnsafeFileName(name: string): boolean {
+  if (!name || name.includes("\0")) return true;
+  if (name.includes("/") || name.includes("\\")) return true;
+  if (name === "." || name === "..") return true;
+  return false;
+}
+
+// Production Readiness Audit V1, finding H1: Customer Document upload
+// previously trusted only the browser-supplied MIME type/extension. This
+// mirrors Policy/Quotation/Claim documents' validateUploadedFile — same
+// shared byte-signature helpers (looksDangerous/matchesFileSignature),
+// applied against this module's own size limit and MIME allowlist.
+export function validateCustomerDocumentUpload(
+  originalFileName: string,
+  mimeType: string,
+  size: number,
+  buffer: Buffer
+): { ok: true } | { ok: false; error: CustomerDocumentUploadValidationError } {
+  if (size === 0) return { ok: false, error: "FILE_EMPTY" };
+  if (size > MAX_UPLOAD_FILE_SIZE_BYTES) return { ok: false, error: "FILE_TOO_LARGE" };
+  if (isUnsafeFileName(originalFileName)) return { ok: false, error: "UNSAFE_FILE_NAME" };
+  if (!isAllowedDocumentMimeType(mimeType)) return { ok: false, error: "UNSUPPORTED_FILE_TYPE" };
+
+  if (looksDangerous(buffer)) return { ok: false, error: "DANGEROUS_FILE_CONTENT" };
+
+  const ext = ALLOWED_DOCUMENT_MIME_TYPES[mimeType];
+  if (!matchesFileSignature(ext, buffer)) return { ok: false, error: "FILE_SIGNATURE_MISMATCH" };
+
+  return { ok: true };
 }
 
 // The uploaded file name is never used to build a physical path — we only

@@ -29,8 +29,13 @@ export async function uploadNonMotorClaimDocumentAction(formData: FormData): Pro
   }
   if (!(file instanceof File)) return { success: false, error: "NO_FILE" };
 
+  // Production Readiness Audit V1, finding H2: uploading is a write
+  // operation and must require EDIT, same as every other mutating action in
+  // actions.ts — access.kind === "ok" alone only proves module
+  // VIEW-or-above + claim participation, not EDIT.
   const access = await checkNonMotorClaimAccess(nonMotorClaimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -82,6 +87,7 @@ export async function deleteNonMotorClaimDocumentAction(documentId: string): Pro
 
   const access = await checkNonMotorClaimAccess(document.nonMotorClaimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
+  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   try {

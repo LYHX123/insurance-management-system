@@ -10,6 +10,20 @@ export function toDecimal(value: DecimalInput): Prisma.Decimal {
   return new Prisma.Decimal(value as number | string | Prisma.Decimal);
 }
 
+// Rejects blank input and non-finite numeric input (NaN, Infinity,
+// -Infinity) that a bare `Number(x) <= 0` / `< 0` comparison lets through
+// unnoticed — see Production Readiness Audit V1, finding H5. Every
+// server-side "is this a valid amount" check on a user-supplied financial
+// input should route through this rather than re-deriving Number(x) inline.
+// Returns the parsed finite number, or null if the input is blank or
+// non-finite; callers still apply their own sign/zero business rule to the
+// returned number.
+export function toFiniteAmount(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 // All financial calculations round half-up to 2 decimal places — never use
 // plain JS floating point arithmetic for money in this module.
 export function roundMoney(value: Prisma.Decimal): Prisma.Decimal {

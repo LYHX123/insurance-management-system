@@ -3,19 +3,37 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canEdit } from "@/lib/permissions";
-import { toDecimal, type DecimalInput } from "@/lib/money";
+import { canEdit, POLICY_CATEGORY_PERMISSION } from "@/lib/permissions";
+import { toDecimal, toFiniteAmount, type DecimalInput } from "@/lib/money";
 import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isMotorTaxClass, type MotorTaxClass } from "@/lib/policy/motorTaxClasses";
 import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
+import type { PolicyCategory } from "@/generated/prisma/enums";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
+// Used only by the two actions below that are genuinely Motor-specific
+// (they create/update MotorPolicyDetail rows) — never shared cross-category.
 async function requirePolicyPermission() {
   const session = await auth();
   if (!session?.user || !canEdit(session.user, "policy.motor")) return null;
+  return session;
+}
+
+// Production Readiness Audit V1, finding C1: addCustomerReceiptAction,
+// addProviderPaymentAction, resolveBalanceVerificationAction and
+// updateCommissionAction below are reused as-is by Bond/Non-Motor/Work
+// Permit's Financial tabs (see e.g. bond-financial-tab.tsx), so permission
+// must be resolved from the target record's REAL category — never hardcoded
+// to policy.motor. Mirrors documentActions.ts's category-aware
+// requirePolicyPermission. Fails closed (returns null) if the category has
+// no mapped permission key, never falls back to policy.motor.
+async function requireFinancialPolicyPermission(category: PolicyCategory) {
+  const session = await auth();
+  const permissionKey = POLICY_CATEGORY_PERMISSION[category];
+  if (!session?.user || !permissionKey || !canEdit(session.user, permissionKey)) return null;
   return session;
 }
 
@@ -367,13 +385,15 @@ export async function addCustomerReceiptAction(
   policyRecordId: string,
   data: AddCustomerReceiptInput
 ): Promise<ActionResult<{ id: string }>> {
-  const session = await requirePolicyPermission();
-  if (!session) return { success: false, error: "FORBIDDEN" };
-
   const record = await prisma.policyRecord.findUnique({ where: { id: policyRecordId, deletedAt: null } });
   if (!record) return { success: false, error: "RECORD_NOT_FOUND" };
+
+  const session = await requireFinancialPolicyPermission(record.category);
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
   if (!data.receiptDate) return { success: false, error: "RECEIPT_DATE_REQUIRED" };
-  if (isBlank(data.amount) || Number(data.amount) <= 0) return { success: false, error: "AMOUNT_INVALID" };
+  const amount = toFiniteAmount(data.amount);
+  if (amount === null || amount <= 0) return { success: false, error: "AMOUNT_INVALID" };
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -381,7 +401,7 @@ export async function addCustomerReceiptAction(
         data: {
           policyRecordId,
           receiptDate: new Date(data.receiptDate),
-          amount: toDecimal(data.amount),
+          amount: toDecimal(amount),
           paymentMethod: data.paymentMethod?.trim() || null,
           referenceNumber: data.referenceNumber?.trim() || null,
           notes: data.notes?.trim() || null,
@@ -417,13 +437,15 @@ export async function addProviderPaymentAction(
   policyRecordId: string,
   data: AddProviderPaymentInput
 ): Promise<ActionResult<{ id: string }>> {
-  const session = await requirePolicyPermission();
-  if (!session) return { success: false, error: "FORBIDDEN" };
-
   const record = await prisma.policyRecord.findUnique({ where: { id: policyRecordId, deletedAt: null } });
   if (!record) return { success: false, error: "RECORD_NOT_FOUND" };
+
+  const session = await requireFinancialPolicyPermission(record.category);
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
   if (!data.paymentDate) return { success: false, error: "PAYMENT_DATE_REQUIRED" };
-  if (isBlank(data.amount) || Number(data.amount) <= 0) return { success: false, error: "AMOUNT_INVALID" };
+  const amount = toFiniteAmount(data.amount);
+  if (amount === null || amount <= 0) return { success: false, error: "AMOUNT_INVALID" };
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -431,7 +453,7 @@ export async function addProviderPaymentAction(
         data: {
           policyRecordId,
           paymentDate: new Date(data.paymentDate),
-          amount: toDecimal(data.amount),
+          amount: toDecimal(amount),
           paymentMethod: data.paymentMethod?.trim() || null,
           referenceNumber: data.referenceNumber?.trim() || null,
           notes: data.notes?.trim() || null,
@@ -476,17 +498,19 @@ export async function resolveBalanceVerificationAction(
   policyRecordId: string,
   data: ResolveBalanceVerificationInput
 ): Promise<ActionResult> {
-  const session = await requirePolicyPermission();
-  if (!session) return { success: false, error: "FORBIDDEN" };
-
   const record = await prisma.policyRecord.findUnique({ where: { id: policyRecordId, deletedAt: null } });
   if (!record) return { success: false, error: "RECORD_NOT_FOUND" };
+
+  const session = await requireFinancialPolicyPermission(record.category);
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
   if (!data.note?.trim()) return { success: false, error: "RESOLUTION_NOTE_REQUIRED" };
 
   const verification = data.side === "insurer" ? record.insurerBalanceVerification : record.clientBalanceVerification;
   if (verification === "VERIFIED") return { success: false, error: "ALREADY_VERIFIED" };
 
-  if (!isBlank(data.correctedAmount) && Number(data.correctedAmount) < 0) {
+  const correctedAmount = isBlank(data.correctedAmount) ? null : toFiniteAmount(data.correctedAmount);
+  if (!isBlank(data.correctedAmount) && (correctedAmount === null || correctedAmount < 0)) {
     return { success: false, error: "AMOUNT_INVALID" };
   }
 
@@ -498,14 +522,14 @@ export async function resolveBalanceVerificationAction(
         data:
           data.side === "insurer"
             ? {
-                insurerCost: isBlank(data.correctedAmount) ? undefined : toDecimal(data.correctedAmount as number | string),
+                insurerCost: correctedAmount === null ? undefined : toDecimal(correctedAmount),
                 insurerBalanceVerification: "VERIFIED",
                 insurerBalanceResolutionNote: data.note.trim(),
                 insurerBalanceResolvedAt: now,
                 insurerBalanceResolvedById: session.user.id,
               }
             : {
-                customerPremium: isBlank(data.correctedAmount) ? undefined : toDecimal(data.correctedAmount as number | string),
+                customerPremium: correctedAmount === null ? undefined : toDecimal(correctedAmount),
                 clientBalanceVerification: "VERIFIED",
                 clientBalanceResolutionNote: data.note.trim(),
                 clientBalanceResolvedAt: now,
@@ -542,14 +566,15 @@ export async function updateCommissionAction(
   policyRecordId: string,
   data: UpdateCommissionInput
 ): Promise<ActionResult> {
-  const session = await requirePolicyPermission();
-  if (!session) return { success: false, error: "FORBIDDEN" };
-
   const record = await prisma.policyRecord.findUnique({ where: { id: policyRecordId, deletedAt: null } });
   if (!record) return { success: false, error: "RECORD_NOT_FOUND" };
 
+  const session = await requireFinancialPolicyPermission(record.category);
+  if (!session) return { success: false, error: "FORBIDDEN" };
+
+  const finiteCommissionAmount = toFiniteAmount(data.commissionAmount);
   if (data.commissionReceived) {
-    if (isBlank(data.commissionAmount) || Number(data.commissionAmount) < 0) {
+    if (finiteCommissionAmount === null || finiteCommissionAmount < 0) {
       return { success: false, error: "COMMISSION_AMOUNT_INVALID" };
     }
     if (!data.commissionReceivedDate) {
@@ -557,7 +582,7 @@ export async function updateCommissionAction(
     }
   }
 
-  const commissionAmount = data.commissionReceived ? toDecimal(data.commissionAmount as number | string) : null;
+  const commissionAmount = data.commissionReceived ? toDecimal(finiteCommissionAmount as number) : null;
   const commissionReceivedDate =
     data.commissionReceived && data.commissionReceivedDate ? new Date(data.commissionReceivedDate) : null;
 

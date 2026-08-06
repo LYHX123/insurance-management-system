@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit } from "@/lib/permissions";
-import { toDecimal } from "@/lib/money";
+import { toDecimal, toFiniteAmount } from "@/lib/money";
 import type { LedgerTransactionType } from "@/generated/prisma/enums";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
@@ -147,7 +147,8 @@ export async function createManualEntryAction(
   const categoryCheck = await validateCategoryForEntry(input.categoryId, input.transactionType);
   if ("error" in categoryCheck) return { success: false, error: categoryCheck.error };
 
-  if (input.amount === null || input.amount === undefined || input.amount === "" || Number(input.amount) <= 0) {
+  const amount = toFiniteAmount(input.amount);
+  if (amount === null || amount <= 0) {
     return { success: false, error: "AMOUNT_INVALID" };
   }
 
@@ -157,7 +158,7 @@ export async function createManualEntryAction(
         transactionDate: new Date(input.transactionDate),
         transactionType: input.transactionType,
         categoryId: input.categoryId,
-        amount: toDecimal(input.amount),
+        amount: toDecimal(amount),
         paymentMethod: input.paymentMethod?.trim() || null,
         referenceNumber: input.referenceNumber?.trim() || null,
         description: input.description?.trim() || null,
@@ -185,7 +186,8 @@ export async function updateManualEntryAction(id: string, input: ManualEntryInpu
   const categoryCheck = await validateCategoryForEntry(input.categoryId, input.transactionType, existing.categoryId);
   if ("error" in categoryCheck) return { success: false, error: categoryCheck.error };
 
-  if (input.amount === null || input.amount === undefined || input.amount === "" || Number(input.amount) <= 0) {
+  const amount = toFiniteAmount(input.amount);
+  if (amount === null || amount <= 0) {
     return { success: false, error: "AMOUNT_INVALID" };
   }
 
@@ -196,7 +198,7 @@ export async function updateManualEntryAction(id: string, input: ManualEntryInpu
         transactionDate: new Date(input.transactionDate),
         transactionType: input.transactionType,
         categoryId: input.categoryId,
-        amount: toDecimal(input.amount),
+        amount: toDecimal(amount),
         paymentMethod: input.paymentMethod?.trim() || null,
         referenceNumber: input.referenceNumber?.trim() || null,
         description: input.description?.trim() || null,

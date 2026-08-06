@@ -7,11 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { canEdit } from "@/lib/permissions";
 import { storageService } from "@/lib/storage";
 import {
-  MAX_UPLOAD_FILE_SIZE_BYTES,
   customerCompanyFolder,
   customerProjectFolder,
   generateStoredFileName,
-  isAllowedDocumentMimeType,
+  validateCustomerDocumentUpload,
 } from "@/lib/customer-utils";
 import { CustomerDocumentType } from "@/generated/prisma/enums";
 import { buildStandardizedDropboxFilename } from "@/lib/integrations/dropbox/customerDocumentFilenames";
@@ -74,15 +73,13 @@ export async function uploadDocumentAction(
   if (documentType === CustomerDocumentType.OTHER && !customDocumentName) {
     return { success: false, error: "CUSTOM_DOCUMENT_NAME_REQUIRED" };
   }
-  if (!(file instanceof File) || file.size === 0) {
+  if (!(file instanceof File)) {
     return { success: false, error: "FILE_REQUIRED" };
   }
-  if (file.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
-    return { success: false, error: "FILE_TOO_LARGE" };
-  }
-  if (!isAllowedDocumentMimeType(file.type)) {
-    return { success: false, error: "UNSUPPORTED_FILE_TYPE" };
-  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const validation = validateCustomerDocumentUpload(file.name, file.type, file.size, buffer);
+  if (!validation.ok) return { success: false, error: validation.error };
 
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
   if (!customer) return { success: false, error: "CUSTOMER_NOT_FOUND" };
@@ -98,8 +95,6 @@ export async function uploadDocumentAction(
   const folderPath = projectId
     ? customerProjectFolder(customer.customerNumber, projectId)
     : customerCompanyFolder(customer.customerNumber);
-
-  const buffer = Buffer.from(await file.arrayBuffer());
 
   let storageKey: string;
   try {
