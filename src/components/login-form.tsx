@@ -30,7 +30,12 @@ export function LoginForm() {
     setIsSubmitting(false);
 
     if (result?.error) {
-      setError(t.login.invalidCredentials);
+      // Production Readiness Audit V1, finding H3: the server distinguishes
+      // "too many attempts" from an ordinary wrong Full Name/password via
+      // the CredentialsSignin `code` (see auth.ts's TooManyLoginAttemptsError)
+      // — never via a different `error` value, so this still can't be used
+      // to enumerate which specific check failed for a given credential.
+      setError(result.code === "RATE_LIMITED" ? t.login.tooManyAttempts : t.login.invalidCredentials);
       return;
     }
 

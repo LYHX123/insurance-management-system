@@ -1,7 +1,16 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { verifyCredentials } from "@/lib/auth/credentials";
+import { isRateLimited, recordFailure, clearFailures, loginRateLimitKeys } from "@/lib/auth/loginRateLimit";
+import { getClientIp } from "@/lib/http/clientIp";
+
+// Production Readiness Audit V1, finding H3: surfaced to the client as
+// `result.code` (see login-form.tsx) — deliberately generic, never hints
+// which specific check tripped it beyond "you are being rate limited".
+class TooManyLoginAttemptsError extends CredentialsSignin {
+  code = "RATE_LIMITED";
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // Required when running behind a reverse proxy (Nginx) that terminates
@@ -20,7 +29,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         username: {},
         password: {},
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, request) => {
         const rawLogin = credentials?.username as string | undefined;
         const password = credentials?.password as string | undefined;
         if (!rawLogin || !password) return null;
@@ -28,42 +37,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const login = rawLogin.trim();
         if (!login) return null;
 
-        // Full Name is the primary login identifier — case-insensitive,
-        // trimmed (see src/lib/users/fullName.ts's matching normalization
-        // used at create/edit time).
-        let user = await prisma.user.findFirst({
-          where: { fullName: { equals: login, mode: "insensitive" } },
-        });
-
-        // Legacy compatibility: accounts migrated from the old
-        // username+password login (e.g. "admin") keep working if someone
-        // types the old username instead of the Full Name. Never required
-        // going forward — new accounts are found via Full Name above.
-        if (!user) {
-          user = await prisma.user.findFirst({
-            where: { username: { equals: login, mode: "insensitive" } },
-          });
+        // Production Readiness Audit V1, finding H3: two independent
+        // failure counters — one per login identifier (blocks repeated
+        // guessing against a single account regardless of source), one per
+        // client IP (blocks one source from sweeping many accounts) — see
+        // loginRateLimit.ts for the threshold/window and its documented
+        // single-instance/in-memory scope. Checked BEFORE any DB lookup or
+        // password comparison, so a blocked caller never gets a timing
+        // signal either.
+        const clientIp = getClientIp(request);
+        const { accountKey, ipKey } = loginRateLimitKeys(login, clientIp);
+        if (isRateLimited(accountKey) || isRateLimited(ipKey)) {
+          throw new TooManyLoginAttemptsError();
         }
 
-        if (!user || user.status !== "ACTIVE") return null;
+        const user = await verifyCredentials(login, password);
+        if (!user) {
+          recordFailure(accountKey);
+          recordFailure(ipKey);
+          return null;
+        }
 
-        const passwordValid = await bcrypt.compare(password, user.passwordHash);
-        if (!passwordValid) return null;
-
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        });
-
-        return {
-          id: user.id,
-          username: user.username,
-          name: user.fullName,
-          role: user.role,
-          status: user.status,
-          preferredLanguage: user.preferredLanguage,
-          permissions: user.permissions,
-        };
+        clearFailures(accountKey);
+        clearFailures(ipKey);
+        return user;
       },
     }),
   ],

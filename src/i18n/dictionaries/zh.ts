@@ -41,6 +41,7 @@ const zh: Dictionary = {
     submitting: "登录中...",
     invalidCredentials: "姓名或密码错误。",
     accountDisabled: "该账户已被禁用。",
+    tooManyAttempts: "登录尝试次数过多，请稍后再试。",
     genericError: "出现错误，请重试。",
   },
   dashboard: {

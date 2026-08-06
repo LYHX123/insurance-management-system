@@ -16,6 +16,7 @@ const ERROR_KEY: Record<string, string> = {
   AMOUNT_INVALID: "amountInvalid",
   FORBIDDEN: "genericError",
   CREATE_FAILED: "createFailedError",
+  IDEMPOTENCY_KEY_REQUIRED: "genericError",
 };
 
 export function AddReceiptModal({
@@ -35,6 +36,12 @@ export function AddReceiptModal({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Production Readiness Audit V1, finding H6: one key per modal-open (this
+  // component is unmounted/remounted by its parent on each "Add Receipt"
+  // click — see motor-financial-tab.tsx), reused across any retry of the
+  // same submission so a double-click or network retry can only ever create
+  // one receipt server-side.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const handleSubmit = async () => {
     setError(null);
@@ -53,6 +60,7 @@ export function AddReceiptModal({
       paymentMethod: paymentMethod || null,
       referenceNumber: referenceNumber || null,
       notes: notes || null,
+      idempotencyKey,
     });
     setIsSubmitting(false);
     if (!result.success) {

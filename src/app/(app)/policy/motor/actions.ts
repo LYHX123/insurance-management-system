@@ -10,6 +10,7 @@ import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isMotorTaxClass, type MotorTaxClass } from "@/lib/policy/motorTaxClasses";
 import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
+import { claimIdempotencyKey, fulfillIdempotencyClaim } from "@/lib/idempotency/claim";
 import type { PolicyCategory } from "@/generated/prisma/enums";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
@@ -379,6 +380,11 @@ export type AddCustomerReceiptInput = {
   paymentMethod?: string | null;
   referenceNumber?: string | null;
   notes?: string | null;
+  // Production Readiness Audit V1, finding H6: one per form-open/submission
+  // attempt, generated client-side (see add-receipt-modal.tsx) and reused
+  // across any retry of that same attempt — see claimIdempotencyKey's doc
+  // comment for the full concurrency-safety story.
+  idempotencyKey: string;
 };
 
 export async function addCustomerReceiptAction(
@@ -394,9 +400,13 @@ export async function addCustomerReceiptAction(
   if (!data.receiptDate) return { success: false, error: "RECEIPT_DATE_REQUIRED" };
   const amount = toFiniteAmount(data.amount);
   if (amount === null || amount <= 0) return { success: false, error: "AMOUNT_INVALID" };
+  if (!data.idempotencyKey?.trim()) return { success: false, error: "IDEMPOTENCY_KEY_REQUIRED" };
 
   try {
     const created = await prisma.$transaction(async (tx) => {
+      const claim = await claimIdempotencyKey(tx, "policy.customerReceipt", data.idempotencyKey);
+      if (claim.kind === "replay") return { id: claim.resourceId };
+
       const receipt = await tx.policyCustomerReceipt.create({
         data: {
           policyRecordId,
@@ -409,6 +419,7 @@ export async function addCustomerReceiptAction(
           createdById: session.user.id,
         },
       });
+      await fulfillIdempotencyClaim(tx, data.idempotencyKey, receipt.id);
       await recordPolicyActivity(tx, {
         policyRecordId,
         actionType: "CUSTOMER_RECEIPT_ADDED",
@@ -431,6 +442,9 @@ export type AddProviderPaymentInput = {
   paymentMethod?: string | null;
   referenceNumber?: string | null;
   notes?: string | null;
+  // Production Readiness Audit V1, finding H6 — see AddCustomerReceiptInput's
+  // idempotencyKey doc comment.
+  idempotencyKey: string;
 };
 
 export async function addProviderPaymentAction(
@@ -446,9 +460,13 @@ export async function addProviderPaymentAction(
   if (!data.paymentDate) return { success: false, error: "PAYMENT_DATE_REQUIRED" };
   const amount = toFiniteAmount(data.amount);
   if (amount === null || amount <= 0) return { success: false, error: "AMOUNT_INVALID" };
+  if (!data.idempotencyKey?.trim()) return { success: false, error: "IDEMPOTENCY_KEY_REQUIRED" };
 
   try {
     const created = await prisma.$transaction(async (tx) => {
+      const claim = await claimIdempotencyKey(tx, "policy.providerPayment", data.idempotencyKey);
+      if (claim.kind === "replay") return { id: claim.resourceId };
+
       const payment = await tx.policyProviderPayment.create({
         data: {
           policyRecordId,
@@ -461,6 +479,7 @@ export async function addProviderPaymentAction(
           createdById: session.user.id,
         },
       });
+      await fulfillIdempotencyClaim(tx, data.idempotencyKey, payment.id);
       await recordPolicyActivity(tx, {
         policyRecordId,
         actionType: "INSURER_PAYMENT_ADDED",

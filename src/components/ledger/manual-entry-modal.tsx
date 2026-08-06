@@ -25,6 +25,7 @@ const ERROR_KEY: Record<string, string> = {
   CREATE_FAILED: "createFailed",
   UPDATE_FAILED: "updateFailed",
   FORBIDDEN: "forbidden",
+  IDEMPOTENCY_KEY_REQUIRED: "createFailed",
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -67,6 +68,11 @@ export function ManualEntryModal({
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Production Readiness Audit V1, finding H6: only meaningful for the
+  // create path (see createManualEntryAction's own doc comment on why
+  // update doesn't need one) — still generated unconditionally per
+  // modal-open since that's cheap and keeps this hook unconditional.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const availableCategories = useMemo(
     () => localCategories.filter((c) => c.transactionType === transactionType && (c.isActive || c.id === entry?.categoryId)),
@@ -130,7 +136,7 @@ export function ManualEntryModal({
     };
     const result = isEditing
       ? await updateManualEntryAction(entry!.id, payload)
-      : await createManualEntryAction(payload);
+      : await createManualEntryAction({ ...payload, idempotencyKey });
     setIsSubmitting(false);
 
     if (!result.success) {

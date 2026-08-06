@@ -44,6 +44,7 @@ const en = {
     submitting: "Signing in...",
     invalidCredentials: "Invalid Full Name or password.",
     accountDisabled: "This account has been disabled.",
+    tooManyAttempts: "Too many login attempts. Please try again later.",
     genericError: "Something went wrong. Please try again.",
   },
   dashboard: {

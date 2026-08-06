@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit } from "@/lib/permissions";
 import { toDecimal, toFiniteAmount } from "@/lib/money";
+import { claimIdempotencyKey, fulfillIdempotencyClaim } from "@/lib/idempotency/claim";
 import type { LedgerTransactionType } from "@/generated/prisma/enums";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
@@ -116,6 +117,13 @@ export type ManualEntryInput = {
   description?: string | null;
 };
 
+// Production Readiness Audit V1, finding H6: only the CREATE path needs an
+// idempotency key — updateManualEntryAction is an edit of an existing row
+// identified by its own id, which is already naturally idempotent-safe (a
+// retried edit just re-applies the same field values), not a "create a new
+// financial record" action.
+export type CreateManualEntryInput = ManualEntryInput & { idempotencyKey: string };
+
 type CategoryCheckResult = { error: string } | { ok: true };
 
 async function validateCategoryForEntry(
@@ -136,37 +144,50 @@ async function validateCategoryForEntry(
 }
 
 export async function createManualEntryAction(
-  input: ManualEntryInput
+  input: CreateManualEntryInput
 ): Promise<ActionResult<{ id: string }>> {
   const session = await requireLedgerPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
   if (!input.transactionDate) return { success: false, error: "DATE_REQUIRED" };
   if (!isValidTransactionType(input.transactionType)) return { success: false, error: "TYPE_REQUIRED" };
+  // Captured as a const so the LedgerTransactionType narrowing above
+  // survives into the $transaction callback below — TS control-flow
+  // narrowing of a property access does not propagate into a nested
+  // closure, only a local const's does.
+  const transactionType = input.transactionType;
 
-  const categoryCheck = await validateCategoryForEntry(input.categoryId, input.transactionType);
+  const categoryCheck = await validateCategoryForEntry(input.categoryId, transactionType);
   if ("error" in categoryCheck) return { success: false, error: categoryCheck.error };
 
   const amount = toFiniteAmount(input.amount);
   if (amount === null || amount <= 0) {
     return { success: false, error: "AMOUNT_INVALID" };
   }
+  if (!input.idempotencyKey?.trim()) return { success: false, error: "IDEMPOTENCY_KEY_REQUIRED" };
 
   try {
-    const entry = await prisma.ledgerManualEntry.create({
-      data: {
-        transactionDate: new Date(input.transactionDate),
-        transactionType: input.transactionType,
-        categoryId: input.categoryId,
-        amount: toDecimal(amount),
-        paymentMethod: input.paymentMethod?.trim() || null,
-        referenceNumber: input.referenceNumber?.trim() || null,
-        description: input.description?.trim() || null,
-        createdById: session.user.id,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const claim = await claimIdempotencyKey(tx, "ledger.manualEntry", input.idempotencyKey);
+      if (claim.kind === "replay") return { id: claim.resourceId };
+
+      const entry = await tx.ledgerManualEntry.create({
+        data: {
+          transactionDate: new Date(input.transactionDate),
+          transactionType,
+          categoryId: input.categoryId,
+          amount: toDecimal(amount),
+          paymentMethod: input.paymentMethod?.trim() || null,
+          referenceNumber: input.referenceNumber?.trim() || null,
+          description: input.description?.trim() || null,
+          createdById: session.user.id,
+        },
+      });
+      await fulfillIdempotencyClaim(tx, input.idempotencyKey, entry.id);
+      return entry;
     });
     revalidatePath("/ledger/manual");
-    return { success: true, id: entry.id };
+    return { success: true, id: created.id };
   } catch (err) {
     console.error("Failed to create Manual Ledger entry:", err);
     return { success: false, error: "CREATE_FAILED" };

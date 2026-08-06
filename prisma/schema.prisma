@@ -3622,3 +3622,35 @@ model SystemInitializationLog {
   @@index([status])
   @@index([startedAt])
 }
+
+// Production Readiness Audit V1, finding H6: a brand-new, fully isolated
+// table (no existing table's schema is touched) backing server-side
+// idempotency for financial "create" actions — Customer Receipt, Provider
+// Payment, Manual Ledger entry. `key` is a client-generated token, one per
+// form-open/submission-attempt (regenerated only when the user starts a
+// genuinely new entry), so a double-click / network retry / two nearly
+// simultaneous requests all carry the SAME key and can only ever claim it
+// once (enforced by the unique constraint below, which is the actual
+// concurrency-safety mechanism — see src/lib/idempotency/claim.ts). Two
+// legitimately separate submissions (e.g. two real KES 100,000 receipts
+// entered back-to-back) always carry two different keys, so they are never
+// confused with each other — this table has no opinion on amount/date/policy
+// at all, only on "has this exact submission attempt already happened".
+model IdempotencyClaim {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  // Which action family this claim belongs to (e.g.
+  // "policy.customerReceipt") — informational/defense-in-depth only (guards
+  // against a key colliding across unrelated action types), not itself part
+  // of the uniqueness guarantee.
+  scope      String
+  // The id of the record actually created once the claim is fulfilled.
+  // Empty until then; if the owning transaction fails/rolls back partway
+  // through, the whole claim row rolls back with it, so a genuinely failed
+  // attempt never leaves a permanently "stuck" key — a legitimate retry
+  // with the same key succeeds normally.
+  resourceId String
+  createdAt  DateTime @default(now())
+
+  @@index([scope, createdAt])
+}

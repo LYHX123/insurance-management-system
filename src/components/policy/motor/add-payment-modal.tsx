@@ -16,6 +16,7 @@ const ERROR_KEY: Record<string, string> = {
   AMOUNT_INVALID: "amountInvalid",
   FORBIDDEN: "genericError",
   CREATE_FAILED: "createFailedError",
+  IDEMPOTENCY_KEY_REQUIRED: "genericError",
 };
 
 export function AddPaymentModal({
@@ -35,6 +36,9 @@ export function AddPaymentModal({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Production Readiness Audit V1, finding H6 — see add-receipt-modal.tsx's
+  // idempotencyKey doc comment.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const handleSubmit = async () => {
     setError(null);
@@ -53,6 +57,7 @@ export function AddPaymentModal({
       paymentMethod: paymentMethod || null,
       referenceNumber: referenceNumber || null,
       notes: notes || null,
+      idempotencyKey,
     });
     setIsSubmitting(false);
     if (!result.success) {

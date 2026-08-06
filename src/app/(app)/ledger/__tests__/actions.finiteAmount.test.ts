@@ -16,6 +16,13 @@ const manualEntryCreateMock = vi.fn();
 const manualEntryFindUniqueMock = vi.fn();
 const manualEntryUpdateMock = vi.fn();
 
+// H6: createManualEntryAction now runs inside prisma.$transaction and
+// claims an idempotency key first — this file's own concern is H5 (amount
+// validation), so the claim always trivially succeeds here (a fresh
+// in-memory Map per test) rather than re-testing idempotency behavior,
+// which src/app/(app)/ledger/__tests__/actions.idempotency.test.ts covers.
+let idempotencyClaims: Set<string>;
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     ledgerCategory: {
@@ -26,6 +33,22 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => manualEntryFindUniqueMock(...args),
       update: (...args: unknown[]) => manualEntryUpdateMock(...args),
     },
+    $transaction: async (cb: (tx: unknown) => unknown) =>
+      cb({
+        idempotencyClaim: {
+          create: async ({ data }: { data: { key: string } }) => {
+            if (idempotencyClaims.has(data.key)) {
+              const err = new Error("unique constraint") as Error & { code: string };
+              err.code = "P2002";
+              throw err;
+            }
+            idempotencyClaims.add(data.key);
+          },
+          findUnique: async () => null,
+          update: async () => ({}),
+        },
+        ledgerManualEntry: { create: (...args: unknown[]) => manualEntryCreateMock(...args) },
+      }),
   },
 }));
 
@@ -38,6 +61,7 @@ const validCategory = { id: "cat-1", name: "Office Supplies", transactionType: "
 describe("Ledger Manual Entry actions — H5 finite-amount validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    idempotencyClaims = new Set();
     setSession(["ledger.manual_record.edit"]);
     categoryFindUniqueMock.mockResolvedValue(validCategory);
     manualEntryCreateMock.mockResolvedValue({ id: "entry-1" });
@@ -55,8 +79,10 @@ describe("Ledger Manual Entry actions — H5 finite-amount validation", () => {
       transactionType: "EXPENSE",
       categoryId: "cat-1",
       amount,
+      idempotencyKey: `key-valid-${amount}`,
     });
     expect(result).not.toEqual({ success: false, error: "AMOUNT_INVALID" });
+    expect(manualEntryCreateMock).toHaveBeenCalled();
   });
 
   it.each(invalidAmounts)("createManualEntryAction rejects an invalid amount: %p", async (amount) => {
@@ -66,6 +92,7 @@ describe("Ledger Manual Entry actions — H5 finite-amount validation", () => {
       transactionType: "EXPENSE",
       categoryId: "cat-1",
       amount: amount as number | string,
+      idempotencyKey: "key-invalid",
     });
     expect(result).toEqual({ success: false, error: "AMOUNT_INVALID" });
     expect(manualEntryCreateMock).not.toHaveBeenCalled();

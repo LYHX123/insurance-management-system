@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { canEdit } from "@/lib/permissions";
 import { toDecimal } from "@/lib/money";
 import { generateInvoiceNumber } from "@/lib/invoice/recordNumber";
@@ -25,6 +26,34 @@ async function requireInvoicePermission() {
   const session = await auth();
   if (!session?.user || !canEdit(session.user, "invoice")) return null;
   return session;
+}
+
+// Production Readiness Audit V1, finding H4: a Policy may accumulate several
+// Invoice/InvoiceItem rows over its lifetime (re-invoicing after a
+// cancellation is legitimate business behavior — see
+// getActiveInvoiceRef's doc comment), so the real invariant is narrower than
+// "one Invoice per Policy ever": a Policy may never have two *concurrently
+// ISSUED* invoices. checkPolicyInvoiceEligibility already encodes exactly
+// that rule (ALREADY_INVOICED only looks at ISSUED items) — the gap this
+// closes is purely about WHEN it's evaluated under concurrency, not the rule
+// itself, so no schema/unique-constraint change is needed or appropriate.
+class InvoiceConflictError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+  }
+}
+
+// SELECT ... FOR UPDATE on the target PolicyRecord rows, same pattern as
+// quotation/revisionActions.ts's lockCase: a second, concurrent
+// createInvoiceAction call touching any of the same policies blocks here
+// until the first transaction commits or rolls back, so the eligibility
+// re-check right after this can never race a naive
+// find-then-create. Locked in a fixed (sorted) order across calls to avoid a
+// deadlock when two requests share an overlapping, differently-ordered
+// policy selection.
+async function lockPolicyRecordsForInvoice(tx: Prisma.TransactionClient, policyRecordIds: string[]): Promise<void> {
+  const sortedIds = [...policyRecordIds].sort();
+  await tx.$queryRaw`SELECT id FROM "PolicyRecord" WHERE id IN (${Prisma.join(sortedIds)}) FOR UPDATE`;
 }
 
 export type CreateInvoiceInput = {
@@ -122,6 +151,28 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
   let created: { id: string; invoiceNumber: string; fileName: string };
   try {
     created = await prisma.$transaction(async (tx) => {
+      // Production Readiness Audit V1, finding H4: re-validate eligibility
+      // under a row lock immediately before writing, so two concurrent
+      // requests for the same policy (double-click, two tabs, a network
+      // retry) can never both pass. The FIRST check above (before this
+      // transaction) is only a fast-fail UX convenience; THIS is the
+      // authoritative one. No invoice number is allocated until it passes,
+      // so a losing/aborted attempt never burns a business number.
+      await lockPolicyRecordsForInvoice(tx, uniqueIds);
+      const freshRecords = await tx.policyRecord.findMany({
+        where: { id: { in: uniqueIds }, deletedAt: null },
+        include: POLICY_FOR_INVOICE_INCLUDE,
+      });
+      if (freshRecords.length !== uniqueIds.length) {
+        throw new InvoiceConflictError("POLICY_NOT_FOUND");
+      }
+      for (const record of freshRecords) {
+        const eligibility = checkPolicyInvoiceEligibility(record);
+        if (!eligibility.eligible) {
+          throw new InvoiceConflictError(`POLICY_NOT_ELIGIBLE_${eligibility.reason}`);
+        }
+      }
+
       const invoiceNumber = await generateInvoiceNumber(tx);
       const fileName = `${invoiceNumber}.xlsx`;
       const invoice = await tx.invoice.create({
@@ -148,6 +199,15 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
       return { id: invoice.id, invoiceNumber, fileName };
     });
   } catch (err) {
+    if (err instanceof InvoiceConflictError) {
+      // Same error shape (POLICY_NOT_ELIGIBLE_<reason> / POLICY_NOT_FOUND)
+      // the pre-check above already produces for the non-racy case, so the
+      // existing frontend error handling (create-invoice-form.tsx) renders
+      // the same "not eligible" message with no changes needed — a losing
+      // concurrent request degrades to a clean, understood error, never a
+      // 500 and never a duplicate Invoice.
+      return { success: false, error: err.code };
+    }
     console.error("Failed to create Invoice record:", err);
     return { success: false, error: "CREATE_FAILED" };
   }

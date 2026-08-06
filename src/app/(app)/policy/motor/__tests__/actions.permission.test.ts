@@ -59,7 +59,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     setSession(["policy.motor.view"]);
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -68,7 +68,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     setSession(["policy.motor.view"]);
     const { addProviderPaymentAction } = await import("../actions");
 
-    const result = await addProviderPaymentAction("pol-1", { paymentDate: "2026-01-01", amount: 100 });
+    const result = await addProviderPaymentAction("pol-1", { paymentDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -77,7 +77,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     setSession([]);
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -86,7 +86,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     sessionUser = null;
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -96,7 +96,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     policyRecordFindUniqueMock.mockResolvedValue(null);
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-missing", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-missing", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "RECORD_NOT_FOUND" });
   });
@@ -105,7 +105,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     setSession(["policy.motor.edit"]);
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
     expect(policyRecordFindUniqueMock).toHaveBeenCalledWith({ where: { id: "pol-1", deletedAt: null } });
@@ -115,7 +115,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     setSession(["policy.motor"]);
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
     expect(policyRecordFindUniqueMock).toHaveBeenCalled();
@@ -125,7 +125,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     setSession([], "Admin");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
     expect(policyRecordFindUniqueMock).toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe("Policy Motor actions — server-side EDIT enforcement (acceptance modu
     mockRecord("MOTOR");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -163,7 +163,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("BOND");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-bond", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-bond", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -173,7 +173,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("BOND");
     const { addProviderPaymentAction } = await import("../actions");
 
-    const result = await addProviderPaymentAction("pol-bond", { paymentDate: "2026-01-01", amount: 100 });
+    const result = await addProviderPaymentAction("pol-bond", { paymentDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -194,7 +194,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("NON_MOTOR");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-nm", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-nm", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -205,7 +205,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("WORK_PERMIT");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-wp", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-wp", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -216,7 +216,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("BOND");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-bond", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-bond", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
     expect(policyRecordFindUniqueMock).toHaveBeenCalledWith({ where: { id: "pol-bond", deletedAt: null } });
@@ -227,7 +227,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("NON_MOTOR");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-nm", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-nm", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -237,7 +237,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("WORK_PERMIT");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-wp", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-wp", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -248,7 +248,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     mockRecord("BOND");
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-bond", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-bond", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -260,7 +260,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
 
     for (const category of ["BOND", "NON_MOTOR", "WORK_PERMIT"] as const) {
       mockRecord(category);
-      const result = await addCustomerReceiptAction("pol-x", { receiptDate: "2026-01-01", amount: 100 });
+      const result = await addCustomerReceiptAction("pol-x", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
       expect(result).not.toEqual({ success: false, error: "FORBIDDEN" });
     }
   });
@@ -301,7 +301,7 @@ describe("Policy financial actions — C1 cross-category authorization", () => {
     });
     const { addCustomerReceiptAction } = await import("../actions");
 
-    const result = await addCustomerReceiptAction("pol-weird", { receiptDate: "2026-01-01", amount: 100 });
+    const result = await addCustomerReceiptAction("pol-weird", { receiptDate: "2026-01-01", amount: 100, idempotencyKey: "test-key" });
 
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
   });
@@ -325,19 +325,19 @@ describe("Policy financial actions — H5 finite-amount validation", () => {
 
   it.each(validAmounts)("accepts a valid customer receipt amount: %s", async (amount) => {
     const { addCustomerReceiptAction } = await import("../actions");
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount, idempotencyKey: `test-key-valid-${amount}` });
     expect(result).not.toEqual({ success: false, error: "AMOUNT_INVALID" });
   });
 
   it.each(invalidAmounts)("rejects an invalid customer receipt amount: %p", async (amount) => {
     const { addCustomerReceiptAction } = await import("../actions");
-    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: amount as number | string });
+    const result = await addCustomerReceiptAction("pol-1", { receiptDate: "2026-01-01", amount: amount as number | string, idempotencyKey: "test-key-invalid" });
     expect(result).toEqual({ success: false, error: "AMOUNT_INVALID" });
   });
 
   it.each(invalidAmounts)("rejects an invalid provider payment amount: %p", async (amount) => {
     const { addProviderPaymentAction } = await import("../actions");
-    const result = await addProviderPaymentAction("pol-1", { paymentDate: "2026-01-01", amount: amount as number | string });
+    const result = await addProviderPaymentAction("pol-1", { paymentDate: "2026-01-01", amount: amount as number | string, idempotencyKey: "test-key-invalid" });
     expect(result).toEqual({ success: false, error: "AMOUNT_INVALID" });
   });
 
