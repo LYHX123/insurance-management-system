@@ -42,7 +42,6 @@ export default async function QuotationCasePage({
     revisionCode: r.revisionCode ?? "R01",
     revisionNumber: r.revisionNumber ?? 1,
     revisionStatus: r.revisionStatus ?? "DRAFT",
-    revisionReason: r.revisionReason,
     isCurrentRevision: r.isCurrentRevision,
     createdAt: r.createdAt.toISOString(),
     createdByName: creatorNameById.get(r.createdBy) ?? "—",

@@ -54,6 +54,7 @@ export default async function EditQuotationPage({
         id: true,
         companyName: true,
         customerNumber: true,
+        shortName: true,
         projects: { select: { id: true, projectName: true }, orderBy: { projectName: "asc" } },
       },
     }),
@@ -69,6 +70,7 @@ export default async function EditQuotationPage({
     id: c.id,
     companyName: c.companyName,
     customerNumber: c.customerNumber,
+    shortName: c.shortName,
     projects: c.projects,
   }));
 

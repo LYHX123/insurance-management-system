@@ -438,5 +438,6 @@ export type CustomerOption = {
   id: string;
   companyName: string;
   customerNumber: string;
+  shortName: string | null;
   projects: { id: string; projectName: string }[];
 };

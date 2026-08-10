@@ -9,6 +9,8 @@ import { TEMPLATE_CONFIG } from "./config";
 import { boldFont, setBoldCellValue } from "./boldFont";
 import { restoreTemplateDrawings } from "./restoreTemplateDrawings";
 import { applyOuterBorder } from "./applyOuterBorder";
+import { applySectionExcessBorders } from "./applySectionExcessBorders";
+import { normalizeSectionTotalFontSize, applyGrandTotalFontSize } from "./subtotalFont";
 import type { GeneratedWorkbookResult, TemplateSectionKind } from "./types";
 
 export async function generateQuotationExcel(quotation: QuotationForExport): Promise<GeneratedWorkbookResult> {
@@ -35,6 +37,15 @@ export async function generateQuotationExcel(quotation: QuotationForExport): Pro
     if (!layout) continue;
     if (config.dynamicRow) fillDynamicRows(worksheet, config, layout, section);
     replaceVariables(worksheet, config, layout, section, warnings);
+
+    // One section's own Total Premium cell must render at the workbook's
+    // standard subtotal size, never larger, regardless of what size happens
+    // to be baked into that particular template cell (see subtotalFont.ts).
+    const totalVariable = config.staticVariables.find((v) => v.name === config.summaryTotalVariable);
+    if (totalVariable) {
+      const totalCell = worksheet.getCell(resolveFinalCell(config, layout, totalVariable.cell));
+      normalizeSectionTotalFontSize(totalCell);
+    }
 
     // Static label text (not a {{placeholder}}) that must render bold
     // regardless — replaceVariables.ts only auto-bolds cells it actually
@@ -76,12 +87,33 @@ export async function generateQuotationExcel(quotation: QuotationForExport): Pro
   // leaves the duplicate unresolved, so every cell holding this exact
   // placeholder is filled instead of a single hardcoded address.
   const grandTotalPlaceholder = `{{${TEMPLATE_CONFIG.grandTotalVariable}}}`;
+  // Found in a read-only first pass across the WHOLE sheet before any
+  // writes happen: the template duplicates {{quotation_total_premium}}
+  // across two adjacent footer rows via a two-row merge, and the second
+  // row's cell only ever reads this placeholder text THROUGH the merge
+  // from the first (master) row — so scanning-and-writing row by row in a
+  // single pass makes the second row stop matching the moment the first
+  // row's write resolves the shared value, silently skipping it. Capturing
+  // every match up front avoids that ordering trap entirely.
+  const grandTotalCells: { row: number; col: number }[] = [];
   for (let r = 1; r <= worksheet.rowCount; r++) {
-    worksheet.getRow(r).eachCell({ includeEmpty: false }, (cell) => {
+    worksheet.getRow(r).eachCell({ includeEmpty: false }, (cell, colNumber) => {
       if (typeof cell.value === "string" && cell.value.trim() === grandTotalPlaceholder) {
-        setBoldCellValue(cell, mapped.grandTotal);
+        grandTotalCells.push({ row: r, col: colNumber });
       }
     });
+  }
+  for (const { row: r, col: c } of grandTotalCells) {
+    const row = worksheet.getRow(r);
+    setBoldCellValue(row.getCell(c), mapped.grandTotal);
+    // The whole row (the "TOTAL PREMIUM (KES)" label alongside the amount)
+    // must read as the document's final, most prominent total — larger
+    // than every individual section's own Total Premium (see
+    // subtotalFont.ts) — never just the amount cell on its own.
+    for (let cc = TEMPLATE_CONFIG.contentAreaFirstCol; cc <= TEMPLATE_CONFIG.contentAreaLastCol; cc++) {
+      applyGrandTotalFontSize(row.getCell(cc));
+    }
+    row.commit();
   }
 
   const postValidation = validateAfterGeneration(worksheet);
@@ -97,6 +129,7 @@ export async function generateQuotationExcel(quotation: QuotationForExport): Pro
   }, 0);
   validateGrandTotal(sumOfSectionTotals, mapped.grandTotal);
 
+  applySectionExcessBorders(worksheet, layouts);
   applyOuterBorder(worksheet);
 
   // ExcelJS's own .d.ts shadows the global `Buffer` type with a minimal

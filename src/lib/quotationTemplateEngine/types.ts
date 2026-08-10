@@ -192,6 +192,18 @@ export type SectionLayout = {
   dynamicDataStartRow?: number;
   dynamicDataEndRow?: number;
   dynamicTotalRow?: number;
+  /**
+   * Final last row of this section's own column-E "excess/clauses" merge,
+   * as actually (re)created by removeUnusedSections.ts — NOT the same as
+   * endRow above when a trailing spacer separates this section from the
+   * next (see config.ts's section-boundary-ownership convention).
+   * applySectionExcessBorders.ts closes the merge's bottom edge here, not
+   * at endRow, so the line lines up with where the merge box actually
+   * ends. Undefined only if this section's merge was never captured
+   * (should not happen for any real TemplateSectionKind — every section in
+   * the template has one).
+   */
+  excessColumnEndRow?: number;
 };
 
 export type GeneratedWorkbookResult = {

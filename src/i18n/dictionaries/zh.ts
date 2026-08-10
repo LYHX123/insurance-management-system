@@ -420,6 +420,7 @@ const zh: Dictionary = {
     customer: "客户",
     project: "项目",
     selectCustomer: "选择客户",
+    customerSearchNoResults: "未找到客户",
     selectProject: "选择项目（可选）",
     noProject: "不关联项目",
     quotationDate: "报价日期",
@@ -626,7 +627,7 @@ const zh: Dictionary = {
     acceptRevisionConfirmTitle: "确认将此修订版本标记为已接受？",
     acceptRevisionConfirmMessage: "只有已签发的修订版本才能被接受。此版本将被锁定，案例状态将变为已接受。",
     cancelRevisionConfirmTitle: "确认作废此修订版本？",
-    cancelRevisionConfirmMessage: "请填写作废原因。此修订版本将以「已作废」状态继续保留在历史记录中。",
+    cancelRevisionConfirmMessage: "确认取消当前报价版本？此修订版本将以「已作废」状态继续保留在历史记录中。",
     deleteDraftRevisionConfirmTitle: "确认删除此草稿修订版本？",
     deleteDraftRevisionConfirmMessage: "此操作将永久删除修订版本 {code} 及其所有数据，且无法撤销。",
 

@@ -177,6 +177,7 @@ export function removeUnusedSections(
     if (!merge || !layout) continue;
     const finalStart = resolveFinalRow(section, layout, merge.startRow);
     const finalEnd = resolveFinalRow(section, layout, merge.endRow);
+    layout.excessColumnEndRow = finalEnd;
     if (finalEnd > finalStart) {
       worksheet.mergeCells(`${merge.col}${finalStart}:${merge.col}${finalEnd}`);
     }

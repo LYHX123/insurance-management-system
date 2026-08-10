@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { FormField } from "@/components/ui/form-field";
 import { createQuotationCaseAction } from "@/app/(app)/quotation/actions";
 import type { CustomerOption } from "@/components/quotations/types";
@@ -36,6 +37,19 @@ export function CreateQuotationCaseForm({ customers }: { customers: CustomerOpti
   const availableProjects = useMemo(
     () => customers.find((c) => c.id === customerId)?.projects ?? [],
     [customers, customerId]
+  );
+
+  // Searchable by Company Name and Short Name, case-insensitively — see
+  // SearchableSelect's own doc comment for why the selected value is always
+  // the customer's id, never whatever text was typed to find it.
+  const customerSearchOptions = useMemo(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        label: `${c.companyName} (${c.customerNumber})`,
+        searchText: `${c.companyName} ${c.shortName ?? ""} ${c.customerNumber}`.toLowerCase(),
+      })),
+    [customers]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,21 +88,17 @@ export function CreateQuotationCaseForm({ customers }: { customers: CustomerOpti
       <Card>
         <div className="form-grid">
           <FormField label={t.quotations.customer}>
-            <Select
+            <SearchableSelect
               value={customerId}
-              onChange={(e) => {
-                setCustomerId(e.target.value);
+              onChange={(id) => {
+                setCustomerId(id);
                 setProjectId("");
               }}
+              options={customerSearchOptions}
+              placeholder={t.quotations.selectCustomer}
+              noResultsLabel={t.quotations.customerSearchNoResults}
               required
-            >
-              <option value="">{t.quotations.selectCustomer}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.customerNumber})
-                </option>
-              ))}
-            </Select>
+            />
           </FormField>
           <FormField label={t.quotations.project}>
             <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={!customerId}>

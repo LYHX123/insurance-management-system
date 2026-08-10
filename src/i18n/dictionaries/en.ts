@@ -431,6 +431,7 @@ const en = {
     customer: "Customer",
     project: "Project",
     selectCustomer: "Select Customer",
+    customerSearchNoResults: "No customers found",
     selectProject: "Select Project (optional)",
     noProject: "No project",
     quotationDate: "Quotation Date",
@@ -640,7 +641,7 @@ const en = {
     acceptRevisionConfirmTitle: "Mark this revision Accepted?",
     acceptRevisionConfirmMessage: "Only an Issued revision can be accepted. This revision will become locked and the case will be marked Accepted.",
     cancelRevisionConfirmTitle: "Cancel this revision?",
-    cancelRevisionConfirmMessage: "Please provide a cancellation reason. This revision will remain visible in history as Cancelled.",
+    cancelRevisionConfirmMessage: "Are you sure you want to cancel this revision? It will remain visible in history as Cancelled.",
     deleteDraftRevisionConfirmTitle: "Delete this draft revision?",
     deleteDraftRevisionConfirmMessage: "This permanently deletes revision {code} and all its data. This cannot be undone.",
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Pencil, Download, Trash2, GitBranch, Send, CheckCircle2, XCircle, FilePlus, ExternalLink } from "lucide-react";
+import { Download, Trash2, GitBranch, Send, CheckCircle2, XCircle, FilePlus, ExternalLink } from "lucide-react";
 import { SmartBackLink } from "@/components/ui/smart-back-link";
 import { useSmartBackHref } from "@/lib/navigation/useSmartBack";
 import { useLocale } from "@/i18n/locale-provider";
@@ -12,7 +12,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
-import { Textarea } from "@/components/ui/textarea";
 import { TableWrap, Table } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
@@ -52,42 +51,14 @@ const POLICY_BUSINESS_STATUS_TONE: Record<RelatedPolicyBusinessStatus, "neutral"
   RENEWED: "brand",
 };
 
-function ReasonModal({
-  title,
-  label,
-  confirmLabel,
-  isSubmitting,
-  error,
-  onConfirm,
-  onClose,
-}: {
-  title: string;
-  label: string;
-  confirmLabel: string;
-  isSubmitting: boolean;
-  error: string | null;
-  onConfirm: (reason: string) => void;
-  onClose: () => void;
-}) {
-  const { t } = useLocale();
-  const [reason, setReason] = useState("");
-
-  return (
-    <Modal title={title} onClose={onClose}>
-      <label className="mb-1 block text-sm font-medium text-zinc-700">{label}</label>
-      <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
-          {t.common.cancel}
-        </Button>
-        <Button onClick={() => onConfirm(reason)} disabled={isSubmitting || !reason.trim()}>
-          {confirmLabel}
-        </Button>
-      </div>
-    </Modal>
-  );
-}
+// Quotation Revision workflow simplification: a report that needs changes
+// is Cancelled, then a fresh Revision is Created from it — never edited in
+// place — so neither action collects a free-text reason from the user
+// anymore (see createRevisionAction/cancelRevisionAction's own required-
+// reason validation, both intentionally left as-is; these fixed strings
+// satisfy that contract without exposing the field in the UI).
+const DEFAULT_REVISION_REASON = "Revision";
+const DEFAULT_CANCELLATION_REASON = "Cancelled";
 
 export function QuotationDetailView({
   quotation,
@@ -136,8 +107,7 @@ export function QuotationDetailView({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const [showCreateRevision, setShowCreateRevision] = useState(false);
-  const [showCancelRevision, setShowCancelRevision] = useState(false);
+  const [confirmingCancelRevision, setConfirmingCancelRevision] = useState(false);
   const [confirmingIssue, setConfirmingIssue] = useState(false);
   const [confirmingAccept, setConfirmingAccept] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -195,17 +165,16 @@ export function QuotationDetailView({
     router.replace(backHref);
   };
 
-  const handleCreateRevision = async (reason: string) => {
+  const handleCreateRevision = async () => {
     if (!quotation.quotationCaseId) return;
     setBusy(true);
     setActionError(null);
-    const result = await createRevisionAction(quotation.quotationCaseId, quotation.id, reason);
+    const result = await createRevisionAction(quotation.quotationCaseId, quotation.id, DEFAULT_REVISION_REASON);
     setBusy(false);
     if (!result.success) {
       setActionError(revisionErrorLabel[result.error] ?? t.quotations.revisionCreateFailed);
       return;
     }
-    setShowCreateRevision(false);
     router.push(`/quotation/${result.id}/edit?returnTo=${encodeURIComponent(selfReturnTo)}`);
   };
 
@@ -235,16 +204,16 @@ export function QuotationDetailView({
     router.refresh();
   };
 
-  const handleCancel = async (reason: string) => {
+  const handleCancel = async () => {
     setBusy(true);
     setActionError(null);
-    const result = await cancelRevisionAction(quotation.id, reason);
+    const result = await cancelRevisionAction(quotation.id, DEFAULT_CANCELLATION_REASON);
     setBusy(false);
     if (!result.success) {
       setActionError(revisionErrorLabel[result.error] ?? t.quotations.cancelFailedError);
       return;
     }
-    setShowCancelRevision(false);
+    setConfirmingCancelRevision(false);
     router.refresh();
   };
 
@@ -282,8 +251,14 @@ export function QuotationDetailView({
   // Single definition of every action button + its visibility rule, reused
   // by both the standalone full header and the embedded compact header
   // below — only the surrounding layout differs, never this logic.
-  //   DRAFT:      Edit, Download, Issue, Cancel, Delete (if eligible) — no Create Revision (you're already on the case's draft)
-  //   ISSUED:     Download, Create Revision, Mark Accepted, Cancel — no Edit, no Issue
+  // Revision workflow simplification: editing a Draft in place is no longer
+  // exposed from this page at all — the business flow is Cancel Revision ->
+  // Create Revision -> edit the fresh copy (createRevisionAction/
+  // handleCreateRevision above still redirect straight into the edit page
+  // for that new revision, same as always; only the "reopen an existing
+  // Draft's edit page" entry point is gone).
+  //   DRAFT:      Download, Issue, Cancel, Delete (if eligible) — no Create Revision (you're already on the case's draft)
+  //   ISSUED:     Download, Create Revision, Mark Accepted, Cancel — no Issue
   //   SUPERSEDED: Download, Create Revision only
   //   ACCEPTED:   Download, Create Revision only
   //   CANCELLED:  Download, Create Revision only
@@ -308,17 +283,8 @@ export function QuotationDetailView({
             {t.quotations.createPolicy}
           </Button>
 
-          {!isLocked && (
-            <Link href={`/quotation/${quotation.id}/edit?returnTo=${encodeURIComponent(selfReturnTo)}`}>
-              <Button variant="secondary">
-                <Pencil size={16} />
-                {t.common.edit}
-              </Button>
-            </Link>
-          )}
-
           {hasRevisionInfo && isLocked && (
-            <Button variant="secondary" onClick={() => setShowCreateRevision(true)}>
+            <Button variant="secondary" onClick={handleCreateRevision} disabled={busy}>
               <GitBranch size={16} />
               {t.quotations.createRevisionFromThisVersion}
             </Button>
@@ -337,7 +303,7 @@ export function QuotationDetailView({
             </Button>
           )}
           {(revisionStatus === "DRAFT" || revisionStatus === "ISSUED") && (
-            <Button variant="secondary" onClick={() => setShowCancelRevision(true)}>
+            <Button variant="secondary" onClick={() => setConfirmingCancelRevision(true)}>
               <XCircle size={16} />
               {t.quotations.cancelRevision}
             </Button>
@@ -410,31 +376,22 @@ export function QuotationDetailView({
         />
       )}
 
-      {showCreateRevision && (
-        <ReasonModal
-          title={t.quotations.createRevisionModalTitle}
-          label={t.quotations.revisionReason}
-          confirmLabel={t.quotations.createRevisionConfirm}
-          isSubmitting={busy}
-          error={actionError}
-          onConfirm={handleCreateRevision}
-          onClose={() => {
-            setShowCreateRevision(false);
-            setActionError(null);
-          }}
-        />
+      {/* Create Revision now runs directly from its button (handleCreateRevision
+          above) — no modal, no reason prompt. A failure (e.g. a draft already
+          exists) surfaces via the inline banner below, since there is no
+          dialog left open to show it in. */}
+      {actionError && !confirmingCancelRevision && !confirmingIssue && !confirmingAccept && (
+        <div className="rounded-control border border-red-200 bg-red-50 p-3 text-sm text-red-700">{actionError}</div>
       )}
 
-      {showCancelRevision && (
-        <ReasonModal
+      {confirmingCancelRevision && (
+        <ConfirmDialog
           title={t.quotations.cancelRevisionConfirmTitle}
-          label={t.quotations.cancellationReason}
-          confirmLabel={t.quotations.cancelRevision}
+          message={actionError ?? t.quotations.cancelRevisionConfirmMessage}
           isSubmitting={busy}
-          error={actionError}
           onConfirm={handleCancel}
           onClose={() => {
-            setShowCancelRevision(false);
+            setConfirmingCancelRevision(false);
             setActionError(null);
           }}
         />
@@ -538,12 +495,6 @@ export function QuotationDetailView({
             <dt className="text-secondary">{t.quotations.currency}</dt>
             <dd className="text-body">{quotation.currency}</dd>
           </div>
-          {quotation.revisionReason && (
-            <div>
-              <dt className="text-secondary">{t.quotations.revisionReason}</dt>
-              <dd className="text-body">{quotation.revisionReason}</dd>
-            </div>
-          )}
           {quotation.internalNotes && (
             <div className="sm:col-span-3">
               <dt className="text-secondary">{t.quotations.internalNotes}</dt>

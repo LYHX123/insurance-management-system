@@ -12,7 +12,6 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { TableWrap, Table } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
@@ -30,12 +29,20 @@ import type { QuotationCaseStatus, RevisionStatus, QuotationDocumentRow } from "
 import { CASE_STATUS_TONE, REVISION_TONE } from "@/components/quotations/statusTones";
 import { buildReturnTo } from "@/lib/navigation/returnTo";
 
+// Quotation Revision workflow simplification: a report that needs changes
+// is Cancelled, then a fresh Revision is Created from it — never edited in
+// place — so neither action collects a free-text reason from the user
+// anymore. See createRevisionAction/cancelRevisionAction's own required-
+// reason validation in revisionActions.ts, intentionally left as-is; these
+// fixed strings satisfy that contract without exposing the field in the UI.
+const DEFAULT_REVISION_REASON = "Revision";
+const DEFAULT_CANCELLATION_REASON = "Cancelled";
+
 type RevisionRow = {
   id: string;
   revisionCode: string;
   revisionNumber: number;
   revisionStatus: RevisionStatus;
-  revisionReason: string | null;
   isCurrentRevision: boolean;
   createdAt: string;
   createdByName: string;
@@ -89,7 +96,6 @@ export function QuotationCaseView({
 
   const [showCreateRevision, setShowCreateRevision] = useState(false);
   const [copyFromId, setCopyFromId] = useState(quotationCase.currentRevisionId ?? revisions[0]?.id ?? "");
-  const [createReason, setCreateReason] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -102,7 +108,6 @@ export function QuotationCaseView({
   const [issueTarget, setIssueTarget] = useState<string | null>(null);
   const [acceptTarget, setAcceptTarget] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
   const [rowError, setRowError] = useState<string | null>(null);
 
   const revisionErrorLabel: Record<string, string> = {
@@ -155,13 +160,9 @@ export function QuotationCaseView({
   })();
 
   const handleCreateRevision = async () => {
-    if (!createReason.trim()) {
-      setCreateError(t.quotations.revisionReasonRequiredError);
-      return;
-    }
     setBusy(true);
     setCreateError(null);
-    const result = await createRevisionAction(quotationCase.id, copyFromId, createReason);
+    const result = await createRevisionAction(quotationCase.id, copyFromId, DEFAULT_REVISION_REASON);
     setBusy(false);
     if (!result.success) {
       setCreateError(revisionErrorLabel[result.error] ?? t.quotations.revisionCreateFailed);
@@ -212,20 +213,15 @@ export function QuotationCaseView({
 
   const handleCancel = async () => {
     if (!cancelTarget) return;
-    if (!cancelReason.trim()) {
-      setRowError(t.quotations.cancellationReasonRequiredError);
-      return;
-    }
     setBusy(true);
     setRowError(null);
-    const result = await cancelRevisionAction(cancelTarget, cancelReason);
+    const result = await cancelRevisionAction(cancelTarget, DEFAULT_CANCELLATION_REASON);
     setBusy(false);
     if (!result.success) {
       setRowError(revisionErrorLabel[result.error] ?? t.quotations.cancelFailedError);
       return;
     }
     setCancelTarget(null);
-    setCancelReason("");
     router.refresh();
   };
 
@@ -309,7 +305,6 @@ export function QuotationCaseView({
                   <th>{t.quotations.fullReference}</th>
                   <th>{t.quotations.createdDate}</th>
                   <th>{t.quotations.createdBy}</th>
-                  <th>{t.quotations.revisionReason}</th>
                   <th>{t.quotations.insuranceTypesUsed}</th>
                   <th>{t.quotations.premium}</th>
                   <th>{t.quotations.grandTotal}</th>
@@ -329,7 +324,6 @@ export function QuotationCaseView({
                     </td>
                     <td className="text-zinc-500">{dateFormatter.format(new Date(r.createdAt))}</td>
                     <td className="text-zinc-500">{r.createdByName}</td>
-                    <td className="text-zinc-500">{r.revisionReason || "—"}</td>
                     <td>
                       <div className="flex flex-wrap gap-1">
                         {r.insuranceTypeNames.slice(0, 2).map((name, idx) => (
@@ -373,7 +367,6 @@ export function QuotationCaseView({
                             title={t.quotations.cancelRevision}
                             onClick={() => {
                               setCancelTarget(r.id);
-                              setCancelReason("");
                               setRowError(null);
                             }}
                           >
@@ -412,22 +405,13 @@ export function QuotationCaseView({
                 ))}
               </Select>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-zinc-700">{t.quotations.revisionReason}</label>
-              <Textarea
-                value={createReason}
-                onChange={(e) => setCreateReason(e.target.value)}
-                placeholder={t.quotations.revisionReasonPlaceholder}
-                rows={3}
-              />
-            </div>
             {createError && <p className="text-sm text-red-600">{createError}</p>}
           </div>
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setShowCreateRevision(false)} disabled={busy}>
               {t.common.cancel}
             </Button>
-            <Button onClick={handleCreateRevision} disabled={busy || !copyFromId || !createReason.trim()}>
+            <Button onClick={handleCreateRevision} disabled={busy || !copyFromId}>
               {t.quotations.createRevisionConfirm}
             </Button>
           </div>
@@ -559,25 +543,16 @@ export function QuotationCaseView({
       )}
 
       {cancelTarget && (
-        <Modal
+        <ConfirmDialog
           title={t.quotations.cancelRevisionConfirmTitle}
+          message={rowError ?? t.quotations.cancelRevisionConfirmMessage}
+          isSubmitting={busy}
+          onConfirm={handleCancel}
           onClose={() => {
             setCancelTarget(null);
             setRowError(null);
           }}
-        >
-          <label className="mb-1 block text-sm font-medium text-zinc-700">{t.quotations.cancellationReason}</label>
-          <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={3} />
-          {rowError && <p className="mt-2 text-sm text-red-600">{rowError}</p>}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setCancelTarget(null)} disabled={busy}>
-              {t.common.cancel}
-            </Button>
-            <Button variant="destructive" onClick={handleCancel} disabled={busy || !cancelReason.trim()}>
-              {t.quotations.cancelRevision}
-            </Button>
-          </div>
-        </Modal>
+        />
       )}
     </div>
   );
