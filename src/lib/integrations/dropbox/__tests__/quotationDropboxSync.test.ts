@@ -303,6 +303,14 @@ function makePrismaMock() {
         if (key === "revisions") {
           return Array.from(quotations.values()).some((q) => q.quotationCaseId === caseId);
         }
+        if (key === "currentRevisionId") {
+          const currentRevisionId = caseCurrentRevisionOverride.get(caseId) ?? null;
+          const f = filter as { not?: unknown } | null;
+          if (f && typeof f === "object" && "not" in f) {
+            return f.not === null ? currentRevisionId !== null : currentRevisionId !== f.not;
+          }
+          return currentRevisionId === filter;
+        }
         if (key === "OR") {
           const orConds = filter as Record<string, unknown>[];
           return orConds.some((cond) => Object.entries(cond).every(([k, v]) => matchesKey(caseId, k, v)));
@@ -1045,5 +1053,98 @@ describe("Quotation backfill (Phase 4 Part 11/12/17.G)", () => {
     const businessFile = businessFiles.get("case-1")!;
     const version = Array.from(versions.values()).find((v) => v.businessFileId === businessFile.id)!;
     expect(version.sourceQuotationId).toBe("quo-1b");
+  });
+
+  // Quotation Revision <-> Dropbox Version sync fix (production bug:
+  // QT202608-001 had R02 current, business folder + V1 already SYNCED, but
+  // no V2 ever generated). None of the four pre-existing modes touch this
+  // case — nothing about it is PENDING/SYNCING/ERROR/CONFLICT — so it needs
+  // its own dedicated repair path.
+  describe("resync-current-revision (Quotation Revision <-> Dropbox Version sync fix, Part 13)", () => {
+    beforeEach(async () => {
+      // Get case-1 into the exact "R01 synced to V1, R02 now current but
+      // never generated" shape, independent of the createRevisionAction
+      // trigger under test elsewhere — this exercises the backfill/repair
+      // path for records that already existed before that fix shipped.
+      await runQuotationBackfillBatchImport();
+      quotations.set(
+        "quo-1b",
+        baseQuotation({ id: "quo-1b", quotationCaseId: "case-1", quotationNumber: "QT202607-006-R02", revisionNumber: 2, sections: [{ insuranceType: { code: "CAR" }, carDetail: { projectName: "Revised Project" } }] })
+      );
+      caseCurrentRevisionOverride.set("case-1", "quo-1b");
+    });
+
+    async function runQuotationBackfillBatchImport() {
+      const { runQuotationBackfillBatch } = await import("../quotationDropboxSync");
+      await runQuotationBackfillBatch("init-missing", 1); // case-1 (quo-1/R01) -> business file + V1, SYNCED
+    }
+
+    it("none of sync-missing/retry-failed/verify-synced pick up a case whose current revision was never generated", async () => {
+      const { runQuotationBackfillBatch } = await import("../quotationDropboxSync");
+
+      const syncMissing = await runQuotationBackfillBatch("sync-missing", 10);
+      const retryFailed = await runQuotationBackfillBatch("retry-failed", 10);
+      const verifySynced = await runQuotationBackfillBatch("verify-synced", 10);
+
+      expect(syncMissing.processed).toBe(0);
+      expect(retryFailed.processed).toBe(0);
+      // verify-synced re-verifies the existing V1 (still valid, and still the
+      // only version) but never generates a new version — versions.size must
+      // stay at 1, and the one version present must still be V1/R01, never a
+      // V2 attributed to R02.
+      expect(verifySynced.processed).toBe(1);
+      expect(versions.size).toBe(1);
+      expect(Array.from(versions.values())[0].sourceQuotationId).toBe("quo-1");
+    });
+
+    it("resync-current-revision generates V2 from R02's own content while leaving V1 untouched", async () => {
+      const { runQuotationBackfillBatch } = await import("../quotationDropboxSync");
+
+      const batch = await runQuotationBackfillBatch("resync-current-revision", 10);
+
+      expect(batch.processed).toBe(1);
+      expect(batch.results[0]?.quotationId).toBe("quo-1b");
+      expect(versions.size).toBe(2);
+
+      const businessFile = businessFiles.get("case-1")!;
+      const caseVersions = Array.from(versions.values()).filter((v) => v.businessFileId === businessFile.id);
+      const v1 = caseVersions.find((v) => v.versionNumber === 1)!;
+      const v2 = caseVersions.find((v) => v.versionNumber === 2)!;
+      expect(v1.sourceQuotationId).toBe("quo-1");
+      expect(v1.excelSyncStatus).toBe("SYNCED"); // untouched, not overwritten or deleted
+      expect(v2.sourceQuotationId).toBe("quo-1b");
+      expect(v2.excelSyncStatus).toBe("SYNCED");
+    });
+
+    it("is idempotent — running it again after the repair finds nothing left to fix and creates no V3", async () => {
+      const { runQuotationBackfillBatch } = await import("../quotationDropboxSync");
+      await runQuotationBackfillBatch("resync-current-revision", 10);
+
+      const second = await runQuotationBackfillBatch("resync-current-revision", 10);
+
+      expect(second.processed).toBe(0);
+      expect(versions.size).toBe(2);
+    });
+
+    it("does not select case-2, whose current revision already has its own version", async () => {
+      const { runQuotationBackfillBatch } = await import("../quotationDropboxSync");
+      await runQuotationBackfillBatch("init-missing", 10); // case-2 (quo-2) gets its own business file + V1 too
+
+      const batch = await runQuotationBackfillBatch("resync-current-revision", 10);
+
+      expect(batch.results.some((r) => r.quotationId === "quo-2")).toBe(false);
+    });
+
+    it("preview reports the stale case via staleCurrentRevisions, dropping to 0 once repaired", async () => {
+      const { previewQuotationBackfill, runQuotationBackfillBatch } = await import("../quotationDropboxSync");
+
+      const before = await previewQuotationBackfill();
+      expect(before.staleCurrentRevisions).toBe(1);
+
+      await runQuotationBackfillBatch("resync-current-revision", 10);
+
+      const after = await previewQuotationBackfill();
+      expect(after.staleCurrentRevisions).toBe(0);
+    });
   });
 });

@@ -49,3 +49,12 @@ export async function retryFailedQuotationVersionsAction(): Promise<QuotationBat
 export async function verifySyncedQuotationVersionsAction(): Promise<QuotationBatchResult> {
   return runBatchAction("verify-synced");
 }
+
+// Quotation Revision <-> Dropbox Version sync fix, Part 13 — repairs cases
+// where the business Revision has already advanced (e.g. R02 is current)
+// but Dropbox never got a version for it (still only has R01's V1). See
+// findCasesWithStaleCurrentRevision's doc comment for why none of the four
+// actions above already cover this.
+export async function resyncCurrentRevisionVersionsAction(): Promise<QuotationBatchResult> {
+  return runBatchAction("resync-current-revision");
+}

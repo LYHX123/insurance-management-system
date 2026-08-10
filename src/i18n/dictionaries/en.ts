@@ -954,6 +954,8 @@ const en = {
     dropboxQuoFailedVersions: "Failed",
     dropboxQuoConflictVersions: "Conflicts",
     dropboxQuoMissingLocalFiles: "Missing Local Files",
+    dropboxQuoStaleCurrentRevisions: "Current Revision Not Yet Synced",
+    dropboxQuoResyncCurrentRevision: "Sync Current Revision",
     dropboxQuoBackfillConfirmTitle: "Sync Quotation Files",
     dropboxQuoBackfillConfirmMessage: "This will synchronize a batch of Quotation business files/versions to Dropbox. Existing unrelated Dropbox files are never overwritten or deleted. Continue?",
   },

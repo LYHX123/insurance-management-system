@@ -937,6 +937,8 @@ const zh: Dictionary = {
     dropboxQuoFailedVersions: "失败",
     dropboxQuoConflictVersions: "冲突",
     dropboxQuoMissingLocalFiles: "本地文件缺失",
+    dropboxQuoStaleCurrentRevisions: "当前Revision尚未同步",
+    dropboxQuoResyncCurrentRevision: "同步当前Revision",
     dropboxQuoBackfillConfirmTitle: "同步报价文件",
     dropboxQuoBackfillConfirmMessage: "此操作将把一批报价业务文件/版本同步到 Dropbox。不会覆盖或删除任何无关的现有 Dropbox 文件。是否继续？",
   },

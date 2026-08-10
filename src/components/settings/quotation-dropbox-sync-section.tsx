@@ -11,10 +11,11 @@ import {
   syncMissingQuotationVersionsAction,
   retryFailedQuotationVersionsAction,
   verifySyncedQuotationVersionsAction,
+  resyncCurrentRevisionVersionsAction,
 } from "@/app/(app)/settings/quotationDropboxBackfillActions";
 import type { QuotationBackfillPreview, QuotationBackfillBatchResult } from "@/lib/integrations/dropbox/quotationDropboxSync";
 
-type PendingBatch = "init-missing" | "sync-missing" | "retry-failed" | null;
+type PendingBatch = "init-missing" | "sync-missing" | "retry-failed" | "resync-current-revision" | null;
 
 export function QuotationDropboxSyncSection({ isConnected }: { isConnected: boolean }) {
   const { t } = useLocale();
@@ -43,7 +44,7 @@ export function QuotationDropboxSyncSection({ isConnected }: { isConnected: bool
     setPreview(result.preview);
   };
 
-  const runBatch = async (mode: "init-missing" | "sync-missing" | "retry-failed" | "verify-synced") => {
+  const runBatch = async (mode: "init-missing" | "sync-missing" | "retry-failed" | "verify-synced" | "resync-current-revision") => {
     setError(null);
     setIsLoading(true);
     setPendingBatch(null);
@@ -54,7 +55,9 @@ export function QuotationDropboxSyncSection({ isConnected }: { isConnected: bool
           ? syncMissingQuotationVersionsAction
           : mode === "retry-failed"
             ? retryFailedQuotationVersionsAction
-            : verifySyncedQuotationVersionsAction;
+            : mode === "resync-current-revision"
+              ? resyncCurrentRevisionVersionsAction
+              : verifySyncedQuotationVersionsAction;
     const result = await action();
     setIsLoading(false);
     if (!result.success) {
@@ -88,6 +91,7 @@ export function QuotationDropboxSyncSection({ isConnected }: { isConnected: bool
           {stat(t.quotations.dropboxQuoFailedVersions, preview.failedVersions)}
           {stat(t.quotations.dropboxQuoConflictVersions, preview.conflictVersions)}
           {stat(t.quotations.dropboxQuoMissingLocalFiles, preview.missingLocalFiles)}
+          {stat(t.quotations.dropboxQuoStaleCurrentRevisions, preview.staleCurrentRevisions)}
         </dl>
       )}
 
@@ -123,6 +127,9 @@ export function QuotationDropboxSyncSection({ isConnected }: { isConnected: bool
         </Button>
         <Button type="button" variant="secondary" disabled={isLoading} onClick={() => setPendingBatch("retry-failed")}>
           {t.quotations.dropboxQuoRetryFailed}
+        </Button>
+        <Button type="button" variant="secondary" disabled={isLoading} onClick={() => setPendingBatch("resync-current-revision")}>
+          {t.quotations.dropboxQuoResyncCurrentRevision}
         </Button>
         <Button type="button" variant="secondary" disabled={isLoading} onClick={() => runBatch("verify-synced")}>
           {t.quotations.dropboxQuoVerifySynced}

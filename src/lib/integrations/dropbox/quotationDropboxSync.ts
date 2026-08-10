@@ -735,6 +735,14 @@ export type QuotationBackfillPreview = {
   failedVersions: number;
   conflictVersions: number;
   missingLocalFiles: number;
+  // Quotation Revision <-> Dropbox Version sync fix — cases whose CURRENT
+  // revision never produced its own Dropbox version (e.g. a revision
+  // created before generateAndSyncQuotationExcel was hooked into
+  // createRevisionAction, or one that raced a Dropbox outage). Capped by
+  // findCasesWithStaleCurrentRevision's own internal scan bound, same
+  // "approximated, not an exhaustive count" convention as missingLocalFiles
+  // above.
+  staleCurrentRevisions: number;
   // Part 12 — optional ADMIN review: how many Customers already have an
   // explicit Short Name vs. would currently resolve to a derived fallback.
   // Never written anywhere; purely informational.
@@ -747,12 +755,13 @@ export type QuotationBackfillPreview = {
 // null) rather than a real per-file disk existence check, which would
 // mean unbounded filesystem I/O during a read-only preview.
 export async function previewQuotationBackfill(): Promise<QuotationBackfillPreview> {
-  const [totalQuotations, businessFilesInitialized, versionStatusCounts, missingLocalFiles, customers] = await Promise.all([
+  const [totalQuotations, businessFilesInitialized, versionStatusCounts, missingLocalFiles, customers, staleCurrentRevisionCases] = await Promise.all([
     prisma.quotationCase.count(),
     prisma.quotationDropboxBusinessFile.count(),
     prisma.quotationDropboxVersion.groupBy({ by: ["excelSyncStatus"], _count: { _all: true } }),
     prisma.quotationDropboxVersion.count({ where: { excelLocalStorageKey: null } }),
     prisma.customer.findMany({ select: { shortName: true, companyName: true } }),
+    findCasesWithStaleCurrentRevision(STALE_CURRENT_REVISION_SCAN_CAP),
   ]);
 
   const byStatus: Record<string, number> = {};
@@ -766,11 +775,12 @@ export async function previewQuotationBackfill(): Promise<QuotationBackfillPrevi
     failedVersions: byStatus.ERROR ?? 0,
     conflictVersions: byStatus.CONFLICT ?? 0,
     missingLocalFiles,
+    staleCurrentRevisions: staleCurrentRevisionCases.length,
     customerShortNameStats: classifyCustomerShortNames(customers),
   };
 }
 
-export type QuotationBackfillMode = "init-missing" | "sync-missing" | "retry-failed" | "verify-synced";
+export type QuotationBackfillMode = "init-missing" | "sync-missing" | "retry-failed" | "verify-synced" | "resync-current-revision";
 export type QuotationBackfillBatchResult = {
   processed: number;
   succeeded: number;
@@ -789,7 +799,14 @@ const MIN_QUOTATION_BACKFILL_BATCH_SIZE = 1;
 // source revision's CURRENT DB state, generate Excel from it, reuse the
 // existing version if the content fingerprint is unchanged (never
 // inventing a new version, satisfying Part 11 requirement 9) or create V1
-// if none exists yet, then attempt sync only if not already SYNCED. This
+// if none exists yet, then attempt sync only if not already SYNCED.
+// "resync-current-revision" (Quotation Revision <-> Dropbox Version sync
+// fix) is just a different candidate-selection query over the same
+// generateAndSyncQuotationExcel call — it targets cases whose current
+// revision never produced a version at all (see
+// findCasesWithStaleCurrentRevision), the one gap none of the other three
+// active modes cover, since that case's existing version(s) are already
+// fully SYNCED and never enter a PENDING/ERROR/CONFLICT state. This
 // makes init-missing/sync-missing/retry-failed behaviorally identical at
 // the per-case level — they only differ in which cases are selected.
 //
@@ -852,6 +869,48 @@ export async function resolveSourceQuotationId(quotationCase: { id: string; curr
   return latestRevision?.id ?? null;
 }
 
+// Bounds the initial candidate-pool scan for findCasesWithStaleCurrentRevision
+// below — a plain safety ceiling (same "bounded, never unbounded" convention
+// as the rest of this backfill module), not a tuned performance number.
+const STALE_CURRENT_REVISION_SCAN_CAP = 500;
+
+// Quotation Revision <-> Dropbox Version sync fix (Part 13 of the fix spec):
+// finds cases whose business file already exists (so init-missing wouldn't
+// touch them) and whose current revision's content was never even attempted
+// as a version — i.e. the latest version anyone generated still belongs to
+// an OLDER revision than the case's currentRevisionId. This is exactly the
+// "R02 exists, Dropbox only has V1" production scenario: nothing about that
+// case is PENDING/SYNCING/ERROR/CONFLICT (V1 itself synced fine), so none of
+// sync-missing/retry-failed/verify-synced's status-based filters would ever
+// select it. Only a plain relational id comparison — never a fingerprint
+// recomputation, that dedup still happens inside generateAndSyncQuotationExcel
+// itself once this function's candidate is actually processed.
+async function findCasesWithStaleCurrentRevision(
+  limit: number
+): Promise<{ id: string; currentRevisionId: string | null }[]> {
+  const candidates = await prisma.quotationCase.findMany({
+    where: { currentRevisionId: { not: null } },
+    select: { id: true, currentRevisionId: true },
+    orderBy: { createdAt: "asc" },
+    take: STALE_CURRENT_REVISION_SCAN_CAP,
+  });
+
+  const stale: { id: string; currentRevisionId: string | null }[] = [];
+  for (const c of candidates) {
+    if (stale.length >= limit) break;
+    const businessFile = await prisma.quotationDropboxBusinessFile.findUnique({ where: { quotationCaseId: c.id } });
+    if (!businessFile) continue; // no version can exist at all yet — init-missing's job, not this one.
+    const latestVersion = await prisma.quotationDropboxVersion.findFirst({
+      where: { businessFileId: businessFile.id },
+      orderBy: { versionNumber: "desc" },
+    });
+    if (!latestVersion || latestVersion.sourceQuotationId !== c.currentRevisionId) {
+      stale.push(c);
+    }
+  }
+  return stale;
+}
+
 async function selectQuotationBackfillCandidates(
   mode: QuotationBackfillMode,
   limit: number
@@ -888,6 +947,8 @@ async function selectQuotationBackfillCandidates(
       orderBy: { createdAt: "asc" },
       take: limit,
     });
+  } else if (mode === "resync-current-revision") {
+    cases = await findCasesWithStaleCurrentRevision(limit);
   } else {
     // verify-synced
     cases = await prisma.quotationCase.findMany({

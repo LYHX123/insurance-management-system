@@ -31,6 +31,7 @@ import { calculateMedical } from "@/lib/insuranceCalculations/medical";
 import { calculateGuarantee, type GuaranteeResult } from "@/lib/insuranceCalculations/guarantee";
 import { calculateCustomsBond } from "@/lib/insuranceCalculations/customsBond";
 import { ITL_RATE, PHCF_RATE } from "@/lib/insuranceCalculations/constants";
+import { generateAndSyncQuotationExcel } from "@/lib/integrations/dropbox/quotationDropboxSync";
 import { Prisma } from "@/generated/prisma/client";
 import type { CalculationMethod, QuotationSectionKind, QuotationStatus, MedicalFamilyCategory } from "@/generated/prisma/enums";
 import type { InsuranceTypeModel } from "@/generated/prisma/models";
@@ -2514,6 +2515,23 @@ export async function startFirstQuotationAction(
 
     revalidatePath("/quotation");
     revalidatePath(`/quotation/case/${quotationCaseId}`);
+
+    // Quotation Revision <-> Dropbox Version sync fix: R01 must get its own
+    // Excel/Dropbox V1 right away, same as every later revision created via
+    // createRevisionAction (revisionActions.ts) — otherwise a brand new
+    // Quotation sits at "Pending" forever until someone happens to click
+    // Download. Deliberately outside/after the transaction above — the
+    // revision is already committed by this point and must stay committed
+    // even if this fails. generateAndSyncQuotationExcel already encodes
+    // ordinary Dropbox failures onto the version row instead of throwing;
+    // this try/catch only guards against a genuinely unexpected error (e.g.
+    // local storage I/O).
+    try {
+      await generateAndSyncQuotationExcel(result.id);
+    } catch (syncErr) {
+      console.error(`Dropbox sync failed for new quotation ${result.id}:`, syncErr);
+    }
+
     return { success: true, id: result.id, quotationNumber: result.quotationNumber };
   } catch (err) {
     if (err instanceof Error && err.message === "REVISION_ALREADY_EXISTS") {

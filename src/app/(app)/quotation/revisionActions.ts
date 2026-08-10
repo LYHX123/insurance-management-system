@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit } from "@/lib/permissions";
 import { deepCopyQuotationSections } from "@/lib/quotationRevisions/deepCopy";
+import { generateAndSyncQuotationExcel } from "@/lib/integrations/dropbox/quotationDropboxSync";
 import type { Prisma } from "@/generated/prisma/client";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
@@ -115,6 +116,23 @@ export async function createRevisionAction(
 
     revalidatePath("/quotation");
     revalidatePath(`/quotation/case/${quotationCaseId}`);
+
+    // Quotation Revision <-> Dropbox Version sync (production fix): a new
+    // revision must get its own Dropbox Excel version right away, rather
+    // than staying pinned to whatever version an earlier revision last
+    // generated until someone happens to click Download. Deliberately
+    // outside/after the transaction above — the revision is already
+    // committed at this point, and must stay committed even if this fails.
+    // generateAndSyncQuotationExcel always reads the new revision's own
+    // current DB row and never throws for ordinary Dropbox failures (it
+    // records PENDING/ERROR on the version itself); this try/catch only
+    // guards against a genuinely unexpected error (e.g. local storage I/O).
+    try {
+      await generateAndSyncQuotationExcel(newRevisionId);
+    } catch (syncErr) {
+      console.error(`Dropbox sync failed for new revision ${newRevisionId}:`, syncErr);
+    }
+
     return { success: true, id: newRevisionId };
   } catch (err) {
     if (err instanceof Error && err.message === "DRAFT_ALREADY_EXISTS") {
