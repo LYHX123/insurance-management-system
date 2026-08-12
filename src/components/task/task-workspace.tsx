@@ -31,13 +31,26 @@ export function TaskWorkspace({
   selectedTask,
   currentUserId,
   canEdit,
+  taskCanEdit,
+  taskCanDelete,
+  isAdmin,
   activeUsers,
 }: {
   categorySlug: TaskCategorySlug;
   tasks: TaskListItem[];
   selectedTask: TaskDetail | null;
   currentUserId: string;
+  // Module-level task.daily_task EDIT permission — gates the "New Task"
+  // button only, independent of any specific Task. Not the same thing as
+  // taskCanEdit below (see TaskDetailPanel's props for why these two must
+  // stay separate).
   canEdit: boolean;
+  // Collaborator capability (Admin/Creator/Participant) for `selectedTask`
+  // specifically — meaningless when selectedTask is null, since
+  // TaskDetailPanel isn't rendered in that case.
+  taskCanEdit: boolean;
+  taskCanDelete: boolean;
+  isAdmin: boolean;
   activeUsers: ActiveUserOption[];
 }) {
   const { t, locale } = useLocale();
@@ -149,7 +162,15 @@ export function TaskWorkspace({
           when nothing is selected yet. */}
       <div className={`min-h-0 flex-1 flex-col md:flex ${hasSelection ? "flex" : "hidden"}`}>
         {selectedTask ? (
-          <TaskDetailPanel categorySlug={categorySlug} task={selectedTask} currentUserId={currentUserId} canEdit={canEdit} activeUsers={activeUsers} />
+          <TaskDetailPanel
+            categorySlug={categorySlug}
+            task={selectedTask}
+            currentUserId={currentUserId}
+            canEdit={taskCanEdit}
+            canDelete={taskCanDelete}
+            isAdmin={isAdmin}
+            activeUsers={activeUsers}
+          />
         ) : (
           <div className="flex h-full min-h-[240px] items-center justify-center rounded-surface border border-dashed border-zinc-300 bg-white text-sm text-secondary">
             {t.task.selectTaskPrompt}

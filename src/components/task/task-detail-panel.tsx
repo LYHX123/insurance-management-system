@@ -23,6 +23,8 @@ export function TaskDetailPanel({
   task,
   currentUserId,
   canEdit: hasEditPermission,
+  canDelete,
+  isAdmin,
   activeUsers,
 }: {
   categorySlug: TaskCategorySlug;
@@ -30,8 +32,14 @@ export function TaskDetailPanel({
   currentUserId: string;
   // Renamed on destructure — this component already has an unrelated local
   // `canEdit` (per-step "is this specific step still editable" boolean, see
-  // the steps.map below); this prop is the module-level VIEW/EDIT permission.
+  // the steps.map below); this prop is the per-Task collaborator capability
+  // (Admin/Creator/Participant — see src/lib/task/access.ts's
+  // TaskAuthResult.canEdit), not a module-wide permission.
   canEdit: boolean;
+  // Admin OR Creator only — Delete Task stays restricted even though
+  // hasEditPermission above now also covers plain Participants (Part VI).
+  canDelete: boolean;
+  isAdmin: boolean;
   activeUsers: ActiveUserOption[];
 }) {
   const { t, locale } = useLocale();
@@ -109,12 +117,19 @@ export function TaskDetailPanel({
         </p>
 
         <div className="mt-1 flex flex-wrap gap-2">
-          {hasEditPermission && isCreator && isActive && (
+          {/* Rename stays Creator/Admin-only (Part II) — every other action
+              here is collaborator-level (hasEditPermission alone: Admin OR
+              Creator OR Participant), and Delete stays gated on the separate
+              canDelete prop (Admin OR Creator only, Part VI) regardless of
+              hasEditPermission. */}
+          {hasEditPermission && isActive && (
             <>
-              <Button variant="secondary" onClick={() => setShowEditTitle(true)}>
-                <Pencil size={16} />
-                {t.task.editTask}
-              </Button>
+              {(isCreator || isAdmin) && (
+                <Button variant="secondary" onClick={() => setShowEditTitle(true)}>
+                  <Pencil size={16} />
+                  {t.task.editTask}
+                </Button>
+              )}
               <Button variant="secondary" onClick={() => setShowManageParticipants(true)}>
                 <UserCog size={16} />
                 {t.task.manageParticipants}
@@ -123,22 +138,26 @@ export function TaskDetailPanel({
                 <CheckCircle2 size={16} />
                 {t.task.markAsCompleted}
               </Button>
-              <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
-                <Trash2 size={16} />
-                {t.task.deleteTask}
-              </Button>
+              {canDelete && (
+                <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
+                  <Trash2 size={16} />
+                  {t.task.deleteTask}
+                </Button>
+              )}
             </>
           )}
-          {hasEditPermission && isCreator && !isActive && (
+          {hasEditPermission && !isActive && (
             <>
               <Button variant="secondary" onClick={() => setConfirmKind("reopen")}>
                 <RotateCcw size={16} />
                 {t.task.reopenTask}
               </Button>
-              <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
-                <Trash2 size={16} />
-                {t.task.deleteTask}
-              </Button>
+              {canDelete && (
+                <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
+                  <Trash2 size={16} />
+                  {t.task.deleteTask}
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -147,7 +166,7 @@ export function TaskDetailPanel({
       {/* Step timeline */}
       <div className="flex flex-col gap-3">
         {task.steps.map((step, index) => {
-          const canEditStep = hasEditPermission && isActive && (step.createdById === currentUserId || isCreator);
+          const canEditStep = hasEditPermission && isActive && (step.createdById === currentUserId || isCreator || isAdmin);
           const isLastVisible = task.steps.length <= 1;
           return (
             <Card key={step.id}>

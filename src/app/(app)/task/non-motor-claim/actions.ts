@@ -186,14 +186,17 @@ export async function createNonMotorClaimAction(
 }
 
 // ============================================================================
-// Core edit (creator-only, OPEN-only)
+// Core edit (collaborator, OPEN-only)
 // ============================================================================
 
+// Collaborator-level, not Creator-only — see the identical Motor Claim
+// rationale in src/app/(app)/task/motor-claim/actions.ts. This is also how
+// the Claim's `progress` field advances; the state machine itself is
+// unchanged, only who may call this action.
 export async function updateNonMotorClaimAction(id: string, input: NonMotorClaimInput): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const validated = validateInput(input);
@@ -256,14 +259,17 @@ export async function updateNonMotorClaimAction(id: string, input: NonMotorClaim
 }
 
 // ============================================================================
-// Participants (creator-only, OPEN-only)
+// Participants (collaborator, OPEN-only)
 // ============================================================================
 
+// Collaborator-level, not Creator-only — mirrors Task's
+// updateParticipantsAction. The Creator can never be removed by anyone
+// (enforced below), matching Claim visibility being scoped to
+// `participants: { some: { userId } }` in checkNonMotorClaimAccess.
 export async function updateNonMotorClaimParticipantsAction(claimId: string, participantIds: string[]): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(claimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const current = await prisma.nonMotorClaimParticipant.findMany({ where: { nonMotorClaimId: claimId }, select: { userId: true } });
@@ -336,7 +342,7 @@ export async function editNonMotorClaimUpdateAction(updateId: string, content: s
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
-  if (entry.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (entry.createdById !== access.userId && !access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
 
   const trimmed = content?.trim();
   if (!trimmed) return { success: false, error: "CONTENT_REQUIRED" };
@@ -367,7 +373,7 @@ export async function deleteNonMotorClaimUpdateAction(updateId: string): Promise
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
-  if (entry.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (entry.createdById !== access.userId && !access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
 
   const visibleCount = await prisma.nonMotorClaimUpdate.count({ where: { nonMotorClaimId: entry.nonMotorClaimId, deletedAt: null } });
   if (visibleCount <= 1) return { success: false, error: "MIN_TIMELINE_REQUIRED" };
@@ -389,14 +395,15 @@ export async function deleteNonMotorClaimUpdateAction(updateId: string): Promise
 }
 
 // ============================================================================
-// Close / reopen / delete (creator-only)
+// Close / reopen (collaborator) / delete (creator-only)
 // ============================================================================
 
+// Collaborator-level, not Creator-only — see the identical Motor Claim
+// rationale in src/app/(app)/task/motor-claim/actions.ts.
 export async function closeNonMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.nonMotorClaim.updateMany({
@@ -418,7 +425,6 @@ export async function reopenNonMotorClaimAction(id: string): Promise<ActionResul
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.nonMotorClaim.updateMany({
@@ -436,11 +442,12 @@ export async function reopenNonMotorClaimAction(id: string): Promise<ActionResul
   return { success: true };
 }
 
+// Delete stays Creator/Admin-only — matches Task's deleteTaskAction (Part
+// VI).
 export async function deleteNonMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkNonMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
-  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (!access.canDelete) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.nonMotorClaim.updateMany({
     where: { id, deletedAt: null },

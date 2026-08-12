@@ -200,14 +200,19 @@ export async function createMotorClaimAction(
 }
 
 // ============================================================================
-// Core edit (creator-only, OPEN-only)
+// Core edit (collaborator, OPEN-only)
 // ============================================================================
 
+// Collaborator-level, not Creator-only — this is also how a Claim's
+// `progress` field advances through its stages (PREPARE_CLAIM_DOCUMENT →
+// ... → FINISH), so a Participant needs this action to actually process the
+// Claim they were added to (see this phase's spec, Part VIII). The
+// underlying progress state machine itself is unchanged — only who may call
+// this action.
 export async function updateMotorClaimAction(id: string, input: MotorClaimInput): Promise<ActionResult> {
   const access = await checkMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const validated = validateInput(input);
@@ -278,14 +283,18 @@ export async function updateMotorClaimAction(id: string, input: MotorClaimInput)
 }
 
 // ============================================================================
-// Participants (creator-only, OPEN-only)
+// Participants (collaborator, OPEN-only)
 // ============================================================================
 
+// Collaborator-level, not Creator-only — mirrors Task's
+// updateParticipantsAction (see src/app/(app)/task/actions.ts): any
+// Participant may add or remove others. The Creator can never be removed by
+// anyone (enforced below), matching Claim visibility being scoped to
+// `participants: { some: { userId } }` in checkMotorClaimAccess.
 export async function updateMotorClaimParticipantsAction(claimId: string, participantIds: string[]): Promise<ActionResult> {
   const access = await checkMotorClaimAccess(claimId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
 
   const current = await prisma.motorClaimParticipant.findMany({ where: { motorClaimId: claimId }, select: { userId: true } });
@@ -358,7 +367,7 @@ export async function editMotorClaimUpdateAction(updateId: string, content: stri
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
-  if (entry.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (entry.createdById !== access.userId && !access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
 
   const trimmed = content?.trim();
   if (!trimmed) return { success: false, error: "CONTENT_REQUIRED" };
@@ -389,7 +398,7 @@ export async function deleteMotorClaimUpdateAction(updateId: string): Promise<Ac
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "OPEN") return { success: false, error: "CLAIM_NOT_OPEN" };
-  if (entry.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (entry.createdById !== access.userId && !access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
 
   const visibleCount = await prisma.motorClaimUpdate.count({ where: { motorClaimId: entry.motorClaimId, deletedAt: null } });
   if (visibleCount <= 1) return { success: false, error: "MIN_TIMELINE_REQUIRED" };
@@ -411,18 +420,19 @@ export async function deleteMotorClaimUpdateAction(updateId: string): Promise<Ac
 }
 
 // ============================================================================
-// Close / reopen / delete (creator-only)
+// Close / reopen (collaborator) / delete (creator-only)
 // ============================================================================
 
 // Idempotent by construction; the timeline entry is only appended inside the
 // same transaction as a status transition that actually happened (count ===
 // 1), so a retry never creates a duplicate entry (see this phase's spec,
-// Part H.33).
+// Part H.33). Collaborator-level, not Creator-only — closing/finishing a
+// Claim is part of "advancing the Claim through its existing flow" that any
+// Participant must be able to do (see this phase's spec, Part VIII).
 export async function closeMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.motorClaim.updateMany({
@@ -444,7 +454,6 @@ export async function reopenMotorClaimAction(id: string): Promise<ActionResult> 
   const access = await checkMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.motorClaim.updateMany({
@@ -462,11 +471,13 @@ export async function reopenMotorClaimAction(id: string): Promise<ActionResult> 
   return { success: true };
 }
 
+// Delete stays Creator/Admin-only — matches Task's deleteTaskAction (Part
+// VI): a collaborator can fully process a Claim, but not permanently remove
+// the business record.
 export async function deleteMotorClaimAction(id: string): Promise<ActionResult> {
   const access = await checkMotorClaimAccess(id);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
-  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (!access.canDelete) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.motorClaim.updateMany({
     where: { id, deletedAt: null },

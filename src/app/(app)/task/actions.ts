@@ -95,8 +95,14 @@ export async function createTaskAction(input: CreateTaskInput): Promise<ActionRe
 export async function updateTaskTitleAction(taskId: string, title: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
-  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
+  // Renaming a Task stays Creator/Admin-only — unlike the collaborator
+  // actions below, it was never on this phase's list of capabilities to
+  // open up to plain Participants (see this phase's spec, Part II). Gated
+  // purely on isCreator/isAdmin (not the separate module-level
+  // moduleCanEdit) so this matches exactly what the frontend button
+  // condition can cheaply check without threading a third permission value
+  // through TaskWorkspace/TaskDetailPanel just for this one action.
+  if (!access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
 
   const trimmed = title?.trim();
@@ -113,11 +119,19 @@ export async function updateTaskTitleAction(taskId: string, title: string): Prom
   }
 }
 
+// Collaborator-level (Admin/Creator/Participant), not Creator-only — any
+// Task Participant may add or remove other participants so they can pull in
+// help without waiting on the Creator (see this phase's spec, Part IV/V).
+// The Creator themselves can never be removed by anyone, Admin included
+// (enforced a few lines below): Task visibility itself is scoped to
+// `participants: { some: { userId } }` (see checkTaskAccess), so removing
+// the Creator's own participant row would lock them out of a Task they
+// created — there is no legitimate reason to do this given createdById
+// already independently carries authorship.
 export async function updateParticipantsAction(taskId: string, participantIds: string[]): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
 
   const current = await prisma.taskParticipant.findMany({ where: { taskId }, select: { userId: true } });
@@ -193,7 +207,7 @@ export async function updateStepAction(stepId: string, content: string): Promise
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
-  if (step.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (step.createdById !== access.userId && !access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
 
   const trimmed = content?.trim();
   if (!trimmed) return { success: false, error: "CONTENT_REQUIRED" };
@@ -223,7 +237,7 @@ export async function deleteStepAction(stepId: string): Promise<ActionResult> {
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
   if (access.status !== "ACTIVE") return { success: false, error: "TASK_NOT_ACTIVE" };
-  if (step.createdById !== access.userId && !access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (step.createdById !== access.userId && !access.isCreator && !access.isAdmin) return { success: false, error: "FORBIDDEN" };
 
   const visibleCount = await prisma.taskStep.count({ where: { taskId: step.taskId, deletedAt: null } });
   if (visibleCount <= 1) return { success: false, error: "MIN_STEP_REQUIRED" };
@@ -245,17 +259,18 @@ export async function deleteStepAction(stepId: string): Promise<ActionResult> {
 }
 
 // ============================================================================
-// Complete / reopen / delete (creator-only)
+// Complete / reopen (collaborator) / delete (creator-only)
 // ============================================================================
 
 // Idempotent by construction (same pattern as cancelInvoiceAction /
 // cancelManualEntryAction): the status transition is the WHERE clause of the
-// update itself.
+// update itself. Collaborator-level, not Creator-only — any Task
+// Participant can mark the Task they're working on complete (see this
+// phase's spec, Part III: "Participant 不再只是被通知/查看的人").
 export async function completeTaskAction(taskId: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.task.updateMany({
     where: { id: taskId, status: "ACTIVE" },
@@ -271,7 +286,6 @@ export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.task.updateMany({
     where: { id: taskId, status: "COMPLETED" },
@@ -287,11 +301,14 @@ export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
   return { success: true };
 }
 
+// Delete stays Creator/Admin-only even though every other write action above
+// now also accepts plain Participants — a collaborator can fully process a
+// Task, but not permanently remove the business record (see this phase's
+// spec, Part VI).
 export async function deleteTaskAction(taskId: string): Promise<ActionResult> {
   const access = await checkTaskAccess(taskId);
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
-  if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
-  if (!access.isCreator) return { success: false, error: "FORBIDDEN" };
+  if (!access.canDelete) return { success: false, error: "FORBIDDEN" };
 
   const result = await prisma.task.updateMany({
     where: { id: taskId, deletedAt: null },

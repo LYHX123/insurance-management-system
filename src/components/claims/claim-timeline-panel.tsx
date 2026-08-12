@@ -38,6 +38,7 @@ export function ClaimTimelinePanel({
   isOpen,
   currentUserId,
   isCreator,
+  isAdmin,
   canEdit: hasEditPermission,
   addAction,
   editAction,
@@ -48,6 +49,7 @@ export function ClaimTimelinePanel({
   isOpen: boolean;
   currentUserId: string;
   isCreator: boolean;
+  isAdmin: boolean;
   // Renamed on destructure — this component already has an unrelated local
   // `canEdit` (per-entry "is this specific update still editable" boolean);
   // this prop is the module-level VIEW/EDIT permission.
@@ -114,7 +116,7 @@ export function ClaimTimelinePanel({
       <h2 className="section-title">{t.claims.claimTimeline}</h2>
 
       {timeline.map((entry, index) => {
-        const canEditEntry = hasEditPermission && isOpen && !entry.isInitial && (entry.createdById === currentUserId || isCreator);
+        const canEditEntry = hasEditPermission && isOpen && !entry.isInitial && (entry.createdById === currentUserId || isCreator || isAdmin);
         return (
           <Card key={entry.id}>
             <div className="flex gap-3">

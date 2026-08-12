@@ -49,6 +49,7 @@ export default async function NonMotorClaimDetailPage({ params }: { params: Prom
       }}
       isAdmin={session?.user ? isAdmin(session.user) : false}
       canEdit={access.canEdit}
+      canDelete={access.canDelete}
     />
   );
 }

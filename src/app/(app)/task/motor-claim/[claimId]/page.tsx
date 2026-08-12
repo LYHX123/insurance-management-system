@@ -58,6 +58,7 @@ export default async function MotorClaimDetailPage({ params }: { params: Promise
       }}
       isAdmin={session?.user ? isAdmin(session.user) : false}
       canEdit={access.canEdit}
+      canDelete={access.canDelete}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canEdit, hasPermission, type PermissionKey } from "@/lib/permissions";
+import { canEdit, hasPermission, isAdmin, type PermissionKey } from "@/lib/permissions";
 import { isTaskCategorySlug, SLUG_TO_CATEGORY, type TaskCategorySlug } from "@/lib/task/category";
 import { getVisibleTasksForCategory } from "@/lib/task/queries";
 import { getMotorClaims, getNonMotorClaims, getActiveClaimCustomers } from "@/lib/claims/queries";
@@ -100,6 +100,12 @@ export default async function TaskCategoryPage({
       selectedTask={null}
       currentUserId={session.user.id}
       canEdit={canEdit(session.user, "task.daily_task")}
+      // No Task is selected on this route (selectedTask is null), so
+      // TaskDetailPanel never renders — these two are unused but required
+      // by TaskWorkspace's props.
+      taskCanEdit={false}
+      taskCanDelete={false}
+      isAdmin={isAdmin(session.user)}
       activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
     />
   );

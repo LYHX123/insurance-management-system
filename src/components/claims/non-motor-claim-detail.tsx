@@ -75,6 +75,7 @@ export function NonMotorClaimDetailView({
   dropbox,
   isAdmin,
   canEdit,
+  canDelete,
 }: {
   claim: NonMotorClaimDetail;
   currentUserId: string;
@@ -84,7 +85,12 @@ export function NonMotorClaimDetailView({
   policyOptions: ClaimPolicyOption[];
   dropbox: ClaimDropboxSectionView;
   isAdmin: boolean;
+  // Collaborator capability (Admin/Creator/Participant) for this Claim —
+  // see src/lib/claims/access.ts's ClaimAuthResult.canEdit.
   canEdit: boolean;
+  // Admin OR Creator only — Delete Claim stays restricted even though
+  // canEdit above now also covers plain Participants (Part VI).
+  canDelete: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -243,7 +249,7 @@ export function NonMotorClaimDetailView({
           </div>
         </dl>
 
-        {canEdit && isCreator && (
+        {canEdit && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-4">
             {isOpen ? (
               <>
@@ -259,10 +265,12 @@ export function NonMotorClaimDetailView({
                   <XCircle size={16} />
                   {t.claims.closeClaim}
                 </Button>
-                <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
-                  <Trash2 size={16} />
-                  {t.claims.deleteClaim}
-                </Button>
+                {canDelete && (
+                  <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
+                    <Trash2 size={16} />
+                    {t.claims.deleteClaim}
+                  </Button>
+                )}
               </>
             ) : (
               <>
@@ -270,10 +278,12 @@ export function NonMotorClaimDetailView({
                   <RotateCcw size={16} />
                   {t.claims.reopenClaim}
                 </Button>
-                <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
-                  <Trash2 size={16} />
-                  {t.claims.deleteClaim}
-                </Button>
+                {canDelete && (
+                  <Button variant="secondary" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmKind("delete")}>
+                    <Trash2 size={16} />
+                    {t.claims.deleteClaim}
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -310,6 +320,7 @@ export function NonMotorClaimDetailView({
         isOpen={isOpen}
         currentUserId={currentUserId}
         isCreator={isCreator}
+        isAdmin={isAdmin}
         canEdit={canEdit}
         addAction={addNonMotorClaimUpdateAction}
         editAction={editNonMotorClaimUpdateAction}

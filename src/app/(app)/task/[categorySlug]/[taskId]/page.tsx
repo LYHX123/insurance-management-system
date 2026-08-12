@@ -49,7 +49,13 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ cat
       tasks={tasks}
       selectedTask={detail}
       currentUserId={access.userId}
-      canEdit={access.canEdit}
+      // Module-level permission, for the "New Task" button (still visible
+      // alongside the detail panel on desktop) — distinct from the
+      // per-Task collaborator capability below.
+      canEdit={access.moduleCanEdit}
+      taskCanEdit={access.canEdit}
+      taskCanDelete={access.canDelete}
+      isAdmin={access.isAdmin}
       activeUsers={activeUsers.map((u) => ({ id: u.id, name: u.fullName || u.username, role: u.role }))}
     />
   );
