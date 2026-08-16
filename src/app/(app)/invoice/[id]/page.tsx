@@ -20,7 +20,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       customer: { select: { companyName: true, pinNumber: true } },
       items: {
         orderBy: { itemNumber: "asc" },
-        include: { policyRecord: { select: { recordNumber: true, category: true } } },
+        include: { policyRecord: { select: { recordNumber: true, category: true, sourceQuotationNumberSnapshot: true } } },
       },
     },
   });
@@ -56,6 +56,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       policyClassSnapshot: item.policyClassSnapshot,
       policyNumberSnapshot: item.policyNumberSnapshot,
       premiumSnapshot: item.premiumSnapshot.toString(),
+      sourceQuotationNumber: item.policyRecord.sourceQuotationNumberSnapshot,
     })),
   };
 

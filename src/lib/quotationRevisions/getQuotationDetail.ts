@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { computeBusinessStatus } from "@/lib/policy/status";
+import { resolveSectionPolicyPlan } from "@/lib/quotationRevisions/sectionPolicyMapping";
 import type { QuotationDetail } from "@/components/quotations/types";
 
 const DETAIL_INCLUDE = {
@@ -9,6 +10,12 @@ const DETAIL_INCLUDE = {
     orderBy: { sortOrder: "asc" as const },
     include: {
       items: { orderBy: { sortOrder: "asc" as const } },
+      // Phase 1+2 "Generate Policy Records" — the section's own generated
+      // PolicyRecord (if any, non-deleted), used to drive the modal's
+      // Generated/Not Generated state. Never filtered by category, same
+      // "must keep working for every future category" convention as
+      // relatedPolicyRecords below.
+      generatedPolicyRecords: { where: { deletedAt: null }, select: { id: true, recordNumber: true, category: true } },
       carDetail: true,
       wibaDetail: { include: { payrollRows: { orderBy: { sortOrder: "asc" as const } } } },
       cpmDetail: { include: { equipmentRows: { orderBy: { sortOrder: "asc" as const } } } },
@@ -99,6 +106,30 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
       insuranceTypeId: s.insuranceTypeId,
       insuranceTypeNameSnapshot: s.insuranceTypeNameSnapshot,
       sectionKind: s.sectionKind,
+      // Phase 1+2 "Generate Policy Records" — see DETAIL_INCLUDE's own
+      // comment. generatedPolicyRecords is a most-once relation in
+      // practice (enforced by generatePolicyRecordsAction's idempotency
+      // check, never a DB constraint — see that action's doc comment), so
+      // the first row (if any) is authoritative.
+      generatedPolicy: s.generatedPolicyRecords[0]
+        ? {
+            id: s.generatedPolicyRecords[0].id,
+            recordNumber: s.generatedPolicyRecords[0].recordNumber,
+            category: s.generatedPolicyRecords[0].category,
+          }
+        : null,
+      policyGenerationSupported: resolveSectionPolicyPlan({
+        id: s.id,
+        sectionKind: s.sectionKind,
+        sectionTotal: s.sectionTotal,
+        motorCompPrivateDetail: s.motorCompPrivateDetail,
+        motorCompCommercialDetail: s.motorCompCommercialDetail,
+        motorTpoPrivateDetail: s.motorTpoPrivateDetail,
+        motorTpoCommercialDetail: s.motorTpoCommercialDetail,
+        tenderSecurityDetail: s.tenderSecurityDetail,
+        performanceBondDetail: s.performanceBondDetail,
+        advancePaymentGuaranteeDetail: s.advancePaymentGuaranteeDetail,
+      }).supported,
       description: s.description,
       phcfRate: s.phcfRate.toString(),
       itlRate: s.itlRate.toString(),

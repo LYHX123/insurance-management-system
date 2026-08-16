@@ -37,6 +37,7 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
           project: { select: { projectName: true } },
         },
       },
+      sourceQuotationSection: { select: { insuranceTypeNameSnapshot: true } },
       invoiceItems: {
         select: {
           invoice: { select: { id: true, invoiceNumber: true, invoiceDate: true, status: true, totalPremium: true } },
@@ -212,6 +213,7 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
           projectName: record.sourceQuotation.project?.projectName ?? null,
           quotationDate: record.sourceQuotation.quotationDate.toISOString(),
           grandTotal: record.sourceQuotation.grandTotal.toString(),
+          sectionInsuranceTypeName: record.sourceQuotationSection?.insuranceTypeNameSnapshot ?? null,
         }
       : null,
     // Phase 2B: fallback display data for when the live relation above is

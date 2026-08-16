@@ -30,6 +30,15 @@ export const POLICY_FOR_INVOICE_INCLUDE = {
       invoice: { select: { id: true, invoiceNumber: true, status: true } },
     },
   },
+  // Phase 5 "Combined Invoice grouping" — the most reliable existing chain
+  // to the permanent QuotationCase a Policy came from: sourceQuotationId is
+  // set by every quotation-linked creation path (both the single-record
+  // actions and the batch generatePolicyRecordsAction), so this alone is
+  // enough to derive quotationCaseId without needing
+  // sourceQuotationSectionId at all. Null for every manually-created and
+  // historical-import record — never an error, just "no quotation source"
+  // (see getEligiblePoliciesForCustomer's own handling below).
+  sourceQuotation: { select: { quotationNumber: true, quotationCaseId: true } },
 } satisfies Prisma.PolicyRecordInclude;
 
 export type PolicyForInvoice = Prisma.PolicyRecordGetPayload<{ include: typeof POLICY_FOR_INVOICE_INCLUDE }>;
@@ -154,13 +163,34 @@ export type EligiblePolicyRow = {
   effectiveDate: string;
   expiryDate: string;
   clientPremium: string;
+  // Phase 5 "Combined Invoice grouping" — null for every manually-created/
+  // historical-import Policy (never an error, see this field's source
+  // comment on POLICY_FOR_INVOICE_INCLUDE above). quotationNumber is the
+  // display label for the group header ("Quotation QT202608-006") — this
+  // is Quotation.quotationNumber, which (see that field's own schema
+  // comment) already equals the owning QuotationCase's permanent number
+  // for every revision, so no second join to QuotationCase is needed.
+  quotationCaseId: string | null;
+  quotationNumber: string | null;
+  // Phase 5 Part 7 — this row's CURRENT eligibility. false only ever means
+  // ALREADY_INVOICED here: every other ineligibility reason
+  // (CANCELLED_POLICY/MISSING_POLICY_NUMBER/MISSING_DETAIL) is still
+  // filtered out entirely below, exactly as before this phase — this list
+  // was never meant to become "every Policy regardless of reason", only to
+  // stop silently hiding the one reason (already has an active Invoice)
+  // the UI now needs to explain to the user instead of just omitting.
+  isEligible: boolean;
+  activeInvoiceRef: { id: string; invoiceNumber: string } | null;
 };
 
-// Every currently-eligible, uninvoiced Policy for one Customer, across all
-// four categories — the data source for both the Invoice creation page's
-// selectable list and (indirectly, via checkPolicyInvoiceEligibility) the
-// Policy detail "Create Invoice" button. Sorted by processing date then
-// record number per this phase's spec.
+// Every currently-eligible Policy for one Customer, across all four
+// categories, PLUS (Phase 5) any Policy whose only ineligibility reason is
+// already having an active ISSUED Invoice — flagged via isEligible/
+// activeInvoiceRef rather than silently dropped, so the Invoice creation
+// page can show it disabled with a reference instead of making it look
+// like it never existed. Every other ineligibility reason is still
+// excluded entirely, unchanged from before this phase. Sorted by
+// processing date then record number per this phase's spec.
 export async function getEligiblePoliciesForCustomer(customerId: string): Promise<EligiblePolicyRow[]> {
   const records = await prisma.policyRecord.findMany({
     where: { customerId, deletedAt: null, businessStatus: { not: "CANCELLED" } },
@@ -171,7 +201,7 @@ export async function getEligiblePoliciesForCustomer(customerId: string): Promis
   const rows: EligiblePolicyRow[] = [];
   for (const record of records) {
     const eligibility = checkPolicyInvoiceEligibility(record);
-    if (!eligibility.eligible) continue;
+    if (!eligibility.eligible && eligibility.reason !== "ALREADY_INVOICED") continue;
     const classSource = getPolicyClassSource(record)!;
     const policyNumber = getActualPolicyNumber(record)!;
     rows.push({
@@ -186,6 +216,10 @@ export async function getEligiblePoliciesForCustomer(customerId: string): Promis
       effectiveDate: record.effectiveDate.toISOString(),
       expiryDate: record.expiryDate.toISOString(),
       clientPremium: record.customerPremium.toString(),
+      quotationCaseId: record.sourceQuotation?.quotationCaseId ?? null,
+      quotationNumber: record.sourceQuotation?.quotationNumber ?? null,
+      isEligible: eligibility.eligible,
+      activeInvoiceRef: getActiveInvoiceRef(record),
     });
   }
   return rows;

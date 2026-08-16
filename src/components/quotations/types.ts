@@ -268,11 +268,25 @@ export type CoverageItemRow = {
   sortOrder: number;
 };
 
+// Phase 1+2 "Generate Policy Records" — the PolicyRecord (if any) already
+// generated from this specific section, and whether this sectionKind is
+// even eligible for automatic generation at all (see
+// sectionPolicyMapping.ts's resolveSectionPolicyPlan — the single source of
+// truth for this boolean, computed server-side so the client never
+// re-derives/duplicates the mapping rule).
+export type GeneratedPolicyRef = {
+  id: string;
+  recordNumber: string;
+  category: RelatedPolicyCategory;
+};
+
 export type SectionRow = {
   id: string;
   insuranceTypeId: string;
   insuranceTypeNameSnapshot: string;
   sectionKind: QuotationSectionKind;
+  generatedPolicy: GeneratedPolicyRef | null;
+  policyGenerationSupported: boolean;
   description: string | null;
   phcfRate: string;
   itlRate: string;

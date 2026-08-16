@@ -155,18 +155,20 @@ export function InvoiceDetailView({
                 <th>{t.invoice.colPolicyRecordNumber}</th>
                 <th>{t.invoice.colPolicyClass}</th>
                 <th>{t.invoice.colPolicyNumber}</th>
+                <th>{t.invoice.colSourceQuotation}</th>
                 <th>{t.invoice.colPremium}</th>
                 <th>{t.common.actions}</th>
               </tr>
             </thead>
             <tbody>
-              {detail.items.length === 0 && <TableEmpty colSpan={6}>{t.invoice.noRecords}</TableEmpty>}
+              {detail.items.length === 0 && <TableEmpty colSpan={7}>{t.invoice.noRecords}</TableEmpty>}
               {detail.items.map((item) => (
                 <tr key={item.id}>
                   <td className="text-zinc-500">{item.itemNumber}</td>
                   <td className="font-medium text-zinc-800">{item.policyRecordNumber}</td>
                   <td className="text-zinc-500">{item.policyClassSnapshot}</td>
                   <td className="text-zinc-500">{item.policyNumberSnapshot}</td>
+                  <td className="text-zinc-500">{item.sourceQuotationNumber ?? "—"}</td>
                   <td className="text-zinc-500">{formatMoney(item.premiumSnapshot)}</td>
                   <td>
                     <Link

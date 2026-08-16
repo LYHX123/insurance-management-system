@@ -7,6 +7,7 @@ import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { formatMoney } from "@/components/ui/money-input";
@@ -44,6 +45,63 @@ const ERROR_KEY: Record<string, string> = {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+const OTHER_GROUP_KEY = "__other__";
+
+// Phase 5 "Combined Invoice grouping" — one group per distinct
+// quotationCaseId among the eligible/already-invoiced policies for this
+// customer, plus one final group (OTHER_GROUP_KEY) for every policy with no
+// quotation source at all (quotationCaseId === null — manual/historical
+// records). Never groups by Revision (Part 11 of this phase's spec: the
+// business view is the whole Quotation Case, not R01/R02/R03 individually)
+// — quotationCaseId is already the right granularity for that.
+type PolicyGroup = {
+  key: string;
+  quotationNumber: string | null;
+  rows: EligiblePolicyRow[];
+};
+
+function buildGroups(policies: EligiblePolicyRow[], sourcePolicyId: string): PolicyGroup[] {
+  const byCase = new Map<string, PolicyGroup>();
+  const other: EligiblePolicyRow[] = [];
+  for (const p of policies) {
+    if (p.quotationCaseId) {
+      const existing = byCase.get(p.quotationCaseId);
+      if (existing) existing.rows.push(p);
+      else byCase.set(p.quotationCaseId, { key: p.quotationCaseId, quotationNumber: p.quotationNumber, rows: [p] });
+    } else {
+      other.push(p);
+    }
+  }
+
+  const sourceCaseId = policies.find((p) => p.id === sourcePolicyId)?.quotationCaseId ?? null;
+  const groups = [...byCase.values()].sort((a, b) => {
+    if (a.key === sourceCaseId) return -1;
+    if (b.key === sourceCaseId) return 1;
+    return (a.quotationNumber ?? "").localeCompare(b.quotationNumber ?? "");
+  });
+  if (other.length > 0) groups.push({ key: OTHER_GROUP_KEY, quotationNumber: null, rows: other });
+  return groups;
+}
+
+// Phase 3 Part 6 default-selection rule: the launching Policy is always
+// selected; every OTHER eligible policy that shares its quotationCaseId is
+// also default-selected (the "same Quotation Case, batch-generated
+// together" case this phase exists for). Everything else — other quotation
+// cases, and every policy with no quotation source — starts unselected but
+// remains fully selectable (Part 3: "不要做硬性限制…因为真实业务可能需要跨报价组合
+// Invoice").
+function defaultSelection(policies: EligiblePolicyRow[], sourcePolicyId: string): Set<string> {
+  const selected = new Set<string>();
+  if (sourcePolicyId) selected.add(sourcePolicyId);
+  const sourceRow = policies.find((p) => p.id === sourcePolicyId);
+  if (sourceRow?.quotationCaseId) {
+    for (const p of policies) {
+      if (p.quotationCaseId === sourceRow.quotationCaseId && p.isEligible) selected.add(p.id);
+    }
+  }
+  return selected;
+}
+
 export function CreateInvoiceForm({
   blocked,
   customerId,
@@ -77,10 +135,12 @@ export function CreateInvoiceForm({
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
   const sourcePolicyHref = sourcePolicyReturnTo ?? (sourcePolicy ? `${POLICY_CATEGORY_ROUTE[sourcePolicy.category]}/${sourcePolicy.id}` : "/invoice");
 
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelectedPolicyId ? [defaultSelectedPolicyId] : []));
+  const [selected, setSelected] = useState<Set<string>>(() => defaultSelection(policies, defaultSelectedPolicyId));
   const [invoiceDate, setInvoiceDate] = useState(today());
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const groups = useMemo(() => buildGroups(policies, defaultSelectedPolicyId), [policies, defaultSelectedPolicyId]);
 
   const selectedPolicies = useMemo(() => policies.filter((p) => selected.has(p.id)), [policies, selected]);
   const totalPremium = useMemo(
@@ -88,11 +148,12 @@ export function CreateInvoiceForm({
     [selectedPolicies]
   );
 
-  const toggle = (id: string) => {
+  const toggle = (row: EligiblePolicyRow) => {
+    if (!row.isEligible) return; // Part 7: an already-invoiced row can never be (de)selected
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(row.id)) next.delete(row.id);
+      else next.add(row.id);
       return next;
     });
   };
@@ -109,6 +170,10 @@ export function CreateInvoiceForm({
       return;
     }
     setIsSubmitting(true);
+    // Server Action re-validates every selected Policy's eligibility from
+    // scratch under a row lock (Part 15 of this phase's spec) — the
+    // default-selection/grouping above is a UX convenience only, never
+    // trusted as the authoritative check.
     const result = await createInvoiceAction({
       customerId,
       policyRecordIds: [...selected],
@@ -169,42 +234,91 @@ export function CreateInvoiceForm({
 
       <Card>
         <h2 className="section-title mb-4">{t.invoice.selectPoliciesTitle}</h2>
-        <TableWrap scroll>
-          <Table className="min-w-[900px]">
-            <thead>
-              <tr>
-                <th>{t.invoice.colSelect}</th>
-                <th>{t.policy.recordNumber}</th>
-                <th>{t.invoice.colPolicyClass}</th>
-                <th>{t.invoice.colPolicyNumber}</th>
-                <th>{t.invoice.colEffectiveDate}</th>
-                <th>{t.invoice.colExpiryDate}</th>
-                <th>{t.invoice.colClientPremium}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {policies.length === 0 && <TableEmpty colSpan={7}>{t.invoice.noEligiblePolicies}</TableEmpty>}
-              {policies.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(p.id)}
-                      onChange={() => toggle(p.id)}
-                      className="h-4 w-4 rounded border-zinc-300"
-                    />
-                  </td>
-                  <td className="font-medium text-zinc-800">{p.recordNumber}</td>
-                  <td className="text-zinc-500">{p.policyClass}</td>
-                  <td className="text-zinc-500">{p.policyNumber}</td>
-                  <td className="text-zinc-500">{dateFormatter.format(new Date(p.effectiveDate))}</td>
-                  <td className="text-zinc-500">{dateFormatter.format(new Date(p.expiryDate))}</td>
-                  <td className="text-zinc-500">{formatMoney(p.clientPremium)}</td>
+
+        {groups.length === 0 && (
+          <TableWrap scroll>
+            <Table className="min-w-[900px]">
+              <thead>
+                <tr>
+                  <th>{t.invoice.colSelect}</th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        </TableWrap>
+              </thead>
+              <tbody>
+                <TableEmpty colSpan={1}>{t.invoice.noEligiblePolicies}</TableEmpty>
+              </tbody>
+            </Table>
+          </TableWrap>
+        )}
+
+        <div className="flex flex-col gap-6">
+          {groups.map((group) => {
+            const groupSubtotal = group.rows.filter((p) => selected.has(p.id)).reduce((sum, p) => sum + Number(p.clientPremium), 0);
+            return (
+              <div key={group.key}>
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="font-medium text-zinc-800">
+                    {group.key === OTHER_GROUP_KEY
+                      ? t.invoice.otherEligiblePoliciesTitle
+                      : t.invoice.quotationGroupTitle.replace("{number}", group.quotationNumber ?? "—")}
+                  </h3>
+                  <span className="text-secondary text-sm">{t.invoice.eligiblePoliciesCount.replace("{count}", String(group.rows.length))}</span>
+                </div>
+                <TableWrap scroll>
+                  <Table className="min-w-[980px]">
+                    <thead>
+                      <tr>
+                        <th>{t.invoice.colSelect}</th>
+                        <th>{t.policy.recordNumber}</th>
+                        <th>{t.invoice.colPolicyClass}</th>
+                        <th>{t.invoice.colPolicyNumber}</th>
+                        <th>{t.invoice.colSourceQuotation}</th>
+                        <th>{t.invoice.colEffectiveDate}</th>
+                        <th>{t.invoice.colExpiryDate}</th>
+                        <th>{t.invoice.colClientPremium}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.rows.map((p) => (
+                        <tr key={p.id} className={!p.isEligible ? "opacity-60" : undefined}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selected.has(p.id)}
+                              disabled={!p.isEligible}
+                              onChange={() => toggle(p)}
+                              aria-label={p.recordNumber}
+                              className="h-4 w-4 rounded border-zinc-300"
+                            />
+                          </td>
+                          <td className="font-medium text-zinc-800">{p.recordNumber}</td>
+                          <td className="text-zinc-500">{p.policyClass}</td>
+                          <td className="text-zinc-500">{p.policyNumber}</td>
+                          <td className="text-zinc-500">{p.quotationNumber ?? "—"}</td>
+                          <td className="text-zinc-500">{dateFormatter.format(new Date(p.effectiveDate))}</td>
+                          <td className="text-zinc-500">{dateFormatter.format(new Date(p.expiryDate))}</td>
+                          <td className="text-zinc-500">
+                            {!p.isEligible && p.activeInvoiceRef ? (
+                              <div className="text-right">
+                                <Badge tone="warning">{t.invoice.alreadyInvoicedShort}</Badge>
+                                <div className="text-secondary mt-1 text-xs">{p.activeInvoiceRef.invoiceNumber}</div>
+                              </div>
+                            ) : (
+                              formatMoney(p.clientPremium)
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </TableWrap>
+                <div className="mt-2 flex justify-end gap-2 text-sm">
+                  <span className="text-secondary">{t.invoice.groupSubtotal}:</span>
+                  <span className="font-medium text-zinc-800">{formatMoney(groupSubtotal.toFixed(2))}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Card>
 
       <Card>

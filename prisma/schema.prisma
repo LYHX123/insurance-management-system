@@ -938,6 +938,15 @@ model QuotationInsuranceSection {
   advancePaymentGuaranteeDetail AdvancePaymentGuaranteeSectionDetail?
   customsBondDetail             CustomsBondSectionDetail?
 
+  // Phase 1+2 (batch "Generate Policy Records") — see
+  // PolicyRecord.sourceQuotationSectionId's doc comment. Zero, one (the
+  // normal case going forward — enforced by generatePolicyRecordsAction's
+  // idempotency check, never a DB-level unique constraint, see that
+  // action's own doc comment) rows for any section created after this
+  // field existed; always empty for sections whose policy was generated
+  // before this field existed.
+  generatedPolicyRecords PolicyRecord[]
+
   @@index([quotationId])
   @@index([insuranceTypeId])
 }
@@ -1779,6 +1788,24 @@ model PolicyRecord {
   sourceQuotationRevisionSnapshot String?
   sourceQuotationDateSnapshot     DateTime?
 
+  // --- Phase 1+2 (batch "Generate Policy Records"): Section-level source
+  // traceability --------------------------------------------------------
+  // Optional reference to the exact QuotationInsuranceSection this policy
+  // was generated from — narrower than sourceQuotationId (which only
+  // identifies the whole revision). Additive on top of sourceQuotationId,
+  // never a replacement: every PolicyRecord created before this field
+  // existed (and every manual/historical-import record going forward) has
+  // and keeps sourceQuotationSectionId = null forever — there is no
+  // reliable way to backfill which section an already-existing policy came
+  // from (see this phase's migration notes), so null must always be
+  // treated as "unknown/pre-dates this field", never as an error.
+  // onDelete: SetNull (not Restrict) for the same defensive-fallback
+  // reasoning as sourceQuotationId above — the app layer already blocks
+  // deleting a section/revision that still has linked policies before this
+  // can ever fire.
+  sourceQuotationSectionId String?
+  sourceQuotationSection   QuotationInsuranceSection? @relation(fields: [sourceQuotationSectionId], references: [id], onDelete: SetNull)
+
   remarks String?
 
   createdById String
@@ -1820,6 +1847,7 @@ model PolicyRecord {
   @@index([importBatchId])
   @@index([deletedAt])
   @@index([sourceQuotationId])
+  @@index([sourceQuotationSectionId])
 }
 
 // Fixed, small, closed classification (unlike insuranceType below, which is

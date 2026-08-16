@@ -12,6 +12,8 @@ const en = {
     yes: "Yes",
     no: "No",
     close: "Close",
+    done: "Done",
+    clear: "Clear",
     status: "Status",
     // Phase 8.1 Part 4 — shared by every list page's "View All" customerId
     // filter chip (Quotation/Invoice/Policy x4/Motor Claim/Non-Motor Claim).
@@ -642,6 +644,12 @@ const en = {
     acceptRevisionConfirmMessage: "Only an Issued revision can be accepted. This revision will become locked and the case will be marked Accepted.",
     cancelRevisionConfirmTitle: "Cancel this revision?",
     cancelRevisionConfirmMessage: "Are you sure you want to cancel this revision? It will remain visible in history as Cancelled.",
+    // Phase 1+2 "Generate Policy Records" — shown in place of the message
+    // above when the revision already has linked PolicyRecords; clicking
+    // Confirm again proceeds with the cancellation. Count of linked
+    // policies is appended by the caller in parentheses.
+    cancelRevisionHasPoliciesWarning:
+      "This quotation revision already has policy records generated from it. Cancelling the revision will not delete or modify the existing policy records.",
     deleteDraftRevisionConfirmTitle: "Delete this draft revision?",
     deleteDraftRevisionConfirmMessage: "This permanently deletes revision {code} and all its data. This cannot be undone.",
 
@@ -692,6 +700,31 @@ const en = {
     policyCreationIneligibleHint: "Policy creation is only available for accepted or issued quotations.",
     policiesCreatedLabel: "Policies Created",
     activePoliciesLabel: "active",
+
+    // --- Phase 1+2: batch "Generate Policy Records" ---
+    generatePolicyRecords: "Generate Policy Records",
+    generatePolicyRecordsModalTitle: "Generate Policy Records",
+    generatePolicyRecordsModalDescription:
+      "Select which insurance sections to generate a Policy Record for. Sections already generated are shown for reference only; the single-record creation flow is still available from each Policy category if you prefer to create records one at a time.",
+    generatePolicyRecordsDatesHint:
+      "Processing Date applies to every Policy Record generated in this batch. Effective/Expiry Date and Insurer Cost are set per section below — Default Effective/Expiry Date only quick-fill sections you haven't edited yet; they are never written to the database directly and never overwrite a date you've already changed on a specific section.",
+    defaultEffectiveDate: "Default Effective Date",
+    defaultExpiryDate: "Default Expiry Date",
+    insuranceSectionColumn: "Insurance Section",
+    generatedBadge: "Generated",
+    notGeneratedBadge: "Not Generated",
+    unsupportedBadge: "Unsupported for automatic generation",
+    generateButton: "Generate",
+    noSectionsSelectedError: "Select at least one section to generate.",
+    unsupportedSectionError: "One or more selected sections cannot be automatically converted to a Policy Record.",
+    generatePolicyRecordsFailedError: "Could not generate Policy Records. Please try again.",
+    // Phase 4 "Policy Number + Document at generation time" — {count} is
+    // replaced by the caller. A document upload failure never turns this
+    // into a failure message (this phase's spec, Part 7) — it is reported
+    // separately, alongside the success message.
+    generatePolicyRecordsSuccessMessage: "{count} policy record(s) generated successfully.",
+    generatePolicyRecordsDocumentFailureMessage:
+      "{count} policy document(s) failed to upload and can be uploaded later from the Policy module.",
 
     // Insurance type master configuration
     insuranceTypesTitle: "Insurance Types",
@@ -1085,6 +1118,7 @@ const en = {
     sourceQuotationTitle: "Source Quotation",
     sourceQuotationNumber: "Quotation Number",
     sourceQuotationRevision: "Revision",
+    sourceQuotationSection: "Insurance Section",
     sourceQuotationDate: "Quotation Date",
     sourceQuotationTotalPremium: "Quotation Total Premium",
     openQuotation: "Open Quotation",
@@ -1525,6 +1559,14 @@ const en = {
     atLeastOnePolicyRequired: "Please select at least one Policy.",
     generateInvoice: "Generate Invoice",
     noEligiblePolicies: "No other eligible Policies were found for this Customer.",
+
+    // --- Phase 5 "Combined Invoice grouping" ---
+    colSourceQuotation: "Source Quotation",
+    quotationGroupTitle: "Quotation {number}",
+    eligiblePoliciesCount: "{count} eligible policy(ies)",
+    otherEligiblePoliciesTitle: "Other Eligible Policies",
+    groupSubtotal: "Subtotal",
+    alreadyInvoicedShort: "Already invoiced",
 
     // --- Policy detail "Related Invoice" card ---
     relatedInvoiceTitle: "Related Invoice",

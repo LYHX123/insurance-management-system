@@ -14,6 +14,8 @@ const zh: Dictionary = {
     yes: "是",
     no: "否",
     close: "关闭",
+    done: "完成",
+    clear: "清除",
     status: "状态",
     filteredByCustomer: "已按客户筛选",
     clearFilter: "清除",
@@ -628,6 +630,7 @@ const zh: Dictionary = {
     acceptRevisionConfirmMessage: "只有已签发的修订版本才能被接受。此版本将被锁定，案例状态将变为已接受。",
     cancelRevisionConfirmTitle: "确认作废此修订版本？",
     cancelRevisionConfirmMessage: "确认取消当前报价版本？此修订版本将以「已作废」状态继续保留在历史记录中。",
+    cancelRevisionHasPoliciesWarning: "该报价版本已生成保单记录。取消该版本不会删除或修改已生成的保单记录。",
     deleteDraftRevisionConfirmTitle: "确认删除此草稿修订版本？",
     deleteDraftRevisionConfirmMessage: "此操作将永久删除修订版本 {code} 及其所有数据，且无法撤销。",
 
@@ -678,6 +681,26 @@ const zh: Dictionary = {
     policyCreationIneligibleHint: "仅已接受或已发出的报价可创建保单。",
     policiesCreatedLabel: "已创建保单数",
     activePoliciesLabel: "有效",
+
+    // --- Phase 1+2: 批量生成保单记录 ---
+    generatePolicyRecords: "批量生成保单记录",
+    generatePolicyRecordsModalTitle: "批量生成保单记录",
+    generatePolicyRecordsModalDescription:
+      "选择要生成保单记录的险种。已生成的险种仅供查看；如需逐条创建，各保单类别下的单条创建流程依然可用。",
+    generatePolicyRecordsDatesHint:
+      "处理日期适用于本批次生成的所有保单。生效日期/到期日期与保险公司成本按下方每个险种分别填写——顶部的默认生效/到期日期仅用于快速填充尚未手动修改过的险种，不会直接写入数据库，也不会覆盖你已经单独修改过的险种日期。",
+    defaultEffectiveDate: "默认生效日期",
+    defaultExpiryDate: "默认到期日期",
+    insuranceSectionColumn: "保险险种",
+    generatedBadge: "已生成",
+    notGeneratedBadge: "未生成",
+    unsupportedBadge: "暂不支持自动生成",
+    generateButton: "生成",
+    noSectionsSelectedError: "请至少选择一个险种。",
+    unsupportedSectionError: "所选险种中存在暂不支持自动生成保单的项目。",
+    generatePolicyRecordsFailedError: "生成保单记录失败，请重试。",
+    generatePolicyRecordsSuccessMessage: "已成功生成 {count} 条保单记录。",
+    generatePolicyRecordsDocumentFailureMessage: "有 {count} 份保单文件上传失败，可稍后在保单模块中补传。",
 
     insuranceTypesTitle: "保险类型管理",
     manageInsuranceTypes: "管理保险类型",
@@ -1067,6 +1090,7 @@ const zh: Dictionary = {
     sourceQuotationTitle: "来源报价单",
     sourceQuotationNumber: "报价单编号",
     sourceQuotationRevision: "修订版本",
+    sourceQuotationSection: "保险险种",
     sourceQuotationDate: "报价日期",
     sourceQuotationTotalPremium: "报价总保费",
     openQuotation: "打开报价单",
@@ -1504,6 +1528,13 @@ const zh: Dictionary = {
     atLeastOnePolicyRequired: "请至少选择一份保单。",
     generateInvoice: "生成发票",
     noEligiblePolicies: "未找到该客户其他符合条件的保单。",
+
+    colSourceQuotation: "来源报价单",
+    quotationGroupTitle: "报价单 {number}",
+    eligiblePoliciesCount: "{count} 份符合条件的保单",
+    otherEligiblePoliciesTitle: "其他符合条件的保单",
+    groupSubtotal: "小计",
+    alreadyInvoicedShort: "已开票",
 
     // --- 保单详情页“关联发票”卡片 ---
     relatedInvoiceTitle: "关联发票",

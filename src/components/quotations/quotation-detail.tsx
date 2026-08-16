@@ -11,7 +11,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Modal } from "@/components/ui/modal";
 import { TableWrap, Table } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/components/ui/money-input";
@@ -33,6 +32,7 @@ import type {
 import { REVISION_TONE, CASE_STATUS_TONE } from "@/components/quotations/statusTones";
 import { buildReturnTo } from "@/lib/navigation/returnTo";
 import { QuotationDropboxSection, type QuotationDropboxView, type QuotationDropboxPathsView } from "@/components/quotations/quotation-dropbox-status";
+import { GeneratePolicyRecordsModal } from "@/components/quotations/generate-policy-records-modal";
 
 // Phase 3B: all four Policy categories now exist (see PolicyCategory) — the
 // selector below no longer shows any category as "coming soon".
@@ -108,6 +108,12 @@ export function QuotationDetailView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [confirmingCancelRevision, setConfirmingCancelRevision] = useState(false);
+  // Phase 1+2 "Generate Policy Records" — set once cancelRevisionAction's
+  // first (unconfirmed) call reports linked PolicyRecords, so the same
+  // confirm dialog's message swaps to the explicit warning and a second
+  // click resubmits with confirmedDespiteLinkedPolicies=true (see
+  // handleCancel below).
+  const [linkedPolicyWarningCount, setLinkedPolicyWarningCount] = useState<number | null>(null);
   const [confirmingIssue, setConfirmingIssue] = useState(false);
   const [confirmingAccept, setConfirmingAccept] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -207,13 +213,21 @@ export function QuotationDetailView({
   const handleCancel = async () => {
     setBusy(true);
     setActionError(null);
-    const result = await cancelRevisionAction(quotation.id, DEFAULT_CANCELLATION_REASON);
+    const result = await cancelRevisionAction(quotation.id, DEFAULT_CANCELLATION_REASON, linkedPolicyWarningCount !== null);
     setBusy(false);
     if (!result.success) {
+      if (result.error === "HAS_LINKED_POLICIES_CONFIRM_REQUIRED") {
+        // Keep the dialog open — its message swaps to the explicit warning
+        // below, and clicking Confirm again resubmits with
+        // confirmedDespiteLinkedPolicies=true.
+        setLinkedPolicyWarningCount(result.linkedPolicyCount ?? 0);
+        return;
+      }
       setActionError(revisionErrorLabel[result.error] ?? t.quotations.cancelFailedError);
       return;
     }
     setConfirmingCancelRevision(false);
+    setLinkedPolicyWarningCount(null);
     router.refresh();
   };
 
@@ -280,7 +294,7 @@ export function QuotationDetailView({
             title={!isPolicyEligible ? t.quotations.policyCreationIneligibleHint : undefined}
           >
             <FilePlus size={16} />
-            {t.quotations.createPolicy}
+            {t.quotations.generatePolicyRecords}
           </Button>
 
           {hasRevisionInfo && isLocked && (
@@ -387,12 +401,17 @@ export function QuotationDetailView({
       {confirmingCancelRevision && (
         <ConfirmDialog
           title={t.quotations.cancelRevisionConfirmTitle}
-          message={actionError ?? t.quotations.cancelRevisionConfirmMessage}
+          message={
+            linkedPolicyWarningCount !== null
+              ? `${t.quotations.cancelRevisionHasPoliciesWarning} (${linkedPolicyWarningCount})`
+              : (actionError ?? t.quotations.cancelRevisionConfirmMessage)
+          }
           isSubmitting={busy}
           onConfirm={handleCancel}
           onClose={() => {
             setConfirmingCancelRevision(false);
             setActionError(null);
+            setLinkedPolicyWarningCount(null);
           }}
         />
       )}
@@ -424,35 +443,12 @@ export function QuotationDetailView({
       )}
 
       {showCreatePolicy && (
-        <Modal title={t.quotations.createPolicyModalTitle} onClose={() => setShowCreatePolicy(false)}>
-          <div className="flex flex-col gap-2">
-            <p className="text-secondary text-sm">{t.quotations.createPolicyModalDescription}</p>
-
-            {[
-              { label: t.quotations.categoryMotor, route: "/policy/motor/new" },
-              { label: t.quotations.categoryNonMotor, route: "/policy/non-motor/new" },
-              { label: t.quotations.categoryBond, route: "/policy/bond/new" },
-              { label: t.quotations.categoryWorkPermit, route: "/policy/work-permit/new" },
-            ].map(({ label, route }) => (
-              <button
-                key={route}
-                type="button"
-                onClick={() =>
-                  router.push(`${route}?fromQuotationId=${quotation.id}&returnTo=${encodeURIComponent(selfReturnTo)}`)
-                }
-                className="flex items-center justify-between rounded-control border border-zinc-200 p-3 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50"
-              >
-                <span className="font-medium text-zinc-800">{label}</span>
-                <span className="text-emerald-700">{t.quotations.categorySelect}</span>
-              </button>
-            ))}
-          </div>
-          <div className="mt-6 flex justify-end">
-            <Button variant="secondary" onClick={() => setShowCreatePolicy(false)}>
-              {t.common.cancel}
-            </Button>
-          </div>
-        </Modal>
+        <GeneratePolicyRecordsModal
+          quotationId={quotation.id}
+          quotationNumber={quotation.quotationNumber}
+          sections={quotation.sections}
+          onClose={() => setShowCreatePolicy(false)}
+        />
       )}
 
       <Card>

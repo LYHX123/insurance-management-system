@@ -258,10 +258,36 @@ export async function acceptRevisionAction(revisionId: string): Promise<ActionRe
 
 // --- Cancel Revision --------------------------------------------------------
 
-export async function cancelRevisionAction(revisionId: string, cancellationReason: string): Promise<ActionResult> {
+// Phase 1+2 "Generate Policy Records" — cancelling a revision must never be
+// silently blocked just because it already produced real PolicyRecords
+// (that link is informational only; see PolicyRecord.sourceQuotationId's
+// own doc comment — a revision can always be cancelled), but the user must
+// see an explicit warning first (this phase's spec, Part 10) rather than
+// have it happen invisibly. confirmedDespiteLinkedPolicies defaults to
+// false so every existing caller (and any stale/bypassed client) still gets
+// the warning on a first attempt; only a second call that explicitly passes
+// true proceeds. Cancelling itself never touches any PolicyRecord — no
+// delete, no source-field rewrite, no re-linking — this is purely a
+// one-time confirmation gate.
+export type CancelRevisionResult = { success: true } | { success: false; error: string; linkedPolicyCount?: number };
+
+export async function cancelRevisionAction(
+  revisionId: string,
+  cancellationReason: string,
+  confirmedDespiteLinkedPolicies: boolean = false
+): Promise<CancelRevisionResult> {
   const session = await requireQuotationPermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
   if (!cancellationReason?.trim()) return { success: false, error: "CANCELLATION_REASON_REQUIRED" };
+
+  if (!confirmedDespiteLinkedPolicies) {
+    const linkedPolicyCount = await prisma.policyRecord.count({
+      where: { sourceQuotationId: revisionId, deletedAt: null },
+    });
+    if (linkedPolicyCount > 0) {
+      return { success: false, error: "HAS_LINKED_POLICIES_CONFIRM_REQUIRED", linkedPolicyCount };
+    }
+  }
 
   try {
     await prisma.$transaction(async (tx) => {

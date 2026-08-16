@@ -102,6 +102,11 @@ export default async function EditQuotationPage({
       id: s.id,
       insuranceTypeId: s.insuranceTypeId,
       insuranceTypeNameSnapshot: s.insuranceTypeNameSnapshot,
+      // Phase 1+2 "Generate Policy Records" fields on the shared SectionRow
+      // type — meaningless while editing a draft (this form never shows
+      // Generate Policy Records), so always a harmless placeholder here.
+      generatedPolicy: null,
+      policyGenerationSupported: false,
       sectionKind: s.sectionKind,
       description: s.description ?? "",
       basePremium: s.basePremium.toString(),

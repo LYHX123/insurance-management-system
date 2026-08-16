@@ -24,6 +24,12 @@ export type InvoiceItemRow = {
   policyClassSnapshot: string;
   policyNumberSnapshot: string;
   premiumSnapshot: string;
+  // Phase 5 "Combined Invoice grouping" — PolicyRecord.sourceQuotationNumberSnapshot,
+  // the same immutable snapshot the Policy Detail "Source Quotation" card
+  // already reads (see that field's own schema comment). Null for every
+  // manually-created/historical-import Policy — shown as "—", never an
+  // error.
+  sourceQuotationNumber: string | null;
 };
 
 export type InvoiceDetail = {

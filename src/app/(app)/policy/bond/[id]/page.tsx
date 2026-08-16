@@ -36,6 +36,7 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
           project: { select: { projectName: true } },
         },
       },
+      sourceQuotationSection: { select: { insuranceTypeNameSnapshot: true } },
       invoiceItems: {
         select: {
           invoice: { select: { id: true, invoiceNumber: true, invoiceDate: true, status: true, totalPremium: true } },
@@ -158,6 +159,7 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
           projectName: record.sourceQuotation.project?.projectName ?? null,
           quotationDate: record.sourceQuotation.quotationDate.toISOString(),
           grandTotal: record.sourceQuotation.grandTotal.toString(),
+          sectionInsuranceTypeName: record.sourceQuotationSection?.insuranceTypeNameSnapshot ?? null,
         }
       : null,
     sourceQuotationSnapshot: record.sourceQuotationNumberSnapshot

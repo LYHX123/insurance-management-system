@@ -5,7 +5,18 @@ import type { Prisma } from "@/generated/prisma/client";
 // generated key, server-side atomic claim via a unique constraint — no
 // content-based fingerprinting, so two legitimately separate submissions
 // are never confused with each other).
-export type IdempotencyScope = "policy.customerReceipt" | "policy.providerPayment" | "ledger.manualEntry";
+// "quotation.generatePolicyRecords" (Phase 1+2, batch "Generate Policy
+// Records"): one claim per modal submission — see
+// generatePolicyRecordsAction.ts's doc comment for why the resourceId here
+// is a comma-joined list of created PolicyRecord ids rather than a single
+// id (this project's schema never uses Json columns, see
+// IdempotencyClaim's own schema comment, so a delimited string is the
+// established convention for "more than one id" in a plain String column).
+export type IdempotencyScope =
+  | "policy.customerReceipt"
+  | "policy.providerPayment"
+  | "ledger.manualEntry"
+  | "quotation.generatePolicyRecords";
 
 export type ClaimResult =
   | { kind: "claimed" }

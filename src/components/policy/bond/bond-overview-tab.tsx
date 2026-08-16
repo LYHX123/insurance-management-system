@@ -191,6 +191,8 @@ export function BondOverviewTab({
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {field(t.policy.sourceQuotationNumber, detail.sourceQuotation.quotationNumber)}
               {detail.sourceQuotation.revisionCode && field(t.policy.sourceQuotationRevision, detail.sourceQuotation.revisionCode)}
+              {detail.sourceQuotation.sectionInsuranceTypeName &&
+                field(t.policy.sourceQuotationSection, detail.sourceQuotation.sectionInsuranceTypeName)}
               {field(t.policy.customer, detail.sourceQuotation.customerName)}
               {field(t.policy.project, detail.sourceQuotation.projectName || "—")}
               {field(t.policy.sourceQuotationDate, dateFormatter.format(new Date(detail.sourceQuotation.quotationDate)))}

@@ -362,6 +362,13 @@ export type SourceQuotationInfo = {
   projectName: string | null;
   quotationDate: string;
   grandTotal: string;
+  // Phase 1+2 "Generate Policy Records" — the specific
+  // QuotationInsuranceSection this policy was generated from (see
+  // PolicyRecord.sourceQuotationSectionId's schema comment). Null for every
+  // policy created before this field existed and every manually-created /
+  // historical-import record — never an error, just "unknown/not tracked
+  // for this record".
+  sectionInsuranceTypeName: string | null;
 };
 
 export type SourceQuotationSnapshot = {
