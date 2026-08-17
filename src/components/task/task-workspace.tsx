@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -12,7 +12,41 @@ import { Badge } from "@/components/ui/badge";
 import { NewTaskModal } from "@/components/task/new-task-modal";
 import { TaskDetailPanel } from "@/components/task/task-detail-panel";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { getTaskListScroll, saveTaskListScroll, clearTaskListScroll } from "@/components/task/taskListScroll";
 import type { TaskCategorySlug, TaskListItem, TaskDetail, ActiveUserOption, TaskStatusValue } from "@/components/task/types";
+
+// Phase 7 Part B audit — only Daily Task renders this component (Motor
+// Claim/Non-Motor Claim use MotorClaimTable/NonMotorClaimTable instead, a
+// full-width table + modal editor + separate single-record detail page with
+// no persistent sibling list at all — see src/app/(app)/task/[categorySlug]/
+// page.tsx; there is no shared List/Detail split-pane structure to unify a
+// fix across, so this fix is scoped to TaskWorkspace only).
+//
+// Root cause of the reported "left list scrolls back to top after selecting
+// a Task" bug: clicking a Task list row is a plain <Link> to
+// /task/{categorySlug}/{taskId} — a real route navigation to the SAME
+// [taskId]/page.tsx template (just a different taskId param), re-executing
+// that Server Component and re-rendering TaskWorkspace with fresh
+// tasks/selectedTask props. Two contributing effects, independent of
+// whether TaskWorkspace itself remounts:
+//  1. Next.js's <Link> scrolls to the top of the page by default on
+//     navigation — the sibling useUrlListState hook already opts OUT of
+//     this for search/status changes via router.replace(url, { scroll:
+//     false }); the task-selection <Link> below had no such opt-out, so
+//     ordinary task-to-task navigation was still subject to Next's default
+//     scroll-reset behavior. Fixed by scroll={false} below.
+//  2. Even with scroll={false}, a remount cannot be ruled out for every
+//     Next.js version/navigation path — so scroll position is ALSO
+//     captured continuously (onScroll) into a module-level store
+//     (taskListScroll.ts, deliberately outside React state so it survives
+//     a real remount) and explicitly restored via useLayoutEffect (runs
+//     before paint, so there is no visible jump) whenever the selected Task
+//     changes. This is Plan B from this phase's spec, layered on top of
+//     Plan A's scroll={false} fix rather than replacing it.
+// A separate effect resets (never restores) scroll when the list's own
+// content changes because of search/status filtering — restoring a scroll
+// offset computed against a different set of rows would land on an
+// unrelated row (Part B, Case 3).
 
 const STATUS_TONE: Record<TaskStatusValue, "brand" | "success"> = {
   ACTIVE: "brand",
@@ -66,6 +100,35 @@ export function TaskWorkspace({
   const searchParams = useSearchParams();
   const listQueryString = searchParams.toString();
 
+  // Phase 7 Part B — see this file's top-of-module doc comment for the full
+  // audit/design rationale.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const skipNextFilterReset = useRef(true);
+
+  // Restore on mount AND whenever the selected Task changes — a no-op if
+  // the browser never actually lost the scroll position (restoring to the
+  // value it's already at), and the fix if it did.
+  useLayoutEffect(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+    const saved = getTaskListScroll(categorySlug);
+    if (saved !== undefined) el.scrollTop = saved;
+  }, [categorySlug, selectedTask?.id]);
+
+  // Reset (never restore) when search/status actually change the list's own
+  // content — skips the very first run so it never fights the mount-time
+  // restore effect above (Part B, Case 3).
+  useLayoutEffect(() => {
+    if (skipNextFilterReset.current) {
+      skipNextFilterReset.current = false;
+      return;
+    }
+    const el = listScrollRef.current;
+    if (el) el.scrollTop = 0;
+    clearTaskListScroll(categorySlug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter]);
+
   const categoryLabel: Record<TaskCategorySlug, string> = {
     daily: t.task.tabDaily,
     "motor-claim": t.task.tabMotorClaim,
@@ -116,7 +179,11 @@ export function TaskWorkspace({
           </Select>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-surface border border-zinc-200 bg-white shadow-sm">
+        <div
+          ref={listScrollRef}
+          onScroll={(e) => saveTaskListScroll(categorySlug, e.currentTarget.scrollTop)}
+          className="min-h-0 flex-1 overflow-y-auto rounded-surface border border-zinc-200 bg-white shadow-sm"
+        >
           {filtered.length === 0 ? (
             <div className="p-6 text-center text-sm text-secondary">{t.task.noTasksFound}</div>
           ) : (
@@ -127,6 +194,13 @@ export function TaskWorkspace({
                   <li key={task.id}>
                     <Link
                       href={`/task/${categorySlug}/${task.id}${listQueryString ? `?${listQueryString}` : ""}`}
+                      // Part B fix #1 — Next's default scroll-to-top-of-page
+                      // behavior on <Link> navigation must not apply to a
+                      // same-workspace task-to-task selection (mirrors
+                      // useUrlListState's own { scroll: false } for
+                      // search/status changes, see this file's top-of-module
+                      // doc comment).
+                      scroll={false}
                       className={`flex flex-col gap-1 px-4 py-3 transition-colors ${
                         isSelected
                           ? "bg-emerald-50 border-l-2 border-emerald-700"

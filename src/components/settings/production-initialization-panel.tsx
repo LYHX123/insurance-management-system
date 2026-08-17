@@ -19,8 +19,10 @@ import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CONFIRMATION_TEXT, PRODUCTION_INIT_REASONS, type ProductionInitReason } from "@/lib/productionInit/constants";
+import { BUSINESS_DATA_MODULES, SYSTEM_DATA_MODULES, isModuleAvailable, type InitializationModule, type DependencyViolation } from "@/lib/productionInit/modules";
 import type { ProductionInitPreview, ProductionInitStatusInfo, ProductionInitDeleteCounts } from "@/lib/productionInit/types";
 import type { ExecuteProductionInitializationSuccess } from "@/lib/productionInit/execute";
+import type { ExecuteSelectiveInitializationSuccess } from "@/lib/productionInit/executeSelective";
 
 const DELETE_ROW_KEYS: { key: keyof ProductionInitDeleteCounts; labelKey: string }[] = [
   { key: "customers", labelKey: "willDeleteCustomers" },
@@ -62,6 +64,60 @@ const REASON_LABEL_KEYS: Record<ProductionInitReason, string> = {
   OTHER: "reasonOther",
 };
 
+// Phase 7 Part C — module checkbox labels, shared by the selector grid, the
+// "please also select" dependency-violation message, and the final confirm
+// modal's "Modules to initialize" list.
+const MODULE_LABEL_KEYS: Record<InitializationModule, string> = {
+  CUSTOMER: "moduleCustomer",
+  QUOTATION: "moduleQuotation",
+  POLICY: "modulePolicy",
+  INVOICE: "moduleInvoice",
+  LEDGER: "moduleLedger",
+  TASK: "moduleTask",
+  REMINDER: "moduleReminder",
+  USERS: "moduleUsers",
+  SETTINGS: "moduleSettings",
+};
+
+// Derives a per-module "records to delete" count from the SAME read-only
+// preview payload the full-wipe flow already fetches (see
+// getProductionInitializationPreview) — no new counting endpoint needed.
+// REMINDER/USERS/SETTINGS return null (no matching preview field / not a
+// simple table count) rather than a fabricated number.
+function moduleRecordCount(module: InitializationModule, preview: ProductionInitPreview): number | null {
+  switch (module) {
+    case "CUSTOMER":
+      return preview.toDelete.customers;
+    case "QUOTATION":
+      return preview.toDelete.quotationCases;
+    case "POLICY":
+      return preview.toDelete.policies;
+    case "INVOICE":
+      return preview.toDelete.invoices;
+    case "LEDGER":
+      return preview.toDelete.manualLedgerEntries;
+    case "TASK":
+      return preview.toDelete.tasks + preview.toDelete.motorClaims + preview.toDelete.nonMotorClaims;
+    default:
+      return null;
+  }
+}
+
+type SelectiveErrorCode =
+  | "DISABLED"
+  | "FORBIDDEN"
+  | "INVALID_CONFIRMATION"
+  | "BACKUP_NOT_CONFIRMED"
+  | "INVALID_REASON"
+  | "NO_MODULES_SELECTED"
+  | "INVALID_MODULE"
+  | "MODULE_UNAVAILABLE"
+  | "ALREADY_RUNNING"
+  | "COOLDOWN_ACTIVE"
+  | "TRANSACTION_FAILED"
+  | "DEPENDENCY_VIOLATION"
+  | "GENERIC";
+
 export function ProductionInitializationPanel({ initialStatus }: { initialStatus: ProductionInitStatusInfo }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -82,6 +138,135 @@ export function ProductionInitializationPanel({ initialStatus }: { initialStatus
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutFailed, setLogoutFailed] = useState(false);
 
+  // Phase 7 Part C — Selective Initialization. Entirely separate state from
+  // the full-wipe flow above; nothing here is read by or affects it.
+  const [selectedModules, setSelectedModules] = useState<Set<InitializationModule>>(new Set());
+  const [checkingDependencies, setCheckingDependencies] = useState(false);
+  const [dependencyViolations, setDependencyViolations] = useState<DependencyViolation[] | null>(null);
+  const [showSelectiveConfirm, setShowSelectiveConfirm] = useState(false);
+  const [selectivePreview, setSelectivePreview] = useState<ProductionInitPreview | null>(null);
+  const [selectiveBackupConfirmed, setSelectiveBackupConfirmed] = useState(false);
+  const [selectiveTypedText, setSelectiveTypedText] = useState("");
+  const [selectiveReason, setSelectiveReason] = useState<ProductionInitReason | "">("");
+  const [showSelectiveFinalConfirm, setShowSelectiveFinalConfirm] = useState(false);
+  const [selectiveExecuting, setSelectiveExecuting] = useState(false);
+  const [selectiveExecuteError, setSelectiveExecuteError] = useState<SelectiveErrorCode | null>(null);
+  const [selectiveExecuteResult, setSelectiveExecuteResult] = useState<ExecuteSelectiveInitializationSuccess | null>(null);
+
+  const toggleModule = (module: InitializationModule) => {
+    setDependencyViolations(null);
+    setSelectedModules((prev) => {
+      const next = new Set(prev);
+      if (next.has(module)) next.delete(module);
+      else next.add(module);
+      return next;
+    });
+  };
+
+  const selectAllBusiness = () => {
+    setDependencyViolations(null);
+    setSelectedModules(new Set(BUSINESS_DATA_MODULES));
+  };
+
+  const clearSelection = () => {
+    setDependencyViolations(null);
+    setSelectedModules(new Set());
+  };
+
+  const selectiveModuleLabel = (m: InitializationModule) => t.productionInitSelective[MODULE_LABEL_KEYS[m] as keyof typeof t.productionInitSelective];
+
+  // Part 六/十一 — server-side dependency validation, run BEFORE the
+  // confirm/typed-confirmation step ever opens (never only a front-end
+  // checkbox rule). runSelectiveProductionInitialization re-validates this
+  // exact same way again, authoritatively, at execute time.
+  const openSelectiveConfirm = async () => {
+    if (selectedModules.size === 0) return;
+    setDependencyViolations(null);
+    setCheckingDependencies(true);
+    try {
+      const res = await fetch("/api/settings/production-initialization/validate-selection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modules: Array.from(selectedModules) }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok !== true) {
+        setDependencyViolations((data.violations as DependencyViolation[]) ?? []);
+        return;
+      }
+    } catch {
+      setDependencyViolations([]);
+      return;
+    } finally {
+      setCheckingDependencies(false);
+    }
+
+    setSelectiveExecuteError(null);
+    setSelectiveExecuteResult(null);
+    setSelectiveBackupConfirmed(false);
+    setSelectiveTypedText("");
+    setSelectiveReason("");
+    setShowSelectiveConfirm(true);
+    // Reuses the same read-only preview endpoint the full-wipe flow already
+    // calls — per-module counts below are derived client-side from its
+    // existing toDelete fields (see the render section).
+    try {
+      const res = await fetch("/api/settings/production-initialization/preview");
+      if (res.ok) {
+        const data = await res.json();
+        setSelectivePreview(data.preview as ProductionInitPreview);
+      }
+    } catch {
+      // Non-fatal — the confirm modal still works without the count
+      // breakdown; canSubmit doesn't depend on selectivePreview.
+    }
+  };
+
+  const closeSelectiveConfirm = () => {
+    if (selectiveExecuting) return;
+    setShowSelectiveConfirm(false);
+  };
+
+  const selectiveCanSubmit = selectiveBackupConfirmed && selectiveTypedText === CONFIRMATION_TEXT && selectiveReason !== "" && !selectiveExecuting;
+
+  const handleSelectiveFinalConfirm = async () => {
+    setShowSelectiveFinalConfirm(false);
+    setSelectiveExecuting(true);
+    setSelectiveExecuteError(null);
+    try {
+      const res = await fetch("/api/settings/production-initialization/execute-selective", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modules: Array.from(selectedModules),
+          confirmationText: selectiveTypedText,
+          backupConfirmed: selectiveBackupConfirmed,
+          reason: selectiveReason,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        if (data.error === "DEPENDENCY_VIOLATION") setDependencyViolations((data.violations as DependencyViolation[]) ?? []);
+        setSelectiveExecuteError((data.error as SelectiveErrorCode) ?? "GENERIC");
+        setSelectiveExecuting(false);
+        return;
+      }
+      setSelectiveExecuteResult(data as ExecuteSelectiveInitializationSuccess);
+      setSelectiveExecuting(false);
+      setShowSelectiveConfirm(false);
+      setSelectedModules(new Set());
+      router.refresh();
+      const statusRes = await fetch("/api/settings/production-initialization/preview");
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setStatus(statusData.status as ProductionInitStatusInfo);
+      }
+    } catch {
+      setSelectiveExecuteError("GENERIC");
+      setSelectiveExecuting(false);
+    }
+  };
+
   const errorLabel: Record<ErrorCode, string> = {
     DISABLED: t.productionInit.errorDisabled,
     FORBIDDEN: t.productionInit.errorForbidden,
@@ -98,6 +283,22 @@ export function ProductionInitializationPanel({ initialStatus }: { initialStatus
     RUNNING: t.productionInit.statusRunning,
     SUCCESS: t.productionInit.statusSuccess,
     FAILED: t.productionInit.statusFailed,
+  };
+
+  const selectiveErrorLabel: Record<SelectiveErrorCode, string> = {
+    DISABLED: t.productionInit.errorDisabled,
+    FORBIDDEN: t.productionInit.errorForbidden,
+    INVALID_CONFIRMATION: t.productionInit.errorInvalidConfirmation,
+    BACKUP_NOT_CONFIRMED: t.productionInit.errorBackupNotConfirmed,
+    INVALID_REASON: t.productionInit.errorInvalidReason,
+    NO_MODULES_SELECTED: t.productionInitSelective.errorNoModulesSelected,
+    INVALID_MODULE: t.productionInitSelective.errorInvalidModule,
+    MODULE_UNAVAILABLE: t.productionInitSelective.errorModuleUnavailable,
+    ALREADY_RUNNING: t.productionInit.errorAlreadyRunning,
+    COOLDOWN_ACTIVE: t.productionInit.errorCooldownActive,
+    TRANSACTION_FAILED: t.productionInit.errorTransactionFailed,
+    DEPENDENCY_VIOLATION: t.productionInitSelective.errorDependencyViolation,
+    GENERIC: t.productionInit.errorGeneric,
   };
 
   const blocked = status.currentlyRunning || !!status.cooldownUntil;
@@ -202,6 +403,7 @@ export function ProductionInitializationPanel({ initialStatus }: { initialStatus
   };
 
   return (
+    <>
     <Card className="border-2 border-red-300 bg-red-50/40">
       <div className="mb-3 flex items-center gap-2">
         <ShieldAlert size={20} className="text-red-600" />
@@ -422,5 +624,198 @@ export function ProductionInitializationPanel({ initialStatus }: { initialStatus
         />
       )}
     </Card>
+
+    <Card className="mt-4 border-2 border-amber-300 bg-amber-50/40">
+      <div className="mb-3 flex items-center gap-2">
+        <ShieldAlert size={20} className="text-amber-600" />
+        <h2 className="section-title text-amber-800">{t.productionInitSelective.title}</h2>
+      </div>
+      <p className="mb-4 text-sm text-secondary">{t.productionInitSelective.description}</p>
+      <p className="mb-4 text-sm font-medium text-amber-800">{t.productionInitSelective.dropboxDbOnlyNotice}</p>
+
+      {selectiveExecuteResult && (
+        <Card className="mb-4 border-emerald-300 bg-emerald-50">
+          <p className="font-medium text-emerald-800">{t.productionInitSelective.successTitle}</p>
+          <ul className="mt-2 list-inside list-disc text-sm text-emerald-800">
+            <li>{t.productionInitSelective.modulesToInitialize}: {selectiveExecuteResult.modules.map((m) => selectiveModuleLabel(m)).join(", ")}</li>
+            {selectiveExecuteResult.usersDeleted > 0 && (
+              <li>{t.productionInitSelective.usersDeletedCount.replace("{count}", String(selectiveExecuteResult.usersDeleted))}</li>
+            )}
+            <li>
+              {t.productionInit.completedAt}: {dateFormatter.format(new Date(selectiveExecuteResult.completedAt))}
+            </li>
+          </ul>
+        </Card>
+      )}
+
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-zinc-800">{t.productionInitSelective.businessDataGroup}</h3>
+          <div className="flex flex-col gap-1.5">
+            {BUSINESS_DATA_MODULES.map((m) => (
+              <label key={m} className="flex items-center gap-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={selectedModules.has(m)}
+                  onChange={() => toggleModule(m)}
+                  disabled={blocked}
+                  className="h-4 w-4 rounded border-zinc-300"
+                />
+                {selectiveModuleLabel(m)}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-zinc-800">{t.productionInitSelective.systemDataGroup}</h3>
+          <div className="flex flex-col gap-1.5">
+            {SYSTEM_DATA_MODULES.map((m) => {
+              const available = isModuleAvailable(m);
+              return (
+                <label key={m} className={`flex items-center gap-2 text-sm ${available ? "text-zinc-700" : "text-zinc-400"}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedModules.has(m)}
+                    onChange={() => toggleModule(m)}
+                    disabled={blocked || !available}
+                    className="h-4 w-4 rounded border-zinc-300"
+                  />
+                  {available ? selectiveModuleLabel(m) : t.productionInitSelective.moduleSettingsUnavailable}
+                </label>
+              );
+            })}
+            {selectedModules.has("USERS") && <p className="mt-1 text-xs font-medium text-red-700">{t.productionInitSelective.usersWarning}</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={selectAllBusiness} disabled={blocked}>
+          {t.productionInitSelective.selectAllBusiness}
+        </Button>
+        <Button variant="secondary" onClick={clearSelection} disabled={blocked}>
+          {t.productionInitSelective.clearSelection}
+        </Button>
+      </div>
+
+      {dependencyViolations && dependencyViolations.length > 0 && (
+        <div className="mb-4 rounded-control border border-red-200 bg-white p-3 text-sm text-red-800">
+          <p className="mb-1 font-medium">{t.productionInitSelective.dependencyViolationTitle}</p>
+          <ul className="list-inside list-disc">
+            {dependencyViolations.map((v, i) => (
+              <li key={i}>
+                {selectiveModuleLabel(v.module)} — {t.productionInitSelective.pleaseAlsoSelect}: {v.requiredModules.map((m) => selectiveModuleLabel(m)).join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {dependencyViolations && dependencyViolations.length === 0 && (
+        <p className="mb-4 text-sm text-red-600">{t.productionInit.errorGeneric}</p>
+      )}
+
+      {blocked && (
+        <p className="mb-3 text-sm text-amber-800">
+          {status.currentlyRunning ? t.productionInit.currentlyRunningNotice : t.productionInit.cooldownActiveNotice}
+        </p>
+      )}
+
+      <Button variant="destructive" onClick={openSelectiveConfirm} disabled={blocked || selectedModules.size === 0 || checkingDependencies}>
+        <ShieldAlert size={16} />
+        {checkingDependencies ? t.productionInitSelective.checkingDependencies : t.productionInitSelective.initializeSelectedButton}
+      </Button>
+
+      {showSelectiveConfirm && (
+        <Modal title={t.productionInitSelective.confirmModalTitle} onClose={closeSelectiveConfirm} width="lg">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-2 rounded-control border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <p>{t.productionInit.dangerZoneWarning}</p>
+            </div>
+
+            <div>
+              <h4 className="mb-2 text-sm font-semibold text-zinc-800">{t.productionInitSelective.modulesToInitialize}</h4>
+              <ul className="list-inside list-disc text-sm text-zinc-700">
+                {Array.from(selectedModules).map((m) => {
+                  const count = selectivePreview ? moduleRecordCount(m, selectivePreview) : null;
+                  return (
+                    <li key={m}>
+                      {selectiveModuleLabel(m)}
+                      {count !== null && (
+                        <span className="text-zinc-500"> — {count} {t.productionInit.records}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            <p className="text-sm font-medium text-amber-800">{t.productionInitSelective.dropboxDbOnlyNotice}</p>
+            {selectedModules.has("USERS") && <p className="text-sm font-medium text-red-700">{t.productionInitSelective.usersWarning}</p>}
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">{t.productionInit.reason}</label>
+              <Select value={selectiveReason} onChange={(e) => setSelectiveReason(e.target.value as ProductionInitReason)} disabled={selectiveExecuting}>
+                <option value="">{t.productionInit.reasonSelectPlaceholder}</option>
+                {PRODUCTION_INIT_REASONS.map((value) => (
+                  <option key={value} value={value}>
+                    {t.productionInit[REASON_LABEL_KEYS[value] as keyof typeof t.productionInit]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectiveBackupConfirmed}
+                onChange={(e) => setSelectiveBackupConfirmed(e.target.checked)}
+                disabled={selectiveExecuting}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+              />
+              {t.productionInit.backupCheckboxLabel}
+            </label>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">{t.productionInit.confirmationInputLabel}</label>
+              <Input
+                value={selectiveTypedText}
+                onChange={(e) => setSelectiveTypedText(e.target.value)}
+                placeholder={CONFIRMATION_TEXT}
+                disabled={selectiveExecuting}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {selectiveTypedText.length > 0 && selectiveTypedText !== CONFIRMATION_TEXT && (
+                <p className="mt-1 text-xs text-red-600">{t.productionInit.confirmationMismatchHint}</p>
+              )}
+            </div>
+
+            {selectiveExecuteError && <p className="text-sm text-red-600">{selectiveErrorLabel[selectiveExecuteError]}</p>}
+            {selectiveExecuting && <p className="text-sm font-medium text-zinc-700">{t.productionInit.processing}</p>}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeSelectiveConfirm} disabled={selectiveExecuting}>
+                {t.common.cancel}
+              </Button>
+              <Button variant="destructive" onClick={() => setShowSelectiveFinalConfirm(true)} disabled={!selectiveCanSubmit}>
+                {selectiveExecuting ? t.productionInit.processing : t.productionInitSelective.initializeSelectedButton}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showSelectiveFinalConfirm && (
+        <ConfirmDialog
+          title={t.productionInit.finalConfirmTitle}
+          message={t.productionInit.finalConfirmMessage}
+          isSubmitting={selectiveExecuting}
+          onConfirm={handleSelectiveFinalConfirm}
+          onClose={() => setShowSelectiveFinalConfirm(false)}
+        />
+      )}
+    </Card>
+    </>
   );
 }

@@ -51,15 +51,21 @@ export function ReminderPanel({
     <div
       role="dialog"
       aria-label={t.reminders.panelTitle}
-      // Fixed footprint that never grows with the reminder count: max-height
-      // is capped (mobile ~70vh, desktop ~60vh) and the middle section below
-      // scrolls internally instead. `min-h-0` on that flex child is required
-      // — without it a flex item's default min-height is its content size,
-      // which silently defeats the parent's max-height and was the actual
-      // cause of the panel growing without bound. `bottom` adds the safe-area
-      // inset so it doesn't sit under a mobile home-indicator/gesture bar.
+      // Phase 7 Part A — the previous viewport-relative cap (70vh mobile /
+      // 60vh desktop) still meant 500-750px on a typical desktop screen, so
+      // the panel visually dominated the right side of the page regardless
+      // of how few reminders existed. Insurance-management-system had no
+      // prior art of its own for this pattern; Printer-Service-System's
+      // equivalent bottom-right panel (AlertsNotification, see
+      // src/components/inventory/LowStockNotification.tsx in that project)
+      // uses no outer max-height at all — only a small FIXED cap on the
+      // scrolling body (max-h-96 = 24rem/384px), letting the header/footer
+      // add their own natural height on top. Reused the same structure here
+      // (see the body div below) rather than double-capping outer + inner.
+      // `bottom` adds the safe-area inset so it doesn't sit under a mobile
+      // home-indicator/gesture bar.
       style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
-      className="fixed right-4 z-40 flex max-h-[70vh] w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-surface border border-zinc-200 bg-white shadow-lg sm:max-h-[60vh]"
+      className="fixed right-4 z-40 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-surface border border-zinc-200 bg-white shadow-lg"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -76,7 +82,7 @@ export function ReminderPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="max-h-96 min-h-0 flex-1 overflow-y-auto">
         {reminders.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">{t.reminders.noReminders}</p>
         ) : (

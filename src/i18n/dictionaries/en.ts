@@ -2323,6 +2323,42 @@ const en = {
     errorGeneric: "Something went wrong. Please try again.",
     records: "records",
   },
+
+  // Phase 7 Part C — Selective (per-module) initialization, additive
+  // alongside the full-wipe productionInit.* keys above (never removed or
+  // repurposed).
+  productionInitSelective: {
+    title: "Selective Initialization",
+    description: "Initialize only the modules you select below, instead of clearing all business data at once.",
+    businessDataGroup: "Business Data",
+    systemDataGroup: "System Data",
+    moduleCustomer: "Customer",
+    moduleQuotation: "Quotation",
+    modulePolicy: "Policy",
+    moduleInvoice: "Invoice",
+    moduleLedger: "Ledger",
+    moduleTask: "Task / Claims",
+    moduleReminder: "Reminder",
+    moduleUsers: "Users",
+    moduleSettings: "Settings",
+    moduleSettingsUnavailable: "Settings — Not available for selective initialization",
+    selectAllBusiness: "Select All Business Data",
+    clearSelection: "Clear Selection",
+    usersWarning: "This action will remove user accounts except protected administrator accounts.",
+    dropboxDbOnlyNotice: "Initialization removes system database records only. Existing Dropbox files are not deleted.",
+    initializeSelectedButton: "Initialize Selected Modules",
+    checkingDependencies: "Checking dependencies…",
+    dependencyViolationTitle: "These modules cannot be initialized on their own:",
+    pleaseAlsoSelect: "Please also select",
+    confirmModalTitle: "Confirm Selective Initialization",
+    modulesToInitialize: "Modules to initialize",
+    successTitle: "Selected modules were initialized successfully.",
+    usersDeletedCount: "{count} user account(s) removed",
+    errorNoModulesSelected: "Select at least one module to initialize.",
+    errorInvalidModule: "One or more selected modules are invalid.",
+    errorModuleUnavailable: "One of the selected modules is not available for selective initialization.",
+    errorDependencyViolation: "The selected modules have unresolved dependencies.",
+  },
 };
 
 export default en;
