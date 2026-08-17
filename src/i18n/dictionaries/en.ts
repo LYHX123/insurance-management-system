@@ -725,6 +725,10 @@ const en = {
     generatePolicyRecordsSuccessMessage: "{count} policy record(s) generated successfully.",
     generatePolicyRecordsDocumentFailureMessage:
       "{count} policy document(s) failed to upload and can be uploaded later from the Policy module.",
+    // Phase 6 "Customs Bond per-item generation" — each CUSTOMS_BOND item
+    // row generates its own independent Policy Record (Bond Amount/Premium
+    // are that item's OWN values, never the section total).
+    customBondItemsGeneratedCount: "{generated} / {total} policies generated",
 
     // Insurance type master configuration
     insuranceTypesTitle: "Insurance Types",

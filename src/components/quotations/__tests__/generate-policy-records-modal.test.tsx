@@ -457,3 +457,140 @@ describe("GeneratePolicyRecordsModal — Policy Number + Document (Phase 4)", ()
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// Phase 6 "Customs Bond per-item generation" — CUSTOMS_BOND renders as a
+// header (section name + "X / Y policies generated") plus one independent
+// row per CustomsBondItemRow, each with its own checkbox/date/insurer-cost/
+// policy-number/file fields — never as a single greyed-out "Unsupported" row
+// the way it behaved before this phase.
+const CUSTOMS_BOND_SECTION = baseSection({
+  id: "sec-customs",
+  insuranceTypeNameSnapshot: "Customs Bond",
+  sectionKind: "CUSTOMS_BOND",
+  sectionTotal: "999999",
+  policyGenerationSupported: false,
+  customsBondDetail: {
+    itemRows: [
+      { id: "cb-1", bondType: "CB1", bondValue: "20000000", rate: "0.5", premium: "100000", generatedPolicy: null },
+      { id: "cb-2", bondType: "CB2", bondValue: "30000000", rate: "0.5", premium: "200000", generatedPolicy: null },
+    ],
+  },
+});
+
+describe("GeneratePolicyRecordsModal — Phase 6 Customs Bond per-item generation", () => {
+  it("renders one independent row per Customs Bond item, each with its own Effective/Expiry Date input, both checked by default", () => {
+    renderModal([CUSTOMS_BOND_SECTION]);
+
+    expect(screen.getByLabelText("Customs Bond – CB1")).toBeChecked();
+    expect(screen.getByLabelText("Customs Bond – CB2")).toBeChecked();
+    expect(screen.getByLabelText("Effective Date — Customs Bond – CB1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Effective Date — Customs Bond – CB2")).toBeInTheDocument();
+  });
+
+  it("shows the 'X / Y policies generated' summary and never marks the whole section Generated while any item remains pending", () => {
+    const partiallyGenerated = {
+      ...CUSTOMS_BOND_SECTION,
+      customsBondDetail: {
+        itemRows: [
+          { id: "cb-1", bondType: "CB1", bondValue: "20000000", rate: "0.5", premium: "100000", generatedPolicy: { id: "p1", recordNumber: "PB202608-0001", category: "BOND" as const } },
+          { id: "cb-2", bondType: "CB2", bondValue: "30000000", rate: "0.5", premium: "200000", generatedPolicy: null },
+        ],
+      },
+    };
+    renderModal([partiallyGenerated]);
+
+    expect(screen.getByText("1 / 2 policies generated")).toBeInTheDocument();
+    // CB1 is generated — its checkbox is disabled and shows Generated.
+    expect(screen.getByLabelText("Customs Bond – CB1")).toBeDisabled();
+    expect(screen.queryByLabelText("Effective Date — Customs Bond – CB1")).not.toBeInTheDocument();
+    // CB2 is still pending — fully editable.
+    expect(screen.getByLabelText("Customs Bond – CB2")).not.toBeDisabled();
+    expect(screen.getByLabelText("Effective Date — Customs Bond – CB2")).toBeInTheDocument();
+  });
+
+  it("submits customBondItemId alongside each item's own dates/insurerCost, targeting the CUSTOMS_BOND section's id", async () => {
+    renderModal([CUSTOMS_BOND_SECTION]);
+
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB1"), { target: { value: "2026-08-20" } });
+    fireEvent.change(screen.getByLabelText("Expiry Date — Customs Bond – CB1"), { target: { value: "2027-08-19" } });
+    fireEvent.change(screen.getByLabelText("Insurer Cost — Customs Bond – CB1"), { target: { value: "80000" } });
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB2"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Expiry Date — Customs Bond – CB2"), { target: { value: "2027-08-31" } });
+    fireEvent.change(screen.getByLabelText("Insurer Cost — Customs Bond – CB2"), { target: { value: "150000" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(generatePolicyRecordsActionMock).toHaveBeenCalledTimes(1));
+
+    const payload = generatePolicyRecordsActionMock.mock.calls[0][0];
+    expect(payload.sections).toEqual(
+      expect.arrayContaining([
+        { sectionId: "sec-customs", customBondItemId: "cb-1", insurerCost: "80000", effectiveDate: "2026-08-20", expiryDate: "2027-08-19", policyNumber: "" },
+        { sectionId: "sec-customs", customBondItemId: "cb-2", insurerCost: "150000", effectiveDate: "2026-09-01", expiryDate: "2027-08-31", policyNumber: "" },
+      ])
+    );
+  });
+
+  it("unchecking one item excludes only that item from submission, leaving the other item unaffected", async () => {
+    renderModal([CUSTOMS_BOND_SECTION]);
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB1"), { target: { value: "2026-08-20" } });
+    fireEvent.change(screen.getByLabelText("Expiry Date — Customs Bond – CB1"), { target: { value: "2027-08-19" } });
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB2"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Expiry Date — Customs Bond – CB2"), { target: { value: "2027-08-31" } });
+
+    fireEvent.click(screen.getByLabelText("Customs Bond – CB2"));
+    expect(screen.queryByLabelText("Effective Date — Customs Bond – CB2")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(generatePolicyRecordsActionMock).toHaveBeenCalledTimes(1));
+
+    const payload = generatePolicyRecordsActionMock.mock.calls[0][0];
+    expect(payload.sections).toHaveLength(1);
+    expect(payload.sections[0].customBondItemId).toBe("cb-1");
+  });
+
+  it("Default Effective Date quick-fills untouched Customs Bond item rows the same way it fills normal section rows", () => {
+    renderModal([CUSTOMS_BOND_SECTION]);
+
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB1"), { target: { value: "2026-08-20" } });
+    fireEvent.change(screen.getByLabelText("Default Effective Date"), { target: { value: "2026-09-01" } });
+
+    const cb1 = screen.getByLabelText("Effective Date — Customs Bond – CB1") as HTMLInputElement;
+    const cb2 = screen.getByLabelText("Effective Date — Customs Bond – CB2") as HTMLInputElement;
+    expect(cb1.value).toBe("2026-08-20"); // manually touched — untouched by the default
+    expect(cb2.value).toBe("2026-09-01"); // never touched — picks up the default
+  });
+
+  it("uploads each item's own document to its own newly-created policyRecordId, matched by customBondItemId", async () => {
+    generatePolicyRecordsActionMock.mockResolvedValue({
+      success: true,
+      created: [
+        { sectionId: "sec-customs", customBondItemId: "cb-1", id: "policy-cb1-1", recordNumber: "PB202608-0001", category: "BOND", policyNumber: null },
+        { sectionId: "sec-customs", customBondItemId: "cb-2", id: "policy-cb2-1", recordNumber: "PB202608-0002", category: "BOND", policyNumber: null },
+      ],
+      alreadyGenerated: [],
+      alreadyGeneratedCustomBondItems: [],
+    });
+    renderModal([CUSTOMS_BOND_SECTION]);
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB1"), { target: { value: "2026-08-20" } });
+    fireEvent.change(screen.getByLabelText("Expiry Date — Customs Bond – CB1"), { target: { value: "2027-08-19" } });
+    fireEvent.change(screen.getByLabelText("Effective Date — Customs Bond – CB2"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Expiry Date — Customs Bond – CB2"), { target: { value: "2027-08-31" } });
+    fireEvent.change(screen.getByLabelText("Upload Document — Customs Bond – CB1"), { target: { files: [makeFile("cb1.pdf")] } });
+    fireEvent.change(screen.getByLabelText("Upload Document — Customs Bond – CB2"), { target: { files: [makeFile("cb2.pdf")] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(screen.getByText("2 policy record(s) generated successfully.")).toBeInTheDocument());
+
+    expect(uploadPolicyDocumentActionMock).toHaveBeenCalledTimes(2);
+    const calls = uploadPolicyDocumentActionMock.mock.calls.map((args: unknown[]) => {
+      const formData = args[0] as FormData;
+      return { policyRecordId: formData.get("policyRecordId"), fileName: (formData.get("file") as File).name };
+    });
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        { policyRecordId: "policy-cb1-1", fileName: "cb1.pdf" },
+        { policyRecordId: "policy-cb2-1", fileName: "cb2.pdf" },
+      ])
+    );
+  });
+});

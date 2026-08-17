@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { Prisma } from "@/generated/prisma/client";
-import { resolveSectionPolicyPlan, policyCategoryForSectionKind, type SectionForPolicyPlan } from "../sectionPolicyMapping";
+import {
+  resolveSectionPolicyPlan,
+  policyCategoryForSectionKind,
+  resolveCustomsBondItemPolicyPlan,
+  type SectionForPolicyPlan,
+} from "../sectionPolicyMapping";
 
 function baseSection(overrides: Partial<SectionForPolicyPlan>): SectionForPolicyPlan {
   return {
@@ -99,5 +104,47 @@ describe("policyCategoryForSectionKind", () => {
     expect(policyCategoryForSectionKind("TENDER_SECURITY")).toBe("BOND");
     expect(policyCategoryForSectionKind("CUSTOMS_BOND")).toBeNull();
     expect(policyCategoryForSectionKind("GENERIC")).toBeNull();
+  });
+});
+
+// Phase 6 "Customs Bond per-item generation" — the item-level counterpart to
+// resolveSectionPolicyPlan's CUSTOMS_BOND branch above (still deliberately
+// unsupported at the section level). Each CustomsBondItemRow individually
+// carries its own reliable bondType/bondValue/premium, so THIS function is
+// what generatePolicyRecordsAction's CUSTOM_BOND_ITEM branch uses instead.
+describe("resolveCustomsBondItemPolicyPlan", () => {
+  it("maps a Customs Bond item to BOND/CUSTOM_BOND using the item's OWN bondType/bondValue/premium — never a section total", () => {
+    const plan = resolveCustomsBondItemPolicyPlan({
+      id: "item-cb1",
+      bondType: "CB1",
+      bondValue: new Prisma.Decimal(20000000),
+      premium: new Prisma.Decimal(100000),
+    });
+    expect(plan).toEqual({
+      category: "BOND",
+      bondType: "CUSTOM_BOND",
+      customBondType: "CB1",
+      bondAmount: new Prisma.Decimal(20000000),
+      customerPremium: new Prisma.Decimal(100000),
+    });
+  });
+
+  it("two different items on the same section resolve to two independent plans with their own premiums", () => {
+    const cb1 = resolveCustomsBondItemPolicyPlan({
+      id: "item-cb1",
+      bondType: "CB1",
+      bondValue: new Prisma.Decimal(20000000),
+      premium: new Prisma.Decimal(100000),
+    });
+    const cb2 = resolveCustomsBondItemPolicyPlan({
+      id: "item-cb2",
+      bondType: "CB2",
+      bondValue: new Prisma.Decimal(30000000),
+      premium: new Prisma.Decimal(200000),
+    });
+    expect(cb1.customerPremium.toString()).toBe("100000");
+    expect(cb2.customerPremium.toString()).toBe("200000");
+    expect(cb1.customBondType).toBe("CB1");
+    expect(cb2.customBondType).toBe("CB2");
   });
 });

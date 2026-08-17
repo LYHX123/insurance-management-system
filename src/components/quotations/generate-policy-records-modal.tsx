@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/i18n/locale-provider";
 import { Modal } from "@/components/ui/modal";
@@ -12,7 +12,7 @@ import { MoneyInput, formatMoney, stripCommas } from "@/components/ui/money-inpu
 import { generatePolicyRecordsAction, type GeneratedPolicyRecordRow } from "@/app/(app)/quotation/generatePolicyRecordsAction";
 import { uploadPolicyDocumentAction } from "@/app/(app)/policy/motor/documentActions";
 import { PolicyDocumentType } from "@/generated/prisma/enums";
-import type { SectionRow } from "@/components/quotations/types";
+import type { SectionRow, CustomsBondItemRowData } from "@/components/quotations/types";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -100,7 +100,32 @@ export function GeneratePolicyRecordsModal({
 
   const creatableSections = sections.filter((s) => !s.generatedPolicy && s.policyGenerationSupported);
 
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(creatableSections.map((s) => s.id)));
+  // Phase 6 "Customs Bond per-item generation" — a CUSTOMS_BOND section is
+  // never itself section-level generatable (see sectionPolicyMapping.ts's
+  // resolveSectionPolicyPlan), so it never appears in creatableSections
+  // above; its item rows are tracked independently here instead. Every id
+  // used by `selected`/`rows` throughout this component is either a
+  // SectionRow.id or a CustomsBondItemRowData.id — the two id spaces never
+  // collide (both are distinct cuids), so one flat Set/Record can hold both
+  // without a discriminated key.
+  const customBondItemIndex = useMemo(() => {
+    const map = new Map<string, { sectionId: string; sectionName: string; item: CustomsBondItemRowData }>();
+    for (const s of sections) {
+      if (s.sectionKind !== "CUSTOMS_BOND" || !s.customsBondDetail) continue;
+      for (const item of s.customsBondDetail.itemRows) {
+        map.set(item.id, { sectionId: s.id, sectionName: s.insuranceTypeNameSnapshot, item });
+      }
+    }
+    return map;
+  }, [sections]);
+
+  const creatableCustomBondItemIds = Array.from(customBondItemIndex.values())
+    .filter((entry) => !entry.item.generatedPolicy)
+    .map((entry) => entry.item.id);
+
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set([...creatableSections.map((s) => s.id), ...creatableCustomBondItemIds])
+  );
   // Processing Date stays batch-level (this phase's spec, Part 1) — every
   // PolicyRecord generated in this submission shares it.
   const [processingDate, setProcessingDate] = useState(today());
@@ -110,7 +135,10 @@ export function GeneratePolicyRecordsModal({
   const [defaultEffectiveDate, setDefaultEffectiveDate] = useState("");
   const [defaultExpiryDate, setDefaultExpiryDate] = useState("");
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
-    Object.fromEntries(sections.map((s) => [s.id, emptyRow()]))
+    Object.fromEntries([
+      ...sections.map((s) => [s.id, emptyRow()] as const),
+      ...Array.from(customBondItemIndex.keys()).map((itemId) => [itemId, emptyRow()] as const),
+    ])
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -274,8 +302,13 @@ export function GeneratePolicyRecordsModal({
       processingDate,
       sections: Array.from(selected).map((id) => {
         const row = rows[id] ?? emptyRow();
+        // Phase 6 — `id` is either a SectionRow.id (section-level, unchanged
+        // Phase 1-5 payload shape) or a CustomsBondItemRowData.id (per-item
+        // Customs Bond generation); customBondItemIndex distinguishes them.
+        const bondItem = customBondItemIndex.get(id);
         return {
-          sectionId: id,
+          sectionId: bondItem ? bondItem.sectionId : id,
+          ...(bondItem ? { customBondItemId: id } : {}),
           insurerCost: stripCommas(row.insurerCost),
           effectiveDate: row.effectiveDate,
           expiryDate: row.expiryDate,
@@ -297,13 +330,18 @@ export function GeneratePolicyRecordsModal({
     // Run independently per section: one upload failing never affects the
     // others, and never un-does the PolicyRecord creation itself.
     const created: GeneratedPolicyRecordRow[] = result.created;
-    const uploadTargets = created.filter((c) => rows[c.sectionId]?.file);
+    // Phase 6 — a created row's own row-state key is its customBondItemId
+    // when set (per-item Customs Bond), else its sectionId (unchanged).
+    const rowKeyFor = (c: GeneratedPolicyRecordRow) => c.customBondItemId ?? c.sectionId;
+    const uploadTargets = created.filter((c) => rows[rowKeyFor(c)]?.file);
     const outcomes = await Promise.all(
       uploadTargets.map(async (c) => {
-        const sectionName = sections.find((s) => s.id === c.sectionId)?.insuranceTypeNameSnapshot ?? c.sectionId;
-        const file = rows[c.sectionId]!.file!;
+        const sectionName = c.customBondItemId
+          ? (customBondItemIndex.get(c.customBondItemId)?.item.bondType ?? c.sectionId)
+          : (sections.find((s) => s.id === c.sectionId)?.insuranceTypeNameSnapshot ?? c.sectionId);
+        const file = rows[rowKeyFor(c)]!.file!;
         const outcome = await uploadDocumentFor(c.id, file);
-        return { sectionId: c.sectionId, sectionName, ok: outcome.ok, message: outcome.message } satisfies DocumentOutcome;
+        return { sectionId: rowKeyFor(c), sectionName, ok: outcome.ok, message: outcome.message } satisfies DocumentOutcome;
       })
     );
 
@@ -397,6 +435,30 @@ export function GeneratePolicyRecordsModal({
 
         <div className="flex flex-col gap-2">
           {sections.map((section) => {
+            // Phase 6 "Customs Bond per-item generation" — CUSTOMS_BOND is
+            // never section-level generatable (resolveSectionPolicyPlan
+            // always reports it unsupported: a section can carry several
+            // distinct bond types/amounts/premiums at once), so it renders
+            // its own item-level block here instead of falling through to
+            // the single-row layout below (which would otherwise show it as
+            // a single greyed-out "Unsupported" row).
+            if (section.sectionKind === "CUSTOMS_BOND") {
+              return (
+                <CustomsBondBlock
+                  key={section.id}
+                  section={section}
+                  selected={selected}
+                  rows={rows}
+                  toggle={toggle}
+                  onEffectiveDateChange={handleRowEffectiveDateChange}
+                  onExpiryDateChange={handleRowExpiryDateChange}
+                  onInsurerCostChange={handleRowInsurerCostChange}
+                  onPolicyNumberChange={handleRowPolicyNumberChange}
+                  onFileChange={handleRowFileChange}
+                  t={t}
+                />
+              );
+            }
             const isGenerated = !!section.generatedPolicy;
             const isUnsupported = !section.policyGenerationSupported;
             const isDisabled = isGenerated || isUnsupported;
@@ -527,5 +589,177 @@ export function GeneratePolicyRecordsModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Phase 6 "Customs Bond per-item generation" — renders one CUSTOMS_BOND
+// section as a header (with an "X / Y policies generated" summary, Part 5 of
+// this phase's spec) plus one independent row per CustomsBondItemRow, each
+// with its own checkbox/Effective Date/Expiry Date/Insurer Cost/Policy
+// Number/Document — the exact same per-row fields the normal section rows
+// above use, just keyed by the item's id instead of a section id. Stays
+// inside this same Modal (never a second modal, Part 20) and reuses every
+// handler from the parent (toggle, onEffectiveDateChange, etc.) — those are
+// already generic over "some row id", so no new state machinery is needed
+// here beyond looking up this section's own item rows.
+function CustomsBondBlock({
+  section,
+  selected,
+  rows,
+  toggle,
+  onEffectiveDateChange,
+  onExpiryDateChange,
+  onInsurerCostChange,
+  onPolicyNumberChange,
+  onFileChange,
+  t,
+}: {
+  section: SectionRow;
+  selected: Set<string>;
+  rows: Record<string, RowState>;
+  toggle: (id: string) => void;
+  onEffectiveDateChange: (id: string, value: string) => void;
+  onExpiryDateChange: (id: string, value: string) => void;
+  onInsurerCostChange: (id: string, raw: string) => void;
+  onPolicyNumberChange: (id: string, value: string) => void;
+  onFileChange: (id: string, file: File | null) => void;
+  t: ReturnType<typeof useLocale>["t"];
+}) {
+  const items = section.customsBondDetail?.itemRows ?? [];
+  const generatedCount = items.filter((r) => r.generatedPolicy).length;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-control border border-zinc-200 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-medium text-zinc-800">{section.insuranceTypeNameSnapshot}</div>
+        {items.length > 0 && (
+          <Badge tone={generatedCount === items.length ? "success" : "neutral"}>
+            {t.quotations.customBondItemsGeneratedCount
+              .replace("{generated}", String(generatedCount))
+              .replace("{total}", String(items.length))}
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3 pl-2">
+        {items.map((item) => {
+          const isGenerated = !!item.generatedPolicy;
+          const isChecked = selected.has(item.id);
+          const canEditRow = !isGenerated && isChecked;
+          const row = rows[item.id] ?? emptyRow();
+          // Distinguishes this item in aria-labels (Part 7 of this phase's
+          // spec: Custom Bond items must never be indistinguishable) —
+          // display-only, never written anywhere.
+          const itemLabel = `${section.insuranceTypeNameSnapshot} – ${item.bondType}`;
+
+          return (
+            <div
+              key={item.id}
+              className={`flex flex-col gap-3 rounded-control border p-3 ${isGenerated ? "border-zinc-200 bg-zinc-50" : "border-zinc-200"}`}
+            >
+              <div className="sm:grid sm:grid-cols-[minmax(160px,1.4fr)_6.5rem_8.5rem_8.5rem_8rem] sm:items-center sm:gap-3">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={isGenerated}
+                    onChange={() => toggle(item.id)}
+                    aria-label={itemLabel}
+                    className="h-4 w-4 shrink-0 rounded border-zinc-300"
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-zinc-800">{item.bondType}</div>
+                    <div className="text-secondary text-sm">
+                      {t.policy.bondAmount}: {formatMoney(item.bondValue)} · {t.quotations.premium}: {formatMoney(item.premium)}
+                    </div>
+                  </div>
+                </label>
+
+                <div>
+                  {isGenerated ? (
+                    <div className="text-sm">
+                      <Badge tone="success">{t.quotations.generatedBadge}</Badge>
+                      <div className="text-secondary mt-1">{item.generatedPolicy!.recordNumber}</div>
+                    </div>
+                  ) : (
+                    <Badge tone="warning">{t.quotations.notGeneratedBadge}</Badge>
+                  )}
+                </div>
+
+                {canEditRow ? (
+                  <>
+                    <Input
+                      type="date"
+                      value={row.effectiveDate}
+                      onChange={(e) => onEffectiveDateChange(item.id, e.target.value)}
+                      aria-label={`${t.policy.effectiveDate} — ${itemLabel}`}
+                      required
+                    />
+                    <Input
+                      type="date"
+                      value={row.expiryDate}
+                      onChange={(e) => onExpiryDateChange(item.id, e.target.value)}
+                      aria-label={`${t.policy.expiryDate} — ${itemLabel}`}
+                      required
+                    />
+                    <MoneyInput
+                      value={row.insurerCost}
+                      onChange={(raw) => onInsurerCostChange(item.id, raw)}
+                      placeholder={t.policy.insurerCost}
+                      aria-label={`${t.policy.insurerCost} — ${itemLabel}`}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden text-sm text-zinc-400 sm:block">—</span>
+                    <span className="hidden text-sm text-zinc-400 sm:block">—</span>
+                    <span className="hidden text-sm text-zinc-400 sm:block">—</span>
+                  </>
+                )}
+              </div>
+
+              {canEditRow && (
+                <div className="flex flex-col gap-2 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="sm:w-56">
+                    <Input
+                      type="text"
+                      value={row.policyNumber}
+                      onChange={(e) => onPolicyNumberChange(item.id, e.target.value)}
+                      onBlur={(e) => onPolicyNumberChange(item.id, e.target.value.trim())}
+                      placeholder={t.policy.policyNumber}
+                      aria-label={`${t.policy.policyNumber} — ${itemLabel}`}
+                    />
+                  </div>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <input
+                      type="file"
+                      accept={DOCUMENT_ACCEPT}
+                      onChange={(e) => onFileChange(item.id, e.target.files?.[0] ?? null)}
+                      aria-label={`${t.policy.uploadDocument} — ${itemLabel}`}
+                      className="input h-auto max-w-xs py-1.5 text-sm"
+                    />
+                    {row.file && (
+                      <>
+                        <span className="min-w-0 truncate text-sm text-secondary" title={row.file.name}>
+                          {row.file.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onFileChange(item.id, null)}
+                          className="text-secondary shrink-0 text-sm hover:text-zinc-800"
+                          aria-label={`${t.common.clear} — ${itemLabel}`}
+                        >
+                          {t.common.clear}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -226,11 +226,19 @@ export type GuaranteeSectionDetailRow = {
   rate: string;
 };
 
+// Phase 6 "Customs Bond per-item generation" — id/generatedPolicy mirror
+// SectionRow's own id/generatedPolicy, but at item granularity: a CUSTOMS_BOND
+// section may generate several independent PolicyRecords, one per item row
+// (see sectionPolicyMapping.ts's resolveCustomsBondItemPolicyPlan), so each
+// item needs its own Generated/Not Generated state rather than sharing the
+// section's single generatedPolicy.
 export type CustomsBondItemRowData = {
+  id: string;
   bondType: string;
   bondValue: string;
   rate: string;
   premium: string;
+  generatedPolicy: GeneratedPolicyRef | null;
 };
 
 export type CustomsBondSectionDetailRow = {

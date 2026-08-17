@@ -1596,6 +1596,15 @@ model CustomsBondItemRow {
   premium   Decimal @db.Decimal(16, 2)
   sortOrder Int     @default(0)
 
+  // Phase 6 "Customs Bond per-item generation" — see
+  // PolicyRecord.sourceCustomsBondItemId's doc comment. Zero, one (the
+  // normal case — enforced by generatePolicyRecordsAction's per-item
+  // idempotency check, never a DB-level unique constraint) rows for any
+  // item row created after this field existed; always empty for item rows
+  // whose section was generated before Phase 6 (impossible pre-Phase-6,
+  // since CUSTOMS_BOND item-level generation did not exist yet).
+  generatedPolicyRecords PolicyRecord[]
+
   @@index([customsBondDetailId])
 }
 
@@ -1806,6 +1815,20 @@ model PolicyRecord {
   sourceQuotationSectionId String?
   sourceQuotationSection   QuotationInsuranceSection? @relation(fields: [sourceQuotationSectionId], references: [id], onDelete: SetNull)
 
+  // Phase 6 "Customs Bond per-item generation" — narrower still than
+  // sourceQuotationSectionId: a CUSTOMS_BOND section may hold several
+  // distinct CustomsBondItemRow lines (different bond types/amounts/
+  // premiums each), so the section id alone cannot identify which specific
+  // item this Bond policy came from. Additive on top of
+  // sourceQuotationSectionId, never a replacement — every PolicyRecord
+  // created before this field existed (and every non-Customs-Bond record
+  // going forward) has and keeps sourceCustomsBondItemId = null forever;
+  // null must always be treated as "not a per-item Customs Bond policy",
+  // never as an error. onDelete: SetNull for the same defensive-fallback
+  // reasoning as sourceQuotationSectionId above.
+  sourceCustomsBondItemId String?
+  sourceCustomsBondItem   CustomsBondItemRow?        @relation(fields: [sourceCustomsBondItemId], references: [id], onDelete: SetNull)
+
   remarks String?
 
   createdById String
@@ -1848,6 +1871,7 @@ model PolicyRecord {
   @@index([deletedAt])
   @@index([sourceQuotationId])
   @@index([sourceQuotationSectionId])
+  @@index([sourceCustomsBondItemId])
 }
 
 // Fixed, small, closed classification (unlike insuranceType below, which is

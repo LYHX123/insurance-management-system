@@ -701,6 +701,7 @@ const zh: Dictionary = {
     generatePolicyRecordsFailedError: "生成保单记录失败，请重试。",
     generatePolicyRecordsSuccessMessage: "已成功生成 {count} 条保单记录。",
     generatePolicyRecordsDocumentFailureMessage: "有 {count} 份保单文件上传失败，可稍后在保单模块中补传。",
+    customBondItemsGeneratedCount: "已生成 {generated} / {total} 份保单",
 
     insuranceTypesTitle: "保险类型管理",
     manageInsuranceTypes: "管理保险类型",

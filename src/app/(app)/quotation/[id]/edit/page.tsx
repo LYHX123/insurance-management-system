@@ -348,10 +348,15 @@ export default async function EditQuotationPage({
       customsBondDetail: s.customsBondDetail
         ? {
             itemRows: s.customsBondDetail.itemRows.map((r) => ({
+              id: r.id,
               bondType: r.bondType,
               bondValue: r.bondValue.toString(),
               rate: r.rate.toString(),
               premium: r.premium.toString(),
+              // The edit form never needs generation state — it only reads
+              // bondType/bondValue/rate to hydrate the draft (see
+              // hydrateCustomsBondDraft in quotation-form.tsx).
+              generatedPolicy: null,
             })),
           }
         : null,

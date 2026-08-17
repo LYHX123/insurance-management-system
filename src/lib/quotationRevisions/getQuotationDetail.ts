@@ -34,7 +34,19 @@ const DETAIL_INCLUDE = {
       tenderSecurityDetail: true,
       performanceBondDetail: true,
       advancePaymentGuaranteeDetail: true,
-      customsBondDetail: { include: { itemRows: { orderBy: { sortOrder: "asc" as const } } } },
+      customsBondDetail: {
+        include: {
+          itemRows: {
+            orderBy: { sortOrder: "asc" as const },
+            // Phase 6 "Customs Bond per-item generation" — mirrors the
+            // section-level generatedPolicyRecords selection above, one
+            // level deeper, so the modal/Quotation Detail page can show
+            // Generated/Not Generated state per item row instead of only
+            // per section.
+            include: { generatedPolicyRecords: { where: { deletedAt: null }, select: { id: true, recordNumber: true, category: true } } },
+          },
+        },
+      },
     },
   },
 } as const;
@@ -370,10 +382,21 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
       customsBondDetail: s.customsBondDetail
         ? {
             itemRows: s.customsBondDetail.itemRows.map((r) => ({
+              id: r.id,
               bondType: r.bondType,
               bondValue: r.bondValue.toString(),
               rate: r.rate.toString(),
               premium: r.premium.toString(),
+              // Phase 6 — this item's own generated PolicyRecord (if any,
+              // non-deleted). Most-once in practice, same reasoning as the
+              // section-level generatedPolicy above.
+              generatedPolicy: r.generatedPolicyRecords[0]
+                ? {
+                    id: r.generatedPolicyRecords[0].id,
+                    recordNumber: r.generatedPolicyRecords[0].recordNumber,
+                    category: r.generatedPolicyRecords[0].category,
+                  }
+                : null,
             })),
           }
         : null,

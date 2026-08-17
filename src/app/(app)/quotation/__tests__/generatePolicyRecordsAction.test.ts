@@ -19,6 +19,12 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 const ADMIN_SESSION = { user: { id: "admin-1", role: "Admin", status: "ACTIVE", permissions: [] } };
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(async () => ADMIN_SESSION) }));
 
+// Phase 6 "Customs Bond per-item generation" — a minimal fixture shape for
+// one CustomsBondItemRow; generatedPolicyRecords is computed dynamically in
+// withGenerated below (mirrors the section-level generatedPolicyRecords
+// convention already used everywhere else in this fake DB layer).
+type CustomsBondItemFixture = { id: string; bondType: string; bondValue: Prisma.Decimal; premium: Prisma.Decimal };
+
 type SectionFixture = {
   id: string;
   quotationId: string;
@@ -32,6 +38,7 @@ type SectionFixture = {
   tenderSecurityDetail?: { bondValue: Prisma.Decimal } | null;
   performanceBondDetail?: { bondValue: Prisma.Decimal } | null;
   advancePaymentGuaranteeDetail?: { bondValue: Prisma.Decimal } | null;
+  customsBondItems?: CustomsBondItemFixture[];
 };
 
 type QuotationFixture = {
@@ -56,6 +63,7 @@ type PolicyRecordRow = {
   insurerCost: Prisma.Decimal;
   sourceQuotationId: string | null;
   sourceQuotationSectionId: string | null;
+  sourceCustomsBondItemId: string | null;
   sourceQuotationRevisionSnapshot: string | null;
   deletedAt: Date | null;
   data: Record<string, unknown>;
@@ -79,6 +87,21 @@ function withGenerated(section: SectionFixture) {
     generatedPolicyRecords: [...policyRecords.values()]
       .filter((p) => p.sourceQuotationSectionId === section.id && !p.deletedAt)
       .map((p) => ({ id: p.id })),
+    // Phase 6 — mirrors the section-level generatedPolicyRecords above, one
+    // level deeper: each item's own (non-deleted) generated PolicyRecords,
+    // computed dynamically so a fresh re-query inside the transaction always
+    // reflects whatever has been created so far in the test.
+    customsBondDetail: section.customsBondItems
+      ? {
+          id: `${section.id}-cbd`,
+          itemRows: section.customsBondItems.map((item) => ({
+            ...item,
+            generatedPolicyRecords: [...policyRecords.values()]
+              .filter((p) => p.sourceCustomsBondItemId === item.id && !p.deletedAt)
+              .map((p) => ({ id: p.id })),
+          })),
+        }
+      : null,
   };
 }
 
@@ -126,6 +149,7 @@ function buildTx() {
           insurerCost: data.insurerCost as Prisma.Decimal,
           sourceQuotationId: (data.sourceQuotationId as string) ?? null,
           sourceQuotationSectionId: (data.sourceQuotationSectionId as string) ?? null,
+          sourceCustomsBondItemId: (data.sourceCustomsBondItemId as string) ?? null,
           sourceQuotationRevisionSnapshot: (data.sourceQuotationRevisionSnapshot as string) ?? null,
           deletedAt: null,
           data,
@@ -155,6 +179,7 @@ function buildTx() {
               recordNumber: r.recordNumber,
               category: r.category,
               sourceQuotationSectionId: r.sourceQuotationSectionId,
+              sourceCustomsBondItemId: r.sourceCustomsBondItemId,
               motorDetail,
               nonMotorDetail,
               bondDetail,
@@ -254,8 +279,35 @@ function makeElSection(): SectionFixture {
     sectionTotal: decimal(60000),
   };
 }
+// Phase 6 "Customs Bond per-item generation" — items defaults to CB1/CB2/CB5
+// (the exact spec example) unless overridden; sectionTotal deliberately
+// never equals the sum of item premiums in the default fixture, mirroring
+// real quotation data where the section total may include rounding/levies
+// the item rows don't carry individually — this makes it obvious in
+// assertions if a test ever accidentally reads sectionTotal instead of an
+// item's own premium.
+function makeCustomsBondSection(items: CustomsBondItemFixture[] = [
+  { id: "cb-1", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) },
+  { id: "cb-2", bondType: "CB2", bondValue: decimal(30000000), premium: decimal(200000) },
+  { id: "cb-5", bondType: "CB5", bondValue: decimal(10000000), premium: decimal(50000) },
+]): SectionFixture {
+  return {
+    id: "sec-customs",
+    quotationId: QUOTATION_ID,
+    sectionKind: "CUSTOMS_BOND",
+    insuranceTypeNameSnapshot: "Customs Bond",
+    sectionTotal: decimal(999999), // deliberately not the sum of items — see doc comment above
+    customsBondItems: items,
+  };
+}
 
-type SectionInputOverrides = { insurerCost?: number | string; effectiveDate?: string; expiryDate?: string; policyNumber?: string };
+type SectionInputOverrides = {
+  insurerCost?: number | string;
+  effectiveDate?: string;
+  expiryDate?: string;
+  policyNumber?: string;
+  customBondItemId?: string;
+};
 
 function sectionInput(sectionId: string, overrides: SectionInputOverrides = {}) {
   return {
@@ -265,6 +317,13 @@ function sectionInput(sectionId: string, overrides: SectionInputOverrides = {}) 
     expiryDate: "2027-08-31",
     ...overrides,
   };
+}
+
+// Phase 6 — a per-item submission entry: same shape as sectionInput's
+// return value, plus customBondItemId (the field that tells the action
+// "this row targets one CustomsBondItemRow, not the whole section").
+function customBondItemInput(sectionId: string, customBondItemId: string, overrides: SectionInputOverrides = {}) {
+  return sectionInput(sectionId, { ...overrides, customBondItemId });
 }
 
 function commonInput(
@@ -740,6 +799,7 @@ describe("generatePolicyRecordsAction", () => {
       insurerCost: decimal(0),
       sourceQuotationId: QUOTATION_ID,
       sourceQuotationSectionId: null,
+      sourceCustomsBondItemId: null,
       sourceQuotationRevisionSnapshot: "R01",
       deletedAt: null,
       data: {},
@@ -948,5 +1008,439 @@ describe("generatePolicyRecordsAction", () => {
     );
     expect(result).toEqual({ success: false, error: "FORBIDDEN" });
     expect(policyRecords.size).toBe(0);
+  });
+});
+
+// Phase 6 "Customs Bond per-item generation" — generation unit = individual
+// CustomsBondItemRow, not the CUSTOMS_BOND section as a whole. Every test
+// below submits customBondItemInput(sectionId, itemId, ...) rather than
+// sectionInput(sectionId, ...) for a Customs Bond row.
+describe("generatePolicyRecordsAction — Phase 6 Customs Bond per-item generation", () => {
+  it("Case 1: a CUSTOMS_BOND section with one item (CB1) generates exactly 1 BOND Policy", async () => {
+    sections.set("sec-customs", makeCustomsBondSection([{ id: "cb-1", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) }]));
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+      })
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0].category).toBe("BOND");
+    expect(result.created[0].sectionId).toBe("sec-customs");
+    expect(result.created[0].customBondItemId).toBe("cb-1");
+    expect(policyRecords.size).toBe(1);
+  });
+
+  it("Case 2: CB1 + CB2 + CB5 generate 3 independent PolicyRecords", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" }),
+          customBondItemInput("sec-customs", "cb-2", { insurerCost: 150000, effectiveDate: "2026-09-01", expiryDate: "2027-08-31" }),
+          customBondItemInput("sec-customs", "cb-5", { insurerCost: 40000, effectiveDate: "2026-09-15", expiryDate: "2027-09-14" }),
+        ],
+      })
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.created).toHaveLength(3);
+    expect(policyRecords.size).toBe(3);
+    expect(new Set(result.created.map((c) => c.id)).size).toBe(3); // 3 distinct PolicyRecords
+  });
+
+  it("Case 3: each item's bondType/bondValue/premium maps correctly — bondType=CUSTOM_BOND, customBondType=item's own label, bondAmount=item's own value, customerPremium=item's OWN premium (never the section total)", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" }),
+          customBondItemInput("sec-customs", "cb-2", { insurerCost: 150000, effectiveDate: "2026-09-01", expiryDate: "2027-08-31" }),
+        ],
+      })
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const bySectionId = new Map(result.created.map((c) => [c.customBondItemId, c]));
+    const cb1Record = policyRecords.get(bySectionId.get("cb-1")!.id)!;
+    const cb2Record = policyRecords.get(bySectionId.get("cb-2")!.id)!;
+
+    expect(cb1Record.category).toBe("BOND");
+    expect(cb1Record.customerPremium.toString()).toBe("100000"); // cb-1's OWN premium
+    expect(cb2Record.customerPremium.toString()).toBe("200000"); // cb-2's OWN premium — never 999999 (sectionTotal)
+
+    const cb1Bond = cb1Record.data.bondDetail as { create: { bondType: string; customBondType: string; bondAmount: Prisma.Decimal } };
+    expect(cb1Bond.create.bondType).toBe("CUSTOM_BOND");
+    expect(cb1Bond.create.customBondType).toBe("CB1");
+    expect(cb1Bond.create.bondAmount.toString()).toBe("20000000");
+
+    const cb2Bond = cb2Record.data.bondDetail as { create: { bondType: string; customBondType: string; bondAmount: Prisma.Decimal } };
+    expect(cb2Bond.create.customBondType).toBe("CB2");
+    expect(cb2Bond.create.bondAmount.toString()).toBe("30000000");
+  });
+
+  it("Case 4: three items each keep their OWN effectiveDate/expiryDate/insurerCost/policyNumber, all sharing the batch processingDate", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        processingDate: "2026-08-16",
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", {
+            insurerCost: 80000,
+            effectiveDate: "2026-08-20",
+            expiryDate: "2027-08-19",
+            policyNumber: "PN-CB1",
+          }),
+          customBondItemInput("sec-customs", "cb-2", {
+            insurerCost: 150000,
+            effectiveDate: "2026-09-01",
+            expiryDate: "2027-08-31",
+            policyNumber: "PN-CB2",
+          }),
+          customBondItemInput("sec-customs", "cb-5", {
+            insurerCost: 40000,
+            effectiveDate: "2026-09-15",
+            expiryDate: "2027-09-14",
+            policyNumber: "PN-CB5",
+          }),
+        ],
+      })
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const bondItemId = (id: string) => result.created.find((c) => c.customBondItemId === id)!;
+    expect(bondItemId("cb-1").policyNumber).toBe("PN-CB1");
+    expect(bondItemId("cb-2").policyNumber).toBe("PN-CB2");
+    expect(bondItemId("cb-5").policyNumber).toBe("PN-CB5");
+
+    const cb1 = policyRecords.get(bondItemId("cb-1").id)!;
+    const cb2 = policyRecords.get(bondItemId("cb-2").id)!;
+    expect(cb1.effectiveDate.toISOString().slice(0, 10)).toBe("2026-08-20");
+    expect(cb2.effectiveDate.toISOString().slice(0, 10)).toBe("2026-09-01");
+    expect(cb1.insurerCost.toString()).toBe("80000");
+    expect(cb2.insurerCost.toString()).toBe("150000");
+    expect(cb1.processingDate.toISOString().slice(0, 10)).toBe("2026-08-16");
+    expect(cb2.processingDate.toISOString().slice(0, 10)).toBe("2026-08-16");
+  });
+
+  it("Case 5: checking only CB1 + CB5 generates exactly 2 Policies, CB2 untouched", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" }),
+          customBondItemInput("sec-customs", "cb-5", { insurerCost: 40000, effectiveDate: "2026-09-15", expiryDate: "2027-09-14" }),
+        ],
+      })
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.created).toHaveLength(2);
+    expect(result.created.map((c) => c.customBondItemId).sort()).toEqual(["cb-1", "cb-5"]);
+    expect(policyRecords.size).toBe(2);
+  });
+
+  it("Case 6: CB1 already generated — reopening the modal shows CB1 as already generated while CB2/CB5 remain generatable, and resubmitting all three never duplicates CB1", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const first = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+        idempotencyKey: "cb-batch-1",
+      })
+    );
+    expect(first.success).toBe(true);
+    expect(policyRecords.size).toBe(1);
+
+    // Second modal open re-submits ALL three (mirrors "every not-yet-
+    // generated item checked by default") — CB1 is already generated so it
+    // must be silently skipped, never duplicated.
+    const second = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", { insurerCost: 999999, effectiveDate: "2030-01-01", expiryDate: "2031-01-01" }),
+          customBondItemInput("sec-customs", "cb-2", { insurerCost: 150000, effectiveDate: "2026-09-01", expiryDate: "2027-08-31" }),
+          customBondItemInput("sec-customs", "cb-5", { insurerCost: 40000, effectiveDate: "2026-09-15", expiryDate: "2027-09-14" }),
+        ],
+        idempotencyKey: "cb-batch-2",
+      })
+    );
+    expect(second.success).toBe(true);
+    if (second.success) {
+      expect(second.created).toHaveLength(2);
+      expect(second.created.map((c) => c.customBondItemId).sort()).toEqual(["cb-2", "cb-5"]);
+      expect(second.alreadyGeneratedCustomBondItems).toEqual(["cb-1"]);
+      expect(second.alreadyGenerated).toEqual([]); // section-level list stays empty — this is item-level
+    }
+    expect(policyRecords.size).toBe(3);
+
+    const cb1Records = [...policyRecords.values()].filter((r) => r.sourceCustomsBondItemId === "cb-1");
+    expect(cb1Records).toHaveLength(1);
+    expect(cb1Records[0].insurerCost.toString()).toBe("80000"); // untouched by the second submission's different value
+  });
+
+  it("Case 7: clicking Generate twice with the same idempotencyKey for the same item never duplicates it", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const input = commonInput({
+      sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+      idempotencyKey: "cb-dup-key",
+    });
+    const r1 = await generatePolicyRecordsAction(input);
+    const r2 = await generatePolicyRecordsAction(input);
+
+    expect(r1.success).toBe(true);
+    expect(r2.success).toBe(true);
+    if (r1.success && r2.success) expect(r2.created).toEqual(r1.created);
+    expect(policyRecords.size).toBe(1);
+  });
+
+  it("Case 8: replaying the same idempotencyKey with DIFFERENT values never re-applies them — replay reports the original result verbatim, including customBondItemId", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const first = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", {
+            insurerCost: 80000,
+            effectiveDate: "2026-08-20",
+            expiryDate: "2027-08-19",
+            policyNumber: "PN-ORIGINAL",
+          }),
+        ],
+        idempotencyKey: "cb-replay-key",
+      })
+    );
+    expect(first.success).toBe(true);
+
+    const retry = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          customBondItemInput("sec-customs", "cb-1", {
+            insurerCost: 999999,
+            effectiveDate: "2030-01-01",
+            expiryDate: "2031-01-01",
+            policyNumber: "PN-DIFFERENT",
+          }),
+        ],
+        idempotencyKey: "cb-replay-key",
+      })
+    );
+    expect(retry.success).toBe(true);
+    if (first.success && retry.success) expect(retry.created).toEqual(first.created);
+    if (retry.success) {
+      expect(retry.created[0].customBondItemId).toBe("cb-1");
+      expect(retry.created[0].policyNumber).toBe("PN-ORIGINAL");
+    }
+    expect(policyRecords.size).toBe(1);
+  });
+
+  it("Case 9: concurrent DIFFERENT-key requests targeting the SAME item never double-create (row-lock dedup)", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const [r1, r2] = await Promise.all([
+      generatePolicyRecordsAction(
+        commonInput({
+          sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+          idempotencyKey: "cb-key-a",
+        })
+      ),
+      generatePolicyRecordsAction(
+        commonInput({
+          sections: [
+            customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" }),
+            customBondItemInput("sec-customs", "cb-2", { insurerCost: 150000, effectiveDate: "2026-09-01", expiryDate: "2027-08-31" }),
+          ],
+          idempotencyKey: "cb-key-b",
+        })
+      ),
+    ]);
+
+    expect(r1.success).toBe(true);
+    expect(r2.success).toBe(true);
+    const cb1Records = [...policyRecords.values()].filter((r) => r.sourceCustomsBondItemId === "cb-1");
+    expect(cb1Records).toHaveLength(1);
+    expect(policyRecords.size).toBe(2); // exactly one CB1 + one CB2 total
+  });
+
+  it("a mixed batch (a normal CAR section + a Customs Bond item) generates both in the same submission, each independently correct", async () => {
+    sections.set("sec-car", makeCarSection());
+    sections.set("sec-customs", makeCustomsBondSection([{ id: "cb-1", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) }]));
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [
+          sectionInput("sec-car", { insurerCost: 400000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" }),
+          customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-25", expiryDate: "2027-02-24" }),
+        ],
+      })
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.created).toHaveLength(2);
+    const carRow = result.created.find((c) => c.sectionId === "sec-car")!;
+    const cbRow = result.created.find((c) => c.customBondItemId === "cb-1")!;
+    expect(carRow.customBondItemId).toBeNull();
+    expect(carRow.category).toBe("NON_MOTOR");
+    expect(cbRow.category).toBe("BOND");
+    expect(policyRecords.get(carRow.id)!.customerPremium.toString()).toBe("500000"); // CAR's own sectionTotal, unaffected
+    expect(policyRecords.get(cbRow.id)!.customerPremium.toString()).toBe("100000"); // cb-1's own premium
+  });
+
+  it("a section-level submission against a CUSTOMS_BOND section (no customBondItemId) is still rejected — item-level support never implies section-level support", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({ sections: [sectionInput("sec-customs", { insurerCost: 5000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })] })
+    );
+    expect(result).toEqual({ success: false, error: "UNSUPPORTED_SECTION" });
+    expect(policyRecords.size).toBe(0);
+  });
+
+  it("a customBondItemId that doesn't belong to the referenced section is rejected", async () => {
+    sections.set("sec-customs", makeCustomsBondSection());
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "does-not-exist", { insurerCost: 5000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+      })
+    );
+    expect(result).toEqual({ success: false, error: "CUSTOM_BOND_ITEM_NOT_FOUND" });
+    expect(policyRecords.size).toBe(0);
+  });
+
+  it("Case 12: a historical PolicyRecord with sourceCustomsBondItemId = null does not break item-eligibility lookups", async () => {
+    sections.set("sec-customs", makeCustomsBondSection([{ id: "cb-1", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) }]));
+    policyRecords.set("legacy-bond-1", {
+      id: "legacy-bond-1",
+      recordNumber: "PB202601-0001",
+      category: "BOND",
+      customerPremium: decimal(100000),
+      processingDate: new Date("2026-01-01"),
+      effectiveDate: new Date("2026-01-01"),
+      expiryDate: new Date("2027-01-01"),
+      insurerCost: decimal(0),
+      sourceQuotationId: QUOTATION_ID,
+      sourceQuotationSectionId: "sec-customs",
+      sourceCustomsBondItemId: null,
+      sourceQuotationRevisionSnapshot: "R01",
+      deletedAt: null,
+      data: {},
+    });
+
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+    const result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+      })
+    );
+
+    // The legacy null-item record must not block cb-1 from being generated.
+    expect(result.success).toBe(true);
+    expect(policyRecords.size).toBe(2);
+  });
+
+  it("Case 13: R01's cb-1 generates a Policy; R02's OWN cb-1 (a different database row with the same bondType text) generates its own independent Policy", async () => {
+    sections.set("sec-customs", makeCustomsBondSection([{ id: "cb-1", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) }]));
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const r01Result = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+        idempotencyKey: "r01-cb-batch",
+      })
+    );
+    expect(r01Result.success).toBe(true);
+    const r01Record = [...policyRecords.values()].find((r) => r.sourceCustomsBondItemId === "cb-1")!;
+    expect(r01Record.sourceQuotationRevisionSnapshot).toBe("R01");
+
+    // R02 is a different Quotation with its OWN CUSTOMS_BOND section and its
+    // OWN item row — same "CB1" text, but a genuinely different database id
+    // (mirrors createRevisionAction's deep-copy-into-new-rows behavior).
+    const R02_ID = "quot-2";
+    quotations.set(R02_ID, makeQuotation({ id: R02_ID, revisionCode: "R02" }));
+    sections.set("sec-customs-r02", {
+      ...makeCustomsBondSection([{ id: "cb-1-r02", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) }]),
+      id: "sec-customs-r02",
+      quotationId: R02_ID,
+    });
+
+    const r02Result = await generatePolicyRecordsAction(
+      commonInput({
+        quotationId: R02_ID,
+        sections: [
+          customBondItemInput("sec-customs-r02", "cb-1-r02", { insurerCost: 80000, effectiveDate: "2026-09-01", expiryDate: "2027-08-31" }),
+        ],
+        idempotencyKey: "r02-cb-batch",
+      })
+    );
+    expect(r02Result.success).toBe(true);
+
+    // R01's record is untouched.
+    const r01RecordAfter = policyRecords.get(r01Record.id)!;
+    expect(r01RecordAfter.sourceCustomsBondItemId).toBe("cb-1");
+    expect(r01RecordAfter.effectiveDate.toISOString().slice(0, 10)).toBe("2026-08-20");
+
+    // R02's is a genuinely separate PolicyRecord, sourced from its own item.
+    const r02Record = [...policyRecords.values()].find((r) => r.sourceCustomsBondItemId === "cb-1-r02")!;
+    expect(r02Record.sourceQuotationId).toBe(R02_ID);
+    expect(r02Record.effectiveDate.toISOString().slice(0, 10)).toBe("2026-09-01");
+
+    expect(policyRecords.size).toBe(2);
+  });
+
+  it("Case 17: after a Customs Bond item's generated Policy is hard-deleted, that item is eligible for generation again", async () => {
+    sections.set("sec-customs", makeCustomsBondSection([{ id: "cb-1", bondType: "CB1", bondValue: decimal(20000000), premium: decimal(100000) }]));
+    const { generatePolicyRecordsAction } = await import("../generatePolicyRecordsAction");
+
+    const first = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 80000, effectiveDate: "2026-08-20", expiryDate: "2027-08-19" })],
+        idempotencyKey: "cb-del-1",
+      })
+    );
+    expect(first.success).toBe(true);
+    expect(policyRecords.size).toBe(1);
+
+    // Mirrors the normal-section hard-delete test above — deletePolicyRecord
+    // performs a real hard delete, never sets deletedAt.
+    const deletedId = [...policyRecords.keys()][0];
+    policyRecords.delete(deletedId);
+
+    const second = await generatePolicyRecordsAction(
+      commonInput({
+        sections: [customBondItemInput("sec-customs", "cb-1", { insurerCost: 90000, effectiveDate: "2026-09-01", expiryDate: "2027-08-31" })],
+        idempotencyKey: "cb-del-2",
+      })
+    );
+    expect(second.success).toBe(true);
+    if (second.success) {
+      expect(second.created).toHaveLength(1);
+      expect(second.alreadyGeneratedCustomBondItems).toEqual([]);
+    }
+    expect(policyRecords.size).toBe(1);
   });
 });

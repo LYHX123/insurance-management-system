@@ -155,3 +155,44 @@ export function policyCategoryForSectionKind(sectionKind: string): PolicyCategor
   if (BOND_SECTION_KINDS.includes(sectionKind)) return "BOND";
   return null;
 }
+
+// Phase 6 "Customs Bond per-item generation" — unlike the section-level
+// resolveSectionPolicyPlan above (which deliberately keeps CUSTOMS_BOND
+// unsupported: there is no single, reliable section-level bondType/amount/
+// premium), each CustomsBondItemRow individually DOES carry its own
+// complete, reliable bondType/bondValue/premium — see that model's schema.
+// This is the generation-unit-level counterpart used only by the
+// CUSTOM_BOND_ITEM branch of generatePolicyRecordsAction, never by the
+// SECTION branch. bondAmount/customerPremium are read from whatever row the
+// caller passes in — callers must always pass a value freshly re-read from
+// the database inside the generation transaction, never client-submitted
+// data (see generatePolicyRecordsAction's own doc comment).
+export type CustomsBondItemForPolicyPlan = {
+  id: string;
+  bondType: string;
+  bondValue: Prisma.Decimal;
+  premium: Prisma.Decimal;
+};
+
+export type CustomsBondItemPolicyPlan = {
+  category: "BOND";
+  bondType: "CUSTOM_BOND";
+  // The item's own free-text bond type label (e.g. "CB1") — written into
+  // BondPolicyDetail.customBondType so the resulting Policy/Invoice display
+  // reads "Custom Bond – CB1" via getPolicyClassLabel, never a bare "Bond".
+  customBondType: string;
+  bondAmount: Prisma.Decimal;
+  // This item's OWN premium — never the CUSTOMS_BOND section's sectionTotal
+  // (which may be the sum of several items). See this phase's spec, Part 6.
+  customerPremium: Prisma.Decimal;
+};
+
+export function resolveCustomsBondItemPolicyPlan(item: CustomsBondItemForPolicyPlan): CustomsBondItemPolicyPlan {
+  return {
+    category: "BOND",
+    bondType: "CUSTOM_BOND",
+    customBondType: item.bondType,
+    bondAmount: item.bondValue,
+    customerPremium: item.premium,
+  };
+}
