@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/i18n/locale-provider";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Combobox } from "@/components/ui/combobox";
 import { FormField } from "@/components/ui/form-field";
 import { createNonMotorClaimAction, getNonMotorClaimPolicyOptionsAction } from "@/app/(app)/task/non-motor-claim/actions";
@@ -106,6 +107,18 @@ export function NonMotorClaimFormModal({
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const availableProjects = selectedCustomer?.projects ?? [];
 
+  // Searchable by Company Name and Short Name, case-insensitively — same
+  // shape/convention as CreateQuotationCaseForm's customerSearchOptions.
+  const customerSearchOptions = useMemo(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        label: `${c.companyName} (${c.customerNumber})`,
+        searchText: `${c.companyName} ${c.shortName ?? ""} ${c.customerNumber}`.toLowerCase(),
+      })),
+    [customers]
+  );
+
   const handleCustomerChange = (id: string) => {
     setCustomerId(id);
     setProjectId("");
@@ -184,14 +197,14 @@ export function NonMotorClaimFormModal({
             <Input type="datetime-local" value={reportedAt} onChange={(e) => setReportedAt(e.target.value)} required />
           </FormField>
           <FormField label={t.claims.customer}>
-            <Select value={customerId} onChange={(e) => handleCustomerChange(e.target.value)} required>
-              <option value="">{t.claims.selectCustomer}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.customerNumber})
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={customerId}
+              onChange={handleCustomerChange}
+              options={customerSearchOptions}
+              placeholder={t.claims.selectCustomer}
+              noResultsLabel={t.claims.customerSearchNoResults}
+              required
+            />
           </FormField>
         </div>
 

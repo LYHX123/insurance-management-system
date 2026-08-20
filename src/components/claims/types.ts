@@ -28,6 +28,7 @@ export type ClaimCustomerOption = {
   id: string;
   companyName: string;
   customerNumber: string;
+  shortName: string | null;
   mainContactPerson: string | null;
   mainPhoneNumber: string | null;
   projects: ClaimProjectOption[];

@@ -1785,6 +1785,7 @@ const en = {
     reportedTime: "Reported Time",
     customer: "Customer",
     selectCustomer: "Select Customer",
+    customerSearchNoResults: "No customers found",
     contactName: "Contact Name",
     contactPhone: "Contact Phone",
     insurer: "Insurer",

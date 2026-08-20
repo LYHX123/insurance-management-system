@@ -35,6 +35,7 @@ export async function getActiveClaimCustomers(): Promise<ClaimCustomerOption[]> 
       id: true,
       companyName: true,
       customerNumber: true,
+      shortName: true,
       mainContactPerson: true,
       mainPhoneNumber: true,
       projects: { select: { id: true, projectName: true, contactPerson: true, phoneNumber: true }, orderBy: { projectName: "asc" } },

@@ -1750,6 +1750,7 @@ const zh: Dictionary = {
     reportedTime: "报赔时间",
     customer: "客户名称",
     selectCustomer: "请选择客户",
+    customerSearchNoResults: "未找到客户",
     contactName: "联系人",
     contactPhone: "联系电话",
     insurer: "保险公司",
