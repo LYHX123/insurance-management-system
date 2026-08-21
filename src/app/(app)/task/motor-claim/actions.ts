@@ -32,6 +32,19 @@ function touchMotorClaim(tx: Parameters<Parameters<typeof prisma.$transaction>[0
   return tx.motorClaim.update({ where: { id: claimId }, data: {} });
 }
 
+// Claim User-Level Unread Indicator, Part B2/B17 — mirrors
+// src/app/(app)/task/actions.ts's touchOwnTaskReadState exactly: brings the
+// ACTING user's own read state forward to now whenever they cause
+// MotorClaim.updatedAt to move, so their own edit never makes their own copy
+// of the Claim they're looking at show up as unread.
+function touchOwnMotorClaimReadState(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], motorClaimId: string, userId: string) {
+  return tx.motorClaimReadState.upsert({
+    where: { motorClaimId_userId: { motorClaimId, userId } },
+    create: { motorClaimId, userId, lastViewedAt: new Date() },
+    update: { lastViewedAt: new Date() },
+  });
+}
+
 async function validateProjectForCustomer(
   customerId: string,
   projectId: string | null | undefined
@@ -188,6 +201,7 @@ export async function createMotorClaimAction(
           createdById: session.user.id,
         },
       });
+      await touchOwnMotorClaimReadState(tx, created.id, session.user.id);
       return created;
     });
 
@@ -273,6 +287,7 @@ export async function updateMotorClaimAction(id: string, input: MotorClaimInput)
           },
         });
       }
+      await touchOwnMotorClaimReadState(tx, id, access.userId);
     });
     revalidatePath("/task/motor-claim");
     return { success: true };
@@ -318,6 +333,7 @@ export async function updateMotorClaimParticipantsAction(claimId: string, partic
       }
       await tx.motorClaimUpdate.create({ data: { motorClaimId: claimId, content: "Participants updated.", createdById: access.userId } });
       await touchMotorClaim(tx, claimId);
+      await touchOwnMotorClaimReadState(tx, claimId, access.userId);
     });
     revalidatePath("/task/motor-claim");
     return { success: true };
@@ -345,6 +361,7 @@ export async function addMotorClaimUpdateAction(claimId: string, content: string
     const entry = await prisma.$transaction(async (tx) => {
       const created = await tx.motorClaimUpdate.create({ data: { motorClaimId: claimId, content: trimmed, createdById: access.userId } });
       await touchMotorClaim(tx, claimId);
+      await touchOwnMotorClaimReadState(tx, claimId, access.userId);
       return created;
     });
     revalidatePath("/task/motor-claim");
@@ -377,6 +394,7 @@ export async function editMotorClaimUpdateAction(updateId: string, content: stri
     await prisma.$transaction(async (tx) => {
       await tx.motorClaimUpdate.update({ where: { id: updateId }, data: { content: trimmed, editedAt: new Date() } });
       await touchMotorClaim(tx, entry.motorClaimId);
+      await touchOwnMotorClaimReadState(tx, entry.motorClaimId, access.userId);
     });
     revalidatePath("/task/motor-claim");
     return { success: true };
@@ -409,7 +427,10 @@ export async function deleteMotorClaimUpdateAction(updateId: string): Promise<Ac
         where: { id: updateId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: access.userId },
       });
-      if (result.count > 0) await touchMotorClaim(tx, entry.motorClaimId);
+      if (result.count > 0) {
+        await touchMotorClaim(tx, entry.motorClaimId);
+        await touchOwnMotorClaimReadState(tx, entry.motorClaimId, access.userId);
+      }
     });
     revalidatePath("/task/motor-claim");
     return { success: true };
@@ -441,6 +462,7 @@ export async function closeMotorClaimAction(id: string): Promise<ActionResult> {
     });
     if (updateResult.count === 1) {
       await tx.motorClaimUpdate.create({ data: { motorClaimId: id, content: "Claim closed.", createdById: access.userId } });
+      await touchOwnMotorClaimReadState(tx, id, access.userId);
     }
     return updateResult.count;
   });
@@ -462,6 +484,7 @@ export async function reopenMotorClaimAction(id: string): Promise<ActionResult> 
     });
     if (updateResult.count === 1) {
       await tx.motorClaimUpdate.create({ data: { motorClaimId: id, content: "Claim reopened.", createdById: access.userId } });
+      await touchOwnMotorClaimReadState(tx, id, access.userId);
     }
     return updateResult.count;
   });

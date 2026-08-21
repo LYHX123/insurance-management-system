@@ -126,6 +126,10 @@ export type MotorClaimRow = {
   // For the left-panel-style "search by participant name" convenience (see
   // this phase's spec, Part J.38) — same pattern as TaskListItem.
   participantNames: string[];
+  // Claim User-Level Unread Indicator — see src/lib/claims/readState.ts.
+  // Computed server-side per (user, Claim) pair, never a stored flag on the
+  // Claim row itself.
+  isUnread: boolean;
 };
 
 export type MotorClaimDocumentRow = {
@@ -139,7 +143,11 @@ export type MotorClaimDocumentRow = {
   dropbox: ClaimDocumentDropboxInfo;
 };
 
-export type MotorClaimDetail = MotorClaimRow & {
+// Omits isUnread — the detail page marks the Claim read as part of loading
+// it (see src/lib/claims/readState.ts's markMotorClaimViewed, called from
+// the detail page before this is built), so an unread flag here would
+// always be stale-false and is simply not a concept this view needs.
+export type MotorClaimDetail = Omit<MotorClaimRow, "isUnread"> & {
   policyRecordId: string | null;
   linkedPolicy: ClaimLinkedPolicy | null;
   participants: ClaimParticipantRow[];
@@ -159,6 +167,10 @@ export type NonMotorClaimRow = {
   contactPhone: string;
   insurer: string;
   insuranceType: NonMotorCoverType;
+  // WIBA-only, nullable for every other insuranceType and for pre-existing
+  // WIBA rows created before this field existed — see NonMotorClaim.
+  // injuredName's schema comment.
+  injuredName: string | null;
   progress: NonMotorClaimProgressValue;
   status: ClaimStatusValue;
   createdById: string;
@@ -168,6 +180,7 @@ export type NonMotorClaimRow = {
   closedByName: string | null;
   closedAt: string | null;
   participantNames: string[];
+  isUnread: boolean;
 };
 
 export type NonMotorClaimDocumentRow = {
@@ -181,7 +194,8 @@ export type NonMotorClaimDocumentRow = {
   dropbox: ClaimDocumentDropboxInfo;
 };
 
-export type NonMotorClaimDetail = NonMotorClaimRow & {
+// Omits isUnread — see MotorClaimDetail's identical doc comment.
+export type NonMotorClaimDetail = Omit<NonMotorClaimRow, "isUnread"> & {
   policyRecordId: string | null;
   linkedPolicy: ClaimLinkedPolicy | null;
   participants: ClaimParticipantRow[];

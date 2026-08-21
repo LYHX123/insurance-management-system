@@ -22,6 +22,22 @@ function touchTask(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   return tx.task.update({ where: { id: taskId }, data: {} });
 }
 
+// Task User-Level Unread Indicator, Part B2 — every mutation below bumps
+// Task.updatedAt (via touchTask or a direct field update), which is exactly
+// the signal getUnreadTaskIds compares against every OTHER participant's own
+// lastViewedAt. Without this call, the acting user's own edit would make
+// their own copy of the Task they're looking at right now flip to unread —
+// this brings their own read state forward to the same moment so that never
+// happens, while every other participant's read state is untouched and
+// still correctly goes stale.
+function touchOwnTaskReadState(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], taskId: string, userId: string) {
+  return tx.taskReadState.upsert({
+    where: { taskId_userId: { taskId, userId } },
+    create: { taskId, userId, lastViewedAt: new Date() },
+    update: { lastViewedAt: new Date() },
+  });
+}
+
 // ============================================================================
 // Creation
 // ============================================================================
@@ -77,6 +93,10 @@ export async function createTaskAction(input: CreateTaskInput): Promise<ActionRe
       await tx.taskStep.create({
         data: { taskId: created.id, content: startAction, createdById: session.user.id },
       });
+      // The creator has, in effect, just viewed the Task they created — see
+      // this phase's spec, Part B2: their own creation must never leave
+      // their own copy showing as unread.
+      await touchOwnTaskReadState(tx, created.id, session.user.id);
       return created;
     });
 
@@ -110,7 +130,10 @@ export async function updateTaskTitleAction(taskId: string, title: string): Prom
   if (trimmed.length > TITLE_MAX_LENGTH) return { success: false, error: "TITLE_TOO_LONG" };
 
   try {
-    await prisma.task.update({ where: { id: taskId }, data: { title: trimmed } });
+    await prisma.$transaction(async (tx) => {
+      await tx.task.update({ where: { id: taskId }, data: { title: trimmed } });
+      await touchOwnTaskReadState(tx, taskId, access.userId);
+    });
     revalidatePath("/task", "layout");
     return { success: true };
   } catch (err) {
@@ -162,6 +185,7 @@ export async function updateParticipantsAction(taskId: string, participantIds: s
         });
       }
       await touchTask(tx, taskId);
+      await touchOwnTaskReadState(tx, taskId, access.userId);
     });
     revalidatePath("/task", "layout");
     return { success: true };
@@ -189,6 +213,7 @@ export async function addStepAction(taskId: string, content: string): Promise<Ac
     const step = await prisma.$transaction(async (tx) => {
       const created = await tx.taskStep.create({ data: { taskId, content: trimmed, createdById: access.userId } });
       await touchTask(tx, taskId);
+      await touchOwnTaskReadState(tx, taskId, access.userId);
       return created;
     });
     revalidatePath("/task", "layout");
@@ -220,6 +245,7 @@ export async function updateStepAction(stepId: string, content: string): Promise
       // I.32).
       await tx.taskStep.update({ where: { id: stepId }, data: { content: trimmed, editedAt: new Date() } });
       await touchTask(tx, step.taskId);
+      await touchOwnTaskReadState(tx, step.taskId, access.userId);
     });
     revalidatePath("/task", "layout");
     return { success: true };
@@ -248,7 +274,10 @@ export async function deleteStepAction(stepId: string): Promise<ActionResult> {
         where: { id: stepId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: access.userId },
       });
-      if (result.count > 0) await touchTask(tx, step.taskId);
+      if (result.count > 0) {
+        await touchTask(tx, step.taskId);
+        await touchOwnTaskReadState(tx, step.taskId, access.userId);
+      }
     });
     revalidatePath("/task", "layout");
     return { success: true };
@@ -272,11 +301,15 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
 
-  const result = await prisma.task.updateMany({
-    where: { id: taskId, status: "ACTIVE" },
-    data: { status: "COMPLETED", completedAt: new Date(), completedById: access.userId },
+  const result = await prisma.$transaction(async (tx) => {
+    const updateResult = await tx.task.updateMany({
+      where: { id: taskId, status: "ACTIVE" },
+      data: { status: "COMPLETED", completedAt: new Date(), completedById: access.userId },
+    });
+    if (updateResult.count > 0) await touchOwnTaskReadState(tx, taskId, access.userId);
+    return updateResult.count;
   });
-  if (result.count === 0) return { success: false, error: "TASK_NOT_ACTIVE" };
+  if (result === 0) return { success: false, error: "TASK_NOT_ACTIVE" };
 
   revalidatePath("/task", "layout");
   return { success: true };
@@ -287,15 +320,19 @@ export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
 
-  const result = await prisma.task.updateMany({
-    where: { id: taskId, status: "COMPLETED" },
-    // Cleared rather than retained: the audit trail of what happened lives
-    // in the step timeline, and keeping a stale completedAt/completedById
-    // on an Active task would misleadingly suggest it is still completed
-    // (see this phase's spec, Part D.13).
-    data: { status: "ACTIVE", completedAt: null, completedById: null },
+  const result = await prisma.$transaction(async (tx) => {
+    const updateResult = await tx.task.updateMany({
+      where: { id: taskId, status: "COMPLETED" },
+      // Cleared rather than retained: the audit trail of what happened lives
+      // in the step timeline, and keeping a stale completedAt/completedById
+      // on an Active task would misleadingly suggest it is still completed
+      // (see this phase's spec, Part D.13).
+      data: { status: "ACTIVE", completedAt: null, completedById: null },
+    });
+    if (updateResult.count > 0) await touchOwnTaskReadState(tx, taskId, access.userId);
+    return updateResult.count;
   });
-  if (result.count === 0) return { success: false, error: "TASK_NOT_COMPLETED" };
+  if (result === 0) return { success: false, error: "TASK_NOT_COMPLETED" };
 
   revalidatePath("/task", "layout");
   return { success: true };

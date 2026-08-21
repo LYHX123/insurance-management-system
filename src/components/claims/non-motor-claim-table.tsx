@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
+import { UnreadDot } from "@/components/ui/unread-dot";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -127,7 +128,8 @@ export function NonMotorClaimTable({
         c.contactPhone.toLowerCase().includes(term) ||
         c.insurer.toLowerCase().includes(term) ||
         c.participantNames.some((n) => n.toLowerCase().includes(term)) ||
-        coverTypeLabel[c.insuranceType].toLowerCase().includes(term);
+        coverTypeLabel[c.insuranceType].toLowerCase().includes(term) ||
+        (c.injuredName?.toLowerCase().includes(term) ?? false);
       const matchesCustomer = customerFilter === "ALL" || c.customerName === customerFilter;
       const matchesInsurer = insurerFilter === "ALL" || c.insurer === insurerFilter;
       const matchesType = typeFilter === "ALL" || c.insuranceType === typeFilter;
@@ -271,12 +273,13 @@ export function NonMotorClaimTable({
       </div>
 
       <TableWrap scroll>
-        <Table className="min-w-[1150px]">
+        <Table className="min-w-[1290px]">
           <thead>
             <tr>
               <th>{t.claims.reportedTime}</th>
               <th>{t.claims.customer}</th>
               <th>{t.claims.insuranceType}</th>
+              <th>{t.claims.injuredName}</th>
               <th>{t.claims.insurer}</th>
               <th>{t.claims.progress}</th>
               <th>{t.claims.lastUpdated}</th>
@@ -285,14 +288,20 @@ export function NonMotorClaimTable({
             </tr>
           </thead>
           <tbody>
-            {pageRows.length === 0 && <TableEmpty colSpan={8}>{t.claims.noClaimsFound}</TableEmpty>}
+            {pageRows.length === 0 && <TableEmpty colSpan={9}>{t.claims.noClaimsFound}</TableEmpty>}
             {pageRows.map((c) => {
               const isClosed = c.status === "CLOSED";
               return (
                 <tr key={c.id} className={isClosed ? "opacity-60" : ""}>
                   <td className="text-zinc-500">{dateFormatter.format(new Date(c.reportedAt))}</td>
-                  <td className={isClosed ? "text-zinc-500" : "font-medium text-zinc-800"}>{c.customerName}</td>
+                  <td className={isClosed ? "text-zinc-500" : "font-medium text-zinc-800"}>
+                    <span className="flex items-center gap-1.5">
+                      <UnreadDot show={c.isUnread} />
+                      {c.customerName}
+                    </span>
+                  </td>
                   <td className="text-zinc-500">{coverTypeLabel[c.insuranceType]}</td>
+                  <td className="text-zinc-500">{c.insuranceType === "WIBA" ? (c.injuredName || "—") : "—"}</td>
                   <td className="text-zinc-500">{c.insurer}</td>
                   <td>
                     <Badge tone={NON_MOTOR_CLAIM_PROGRESS_TONE[c.progress]}>{progressLabel[c.progress]}</Badge>

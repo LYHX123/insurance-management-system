@@ -8,6 +8,9 @@ export type TaskListItem = {
   createdByName: string;
   createdAt: string;
   participantNames: string[];
+  // Task User-Level Unread Indicator — see src/lib/task/readState.ts. Always
+  // computed server-side for the current viewer; the client only renders it.
+  isUnread: boolean;
 };
 
 export type TaskParticipantRow = {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getUnreadMotorClaimIds, getUnreadNonMotorClaimIds } from "@/lib/claims/readState";
 import type {
   MotorClaimRow,
   MotorClaimDetail,
@@ -84,6 +85,7 @@ export async function getMotorClaims(userId: string, customerId?: string): Promi
     for (const p of c.participants) userIds.add(p.userId);
   }
   const nameById = await resolveUserNames(userIds);
+  const unreadIds = await getUnreadMotorClaimIds(userId, claims.map((c) => ({ id: c.id, updatedAt: c.updatedAt })));
 
   return claims.map((c) => ({
     id: c.id,
@@ -107,6 +109,7 @@ export async function getMotorClaims(userId: string, customerId?: string): Promi
     closedByName: c.closedById ? (nameById.get(c.closedById) ?? "—") : null,
     closedAt: c.closedAt?.toISOString() ?? null,
     participantNames: c.participants.map((p) => nameById.get(p.userId) ?? "—"),
+    isUnread: unreadIds.has(c.id),
   }));
 }
 
@@ -133,6 +136,7 @@ export async function getNonMotorClaims(userId: string, customerId?: string): Pr
     for (const p of c.participants) userIds.add(p.userId);
   }
   const nameById = await resolveUserNames(userIds);
+  const unreadIds = await getUnreadNonMotorClaimIds(userId, claims.map((c) => ({ id: c.id, updatedAt: c.updatedAt })));
 
   return claims.map((c) => ({
     id: c.id,
@@ -146,6 +150,7 @@ export async function getNonMotorClaims(userId: string, customerId?: string): Pr
     contactPhone: c.contactPhone,
     insurer: c.insurer,
     insuranceType: c.insuranceType,
+    injuredName: c.injuredName,
     progress: c.progress,
     status: c.status,
     createdById: c.createdById,
@@ -155,6 +160,7 @@ export async function getNonMotorClaims(userId: string, customerId?: string): Pr
     closedByName: c.closedById ? (nameById.get(c.closedById) ?? "—") : null,
     closedAt: c.closedAt?.toISOString() ?? null,
     participantNames: c.participants.map((p) => nameById.get(p.userId) ?? "—"),
+    isUnread: unreadIds.has(c.id),
   }));
 }
 
@@ -307,6 +313,7 @@ export async function getNonMotorClaimDetailForDisplay(claimId: string): Promise
     contactPhone: claim.contactPhone,
     insurer: claim.insurer,
     insuranceType: claim.insuranceType,
+    injuredName: claim.injuredName,
     progress: claim.progress,
     status: claim.status,
     policyRecordId: claim.policyRecordId,

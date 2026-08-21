@@ -213,6 +213,12 @@ export function NonMotorClaimDetailView({
             <dt className="text-secondary text-sm">{t.claims.insuranceType}</dt>
             <dd className="font-medium text-zinc-800">{coverTypeLabel[claim.insuranceType]}</dd>
           </div>
+          {(claim.insuranceType === "WIBA" || claim.injuredName) && (
+            <div>
+              <dt className="text-secondary text-sm">{t.claims.injuredName}</dt>
+              <dd className="font-medium text-zinc-800">{claim.injuredName ?? "—"}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-secondary text-sm">{t.claims.linkedPolicy}</dt>
             <dd className="font-medium text-zinc-800">

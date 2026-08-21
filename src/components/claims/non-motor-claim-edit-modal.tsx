@@ -32,6 +32,8 @@ const ERROR_KEY: Record<string, string> = {
   INSURER_REQUIRED: "insurerRequired",
   INSURER_TOO_LONG: "genericError",
   INSURANCE_TYPE_INVALID: "insuranceTypeInvalid",
+  INJURED_NAME_REQUIRED: "injuredNameRequired",
+  INJURED_NAME_TOO_LONG: "genericError",
   PROGRESS_INVALID: "progressInvalid",
   UPDATE_FAILED: "updateFailed",
   POLICY_NOT_FOUND: "policyNotFound",
@@ -73,6 +75,14 @@ export function NonMotorClaimEditModal({
   const [contactPhone, setContactPhone] = useState(claim.contactPhone);
   const [insurer, setInsurer] = useState(claim.insurer);
   const [insuranceType, setInsuranceType] = useState<NonMotorCoverType>(claim.insuranceType);
+  // WIBA-only — pre-filled from the existing Claim (a historical WIBA
+  // Claim saved before this field existed simply pre-fills as "", which
+  // opens fine and is enforced by the same WIBA-required validation on
+  // save as any other edit). Preserved (never force-cleared) across
+  // switching Insurance Type away from and back to WIBA within this same
+  // modal session — see non-motor-claim-form-modal.tsx's identical state
+  // doc comment.
+  const [injuredName, setInjuredName] = useState(claim.injuredName ?? "");
   const [progress, setProgress] = useState<NonMotorClaimProgressValue>(claim.progress);
   const [policyRecordId, setPolicyRecordId] = useState(claim.policyRecordId ?? "");
   const [policyOptionList, setPolicyOptionList] = useState<ClaimPolicyOption[]>(policyOptions);
@@ -142,6 +152,7 @@ export function NonMotorClaimEditModal({
     if (!contactName.trim()) return setError(t.claims.contactNameRequired);
     if (!contactPhone.trim()) return setError(t.claims.contactPhoneRequired);
     if (!insurer.trim()) return setError(t.claims.insurerRequired);
+    if (insuranceType === "WIBA" && !injuredName.trim()) return setError(t.claims.injuredNameRequired);
 
     setIsSubmitting(true);
     const result = await updateNonMotorClaimAction(claim.id, {
@@ -152,6 +163,9 @@ export function NonMotorClaimEditModal({
       contactPhone,
       insurer,
       insuranceType,
+      // Only ever sent for WIBA — see this component's injuredName state
+      // doc comment.
+      injuredName: insuranceType === "WIBA" ? injuredName : null,
       progress,
       policyRecordId: policyRecordId || null,
     });
@@ -222,6 +236,19 @@ export function NonMotorClaimEditModal({
             </Select>
           </FormField>
         </div>
+
+        {insuranceType === "WIBA" && (
+          <div className="form-grid">
+            <FormField label={t.claims.injuredName}>
+              <Input
+                value={injuredName}
+                onChange={(e) => setInjuredName(e.target.value)}
+                placeholder={t.claims.injuredNamePlaceholder}
+                maxLength={200}
+              />
+            </FormField>
+          </div>
+        )}
 
         <div className="form-grid">
           <ClaimPolicyLinkField value={policyRecordId} onChange={setPolicyRecordId} options={policyOptionList} disabled={!customerId} />

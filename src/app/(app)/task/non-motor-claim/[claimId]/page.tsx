@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/permissions";
 import { checkNonMotorClaimAccess } from "@/lib/claims/access";
 import { getNonMotorClaimDetailForDisplay, getActiveClaimCustomers } from "@/lib/claims/queries";
+import { markNonMotorClaimViewed } from "@/lib/claims/readState";
 import { getDistinctInsurers } from "@/lib/claims/insurers";
 import { getNonMotorPolicyLinkOptions } from "@/lib/claims/policyLink";
 import { buildNonMotorClaimDropboxViewModel } from "@/lib/integrations/dropbox/nonMotorClaimPathViewModel";
@@ -17,6 +18,10 @@ export default async function NonMotorClaimDetailPage({ params }: { params: Prom
   if (access.kind === "not-found") notFound();
 
   const session = await auth();
+
+  // Viewing this Claim's detail page IS what marks it read — same rule as
+  // Task (see this phase's spec, Part B5/B7).
+  await markNonMotorClaimViewed(access.userId, claimId);
 
   const [detail, customers, insurers, activeUsers, dropbox] = await Promise.all([
     getNonMotorClaimDetailForDisplay(claimId),

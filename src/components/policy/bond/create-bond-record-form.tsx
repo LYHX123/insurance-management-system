@@ -10,11 +10,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { createBondRecordAction } from "@/app/(app)/policy/bond/actions";
 import { BOND_TYPES } from "@/lib/policy/bondTypes";
+import { buildCustomerSearchOptions } from "@/lib/customers/searchOptions";
 import type { CustomerOption, BondType } from "@/components/policy/types";
 
 // Passed only when this form is reached via the quotation detail page's
@@ -96,6 +98,8 @@ export function CreateBondRecordForm({
     () => customers.find((c) => c.id === customerId)?.projects ?? [],
     [customers, customerId]
   );
+
+  const customerSearchOptions = useMemo(() => buildCustomerSearchOptions(customers), [customers]);
 
   const handleBondTypeChange = (value: string) => {
     setBondType(value);
@@ -192,21 +196,17 @@ export function CreateBondRecordForm({
             <Input type="date" value={processingDate} onChange={(e) => setProcessingDate(e.target.value)} required />
           </FormField>
           <FormField label={t.policy.customer}>
-            <Select
+            <SearchableSelect
               value={customerId}
-              onChange={(e) => {
-                setCustomerId(e.target.value);
+              onChange={(id) => {
+                setCustomerId(id);
                 setProjectId("");
               }}
+              options={customerSearchOptions}
+              placeholder={t.policy.selectCustomer}
+              noResultsLabel={t.policy.customerSearchNoResults}
               required
-            >
-              <option value="">{t.policy.selectCustomer}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.customerNumber})
-                </option>
-              ))}
-            </Select>
+            />
           </FormField>
 
           {/* Row 2 */}

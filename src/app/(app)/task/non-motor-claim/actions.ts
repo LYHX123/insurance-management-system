@@ -17,6 +17,13 @@ type ActionResult<T = object> = ({ success: true } & T) | { success: false; erro
 const CONTACT_MAX_LENGTH = 200;
 const INSURER_MAX_LENGTH = 200;
 const CONTENT_MAX_LENGTH = 4000;
+const INJURED_NAME_MAX_LENGTH = 200;
+
+// The single insuranceType value that requires Injured Name — see
+// NonMotorClaim.injuredName's schema comment. Sourced from the existing
+// NonMotorCoverType enum (never a hardcoded/duplicated string literal
+// elsewhere), so this stays correct even if the enum's values change.
+const WIBA_INSURANCE_TYPE: NonMotorCoverType = "WIBA";
 
 async function requireTaskPermission() {
   const session = await auth();
@@ -26,6 +33,17 @@ async function requireTaskPermission() {
 
 function touchNonMotorClaim(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], claimId: string) {
   return tx.nonMotorClaim.update({ where: { id: claimId }, data: {} });
+}
+
+// Claim User-Level Unread Indicator — mirrors touchOwnMotorClaimReadState in
+// src/app/(app)/task/motor-claim/actions.ts exactly (see that file's doc
+// comment).
+function touchOwnNonMotorClaimReadState(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], nonMotorClaimId: string, userId: string) {
+  return tx.nonMotorClaimReadState.upsert({
+    where: { nonMotorClaimId_userId: { nonMotorClaimId, userId } },
+    create: { nonMotorClaimId, userId, lastViewedAt: new Date() },
+    update: { lastViewedAt: new Date() },
+  });
 }
 
 async function validateProjectForCustomer(
@@ -68,6 +86,10 @@ export type NonMotorClaimInput = {
   contactPhone: string;
   insurer: string;
   insuranceType: string;
+  // WIBA-only — see NonMotorClaim.injuredName's schema comment. Ignored
+  // (never persisted) for every other insuranceType, regardless of what
+  // the client sends.
+  injuredName?: string | null;
   progress: string;
   policyRecordId?: string | null;
 };
@@ -79,6 +101,7 @@ type ValidatedNonMotorClaim = {
   contactPhone: string;
   insurer: string;
   insuranceType: NonMotorCoverType;
+  injuredName: string | null;
   progress: NonMotorClaimProgressValue;
 };
 
@@ -107,9 +130,22 @@ function validateInput(input: NonMotorClaimInput): { error: string } | { ok: tru
   if (!isNonMotorCoverType(input.insuranceType)) return { error: "INSURANCE_TYPE_INVALID" };
   if (!isNonMotorClaimProgress(input.progress)) return { error: "PROGRESS_INVALID" };
 
+  // WIBA Injured Name — required (and trimmed) only for WIBA; silently
+  // discarded (never persisted) for every other insuranceType so a stray
+  // client-sent value from a since-switched-away form field can never leak
+  // into the database (see NonMotorClaim.injuredName's schema comment).
+  const isWiba = input.insuranceType === WIBA_INSURANCE_TYPE;
+  let injuredName: string | null = null;
+  if (isWiba) {
+    const trimmed = input.injuredName?.trim() ?? "";
+    if (!trimmed) return { error: "INJURED_NAME_REQUIRED" };
+    if (trimmed.length > INJURED_NAME_MAX_LENGTH) return { error: "INJURED_NAME_TOO_LONG" };
+    injuredName = trimmed;
+  }
+
   return {
     ok: true,
-    data: { reportedAt, customerId: input.customerId, contactName, contactPhone, insurer, insuranceType: input.insuranceType, progress: input.progress },
+    data: { reportedAt, customerId: input.customerId, contactName, contactPhone, insurer, insuranceType: input.insuranceType, injuredName, progress: input.progress },
   };
 }
 
@@ -158,6 +194,7 @@ export async function createNonMotorClaimAction(
           contactPhone: validated.data.contactPhone,
           insurer: validated.data.insurer,
           insuranceType: validated.data.insuranceType,
+          injuredName: validated.data.injuredName,
           progress: validated.data.progress,
           policyRecordId: policyResult.policyRecordId,
           createdById: session.user.id,
@@ -174,6 +211,7 @@ export async function createNonMotorClaimAction(
           createdById: session.user.id,
         },
       });
+      await touchOwnNonMotorClaimReadState(tx, created.id, session.user.id);
       return created;
     });
 
@@ -235,6 +273,7 @@ export async function updateNonMotorClaimAction(id: string, input: NonMotorClaim
           contactPhone: validated.data.contactPhone,
           insurer: validated.data.insurer,
           insuranceType: validated.data.insuranceType,
+          injuredName: validated.data.injuredName,
           progress: validated.data.progress,
           policyRecordId: policyResult.policyRecordId,
           updatedById: access.userId,
@@ -249,6 +288,7 @@ export async function updateNonMotorClaimAction(id: string, input: NonMotorClaim
           },
         });
       }
+      await touchOwnNonMotorClaimReadState(tx, id, access.userId);
     });
     revalidatePath("/task/non-motor-claim");
     return { success: true };
@@ -293,6 +333,7 @@ export async function updateNonMotorClaimParticipantsAction(claimId: string, par
       }
       await tx.nonMotorClaimUpdate.create({ data: { nonMotorClaimId: claimId, content: "Participants updated.", createdById: access.userId } });
       await touchNonMotorClaim(tx, claimId);
+      await touchOwnNonMotorClaimReadState(tx, claimId, access.userId);
     });
     revalidatePath("/task/non-motor-claim");
     return { success: true };
@@ -320,6 +361,7 @@ export async function addNonMotorClaimUpdateAction(claimId: string, content: str
     const entry = await prisma.$transaction(async (tx) => {
       const created = await tx.nonMotorClaimUpdate.create({ data: { nonMotorClaimId: claimId, content: trimmed, createdById: access.userId } });
       await touchNonMotorClaim(tx, claimId);
+      await touchOwnNonMotorClaimReadState(tx, claimId, access.userId);
       return created;
     });
     revalidatePath("/task/non-motor-claim");
@@ -352,6 +394,7 @@ export async function editNonMotorClaimUpdateAction(updateId: string, content: s
     await prisma.$transaction(async (tx) => {
       await tx.nonMotorClaimUpdate.update({ where: { id: updateId }, data: { content: trimmed, editedAt: new Date() } });
       await touchNonMotorClaim(tx, entry.nonMotorClaimId);
+      await touchOwnNonMotorClaimReadState(tx, entry.nonMotorClaimId, access.userId);
     });
     revalidatePath("/task/non-motor-claim");
     return { success: true };
@@ -384,7 +427,10 @@ export async function deleteNonMotorClaimUpdateAction(updateId: string): Promise
         where: { id: updateId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: access.userId },
       });
-      if (result.count > 0) await touchNonMotorClaim(tx, entry.nonMotorClaimId);
+      if (result.count > 0) {
+        await touchNonMotorClaim(tx, entry.nonMotorClaimId);
+        await touchOwnNonMotorClaimReadState(tx, entry.nonMotorClaimId, access.userId);
+      }
     });
     revalidatePath("/task/non-motor-claim");
     return { success: true };
@@ -412,6 +458,7 @@ export async function closeNonMotorClaimAction(id: string): Promise<ActionResult
     });
     if (updateResult.count === 1) {
       await tx.nonMotorClaimUpdate.create({ data: { nonMotorClaimId: id, content: "Claim closed.", createdById: access.userId } });
+      await touchOwnNonMotorClaimReadState(tx, id, access.userId);
     }
     return updateResult.count;
   });
@@ -433,6 +480,7 @@ export async function reopenNonMotorClaimAction(id: string): Promise<ActionResul
     });
     if (updateResult.count === 1) {
       await tx.nonMotorClaimUpdate.create({ data: { nonMotorClaimId: id, content: "Claim reopened.", createdById: access.userId } });
+      await touchOwnNonMotorClaimReadState(tx, id, access.userId);
     }
     return updateResult.count;
   });

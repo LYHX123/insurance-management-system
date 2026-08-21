@@ -10,11 +10,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { createWorkPermitRecordAction } from "@/app/(app)/policy/work-permit/actions";
 import { WORK_PERMIT_TYPES } from "@/lib/policy/workPermitTypes";
+import { buildCustomerSearchOptions } from "@/lib/customers/searchOptions";
 import type { CustomerOption, WorkPermitType } from "@/components/policy/types";
 
 // See work-permit/new/page.tsx's comment — no quotation data source exists
@@ -89,6 +91,8 @@ export function CreateWorkPermitRecordForm({
     () => customers.find((c) => c.id === customerId)?.projects ?? [],
     [customers, customerId]
   );
+
+  const customerSearchOptions = useMemo(() => buildCustomerSearchOptions(customers), [customers]);
 
   const handlePermitTypeChange = (value: string) => {
     setPermitType(value);
@@ -182,21 +186,17 @@ export function CreateWorkPermitRecordForm({
             <Input type="date" value={processingDate} onChange={(e) => setProcessingDate(e.target.value)} required />
           </FormField>
           <FormField label={t.policy.customer}>
-            <Select
+            <SearchableSelect
               value={customerId}
-              onChange={(e) => {
-                setCustomerId(e.target.value);
+              onChange={(id) => {
+                setCustomerId(id);
                 setProjectId("");
               }}
+              options={customerSearchOptions}
+              placeholder={t.policy.selectCustomer}
+              noResultsLabel={t.policy.customerSearchNoResults}
               required
-            >
-              <option value="">{t.policy.selectCustomer}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.customerNumber})
-                </option>
-              ))}
-            </Select>
+            />
           </FormField>
 
           {/* Row 2 */}

@@ -45,6 +45,7 @@ export default async function NewNonMotorRecordPage({
       id: true,
       companyName: true,
       customerNumber: true,
+      shortName: true,
       projects: { select: { id: true, projectName: true }, orderBy: { projectName: "asc" } },
     },
   });

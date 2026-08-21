@@ -26,6 +26,10 @@ const nonMotorClaimParticipantFindManyMock = vi.fn();
 const nonMotorClaimParticipantDeleteManyMock = vi.fn();
 const nonMotorClaimParticipantCreateManyMock = vi.fn();
 const userFindManyMock = vi.fn();
+// Claim User-Level Unread Indicator — every mutation also touches the
+// acting user's own NonMotorClaimReadState row (see
+// touchOwnNonMotorClaimReadState in ../actions.ts).
+const nonMotorClaimReadStateUpsertMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -52,6 +56,7 @@ vi.mock("@/lib/prisma", () => ({
           deleteMany: (...args: unknown[]) => nonMotorClaimParticipantDeleteManyMock(...args),
           createMany: (...args: unknown[]) => nonMotorClaimParticipantCreateManyMock(...args),
         },
+        nonMotorClaimReadState: { upsert: (...args: unknown[]) => nonMotorClaimReadStateUpsertMock(...args) },
       }),
   },
 }));
@@ -95,6 +100,7 @@ beforeEach(() => {
   nonMotorClaimParticipantFindManyMock.mockResolvedValue([{ userId: "creator-1" }, { userId: "participant-1" }]);
   nonMotorClaimParticipantDeleteManyMock.mockResolvedValue({ count: 1 });
   nonMotorClaimParticipantCreateManyMock.mockResolvedValue({ count: 1 });
+  nonMotorClaimReadStateUpsertMock.mockResolvedValue({});
   userFindManyMock.mockResolvedValue([{ id: "helper-1" }]);
 });
 

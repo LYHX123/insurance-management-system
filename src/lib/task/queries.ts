@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { TaskCategory, TaskStatus } from "@/generated/prisma/enums";
+import { getUnreadTaskIds } from "@/lib/task/readState";
 
 export type TaskListItem = {
   id: string;
@@ -8,6 +9,10 @@ export type TaskListItem = {
   createdByName: string;
   createdAt: string;
   participantNames: string[];
+  // Task User-Level Unread Indicator — computed server-side per (user,
+  // Task) pair (see src/lib/task/readState.ts), never a stored flag on Task
+  // itself (see this phase's spec, Part B: "不能用一个全局 task.isUnread").
+  isUnread: boolean;
 };
 
 const USER_SELECT = { id: true, fullName: true, username: true, status: true, role: true } as const;
@@ -30,6 +35,7 @@ export async function getVisibleTasksForCategory(userId: string, category: TaskC
     status: true,
     createdById: true,
     createdAt: true,
+    updatedAt: true,
     participants: { select: { userId: true } },
   } as const;
 
@@ -57,6 +63,8 @@ export async function getVisibleTasksForCategory(userId: string, category: TaskC
     : [];
   const nameById = new Map(users.map((u) => [u.id, u.fullName || u.username]));
 
+  const unreadTaskIds = await getUnreadTaskIds(userId, tasks.map((t) => ({ id: t.id, updatedAt: t.updatedAt })));
+
   return tasks.map((t) => ({
     id: t.id,
     title: t.title,
@@ -67,6 +75,7 @@ export async function getVisibleTasksForCategory(userId: string, category: TaskC
     // this phase's spec, Part G.24: "Search by ... Participant name, if
     // practical") without a separate round-trip per task.
     participantNames: t.participants.map((p) => nameById.get(p.userId) ?? "—"),
+    isUnread: unreadTaskIds.has(t.id),
   }));
 }
 

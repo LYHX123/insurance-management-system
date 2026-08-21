@@ -49,6 +49,11 @@ export type CustomerOption = {
   id: string;
   companyName: string;
   customerNumber: string;
+  // Optional (not selected by every existing query site — e.g. the Policy
+  // detail/edit pages' customer list) so this stays additive: only the
+  // Policy create forms' searchable Customer selector needs it, everything
+  // else that already builds a CustomerOption[] is unaffected.
+  shortName?: string | null;
   projects: { id: string; projectName: string }[];
 };
 

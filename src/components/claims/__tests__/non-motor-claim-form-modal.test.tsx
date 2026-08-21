@@ -178,6 +178,9 @@ describe("NonMotorClaimFormModal — Customer SearchableSelect", () => {
 
     const insuranceTypeSelect = selectByOptionText("Select Insurance Type");
     fireEvent.change(insuranceTypeSelect, { target: { value: "WIBA" } });
+    // WIBA now requires Injured Name — see the "WIBA Injured Name" describe
+    // block below for that field's own dedicated coverage.
+    fireEvent.change(screen.getByPlaceholderText("Enter injured name"), { target: { value: "John Kamau" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -187,5 +190,86 @@ describe("NonMotorClaimFormModal — Customer SearchableSelect", () => {
     expect(payload.contactName).toBe("A Main Contact");
     expect(payload.contactPhone).toBe("0700111111");
     expect(payload.insuranceType).toBe("WIBA");
+  });
+});
+
+// WIBA Injured Name — see NonMotorClaim.injuredName's schema comment.
+describe("NonMotorClaimFormModal — WIBA Injured Name", () => {
+  function selectInsuranceType(value: string) {
+    const select = selectByOptionText("Select Insurance Type");
+    fireEvent.change(select, { target: { value } });
+  }
+
+  function fillRequiredFieldsExceptInjuredName() {
+    pickCustomer("jiang", "China Jiangxi International Kenya Limited (CUST-0001)");
+    fireEvent.change(screen.getByPlaceholderText("Select Insurer"), { target: { value: "Jubilee" } });
+  }
+
+  it("Case: Injured Name is hidden for a non-WIBA insurance type", () => {
+    renderModal();
+    selectInsuranceType("PUBLIC_LIABILITY");
+    expect(screen.queryByPlaceholderText("Enter injured name")).not.toBeInTheDocument();
+  });
+
+  it("Case: Injured Name appears once Insurance Type is set to WIBA", () => {
+    renderModal();
+    selectInsuranceType("WIBA");
+    expect(screen.getByPlaceholderText("Enter injured name")).toBeInTheDocument();
+  });
+
+  it("Case 2/3: WIBA claim blocks Save with a client-side error when Injured Name is blank or whitespace-only", async () => {
+    renderModal();
+    fillRequiredFieldsExceptInjuredName();
+    selectInsuranceType("WIBA");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Injured Name is required for WIBA claims.")).toBeInTheDocument();
+    expect(createNonMotorClaimActionMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("Enter injured name"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Injured Name is required for WIBA claims.")).toBeInTheDocument();
+    expect(createNonMotorClaimActionMock).not.toHaveBeenCalled();
+  });
+
+  it("Case 1: a filled-in Injured Name flows through to the create action for a WIBA claim", async () => {
+    renderModal();
+    fillRequiredFieldsExceptInjuredName();
+    selectInsuranceType("WIBA");
+    fireEvent.change(screen.getByPlaceholderText("Enter injured name"), { target: { value: "John Kamau" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNonMotorClaimActionMock).toHaveBeenCalledTimes(1));
+    expect(createNonMotorClaimActionMock.mock.calls[0][0].injuredName).toBe("John Kamau");
+  });
+
+  it("Case 4: a non-WIBA claim never requires Injured Name and submits injuredName = null", async () => {
+    renderModal();
+    fillRequiredFieldsExceptInjuredName();
+    selectInsuranceType("PUBLIC_LIABILITY");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNonMotorClaimActionMock).toHaveBeenCalledTimes(1));
+    expect(createNonMotorClaimActionMock.mock.calls[0][0].injuredName).toBeNull();
+  });
+
+  it("switching from WIBA to another type never leaks the typed Injured Name into the saved payload, and switching back re-shows the field consistently", async () => {
+    renderModal();
+    fillRequiredFieldsExceptInjuredName();
+    selectInsuranceType("WIBA");
+    fireEvent.change(screen.getByPlaceholderText("Enter injured name"), { target: { value: "John Kamau" } });
+
+    selectInsuranceType("PUBLIC_LIABILITY");
+    expect(screen.queryByPlaceholderText("Enter injured name")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNonMotorClaimActionMock).toHaveBeenCalledTimes(1));
+    expect(createNonMotorClaimActionMock.mock.calls[0][0].injuredName).toBeNull();
+
+    // Switching back to WIBA re-shows the field — the previously typed value
+    // is preserved in this component's local state (never force-cleared),
+    // but is only ever saved when insuranceType is WIBA at submit time.
+    selectInsuranceType("WIBA");
+    expect(screen.getByPlaceholderText("Enter injured name")).toHaveValue("John Kamau");
   });
 });

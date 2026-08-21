@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isTaskCategorySlug, SLUG_TO_CATEGORY } from "@/lib/task/category";
 import { getVisibleTasksForCategory, getTaskDetailForDisplay } from "@/lib/task/queries";
 import { checkTaskAccess } from "@/lib/task/access";
+import { markTaskViewed } from "@/lib/task/readState";
 import { TaskWorkspace } from "@/components/task/task-workspace";
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ categorySlug: string; taskId: string }> }) {
@@ -27,6 +28,12 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ cat
   if (access.kind === "not-found") notFound();
 
   const category = SLUG_TO_CATEGORY[categorySlug];
+
+  // Viewing this Task IS what marks it read (this phase's spec, Part B5 —
+  // no separate "Mark as read" action) — done before the list below is
+  // fetched so the just-opened Task's own red dot is already gone in this
+  // same response, not one navigation later.
+  await markTaskViewed(access.userId, taskId);
 
   const [tasks, activeUsers, detail] = await Promise.all([
     getVisibleTasksForCategory(access.userId, category),

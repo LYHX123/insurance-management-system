@@ -29,6 +29,10 @@ const taskParticipantDeleteManyMock = vi.fn();
 const taskParticipantCreateManyMock = vi.fn();
 const userFindManyMock = vi.fn();
 const taskStepCreateMock = vi.fn();
+// Task User-Level Unread Indicator — every mutation also touches the acting
+// user's own TaskReadState row (see touchOwnTaskReadState in ../actions.ts);
+// the mocked `tx` must expose it too or every action above throws.
+const taskReadStateUpsertMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -46,12 +50,16 @@ vi.mock("@/lib/prisma", () => ({
     },
     $transaction: async (cb: (tx: unknown) => unknown) =>
       cb({
-        task: { update: (...args: unknown[]) => taskUpdateMock(...args) },
+        task: {
+          update: (...args: unknown[]) => taskUpdateMock(...args),
+          updateMany: (...args: unknown[]) => taskUpdateManyMock(...args),
+        },
         taskParticipant: {
           deleteMany: (...args: unknown[]) => taskParticipantDeleteManyMock(...args),
           createMany: (...args: unknown[]) => taskParticipantCreateManyMock(...args),
         },
         taskStep: { create: (...args: unknown[]) => taskStepCreateMock(...args) },
+        taskReadState: { upsert: (...args: unknown[]) => taskReadStateUpsertMock(...args) },
       }),
   },
 }));
@@ -93,6 +101,7 @@ beforeEach(() => {
   taskParticipantCreateManyMock.mockResolvedValue({ count: 1 });
   userFindManyMock.mockResolvedValue([{ id: "helper-1" }]);
   taskStepCreateMock.mockResolvedValue({ id: "step-1" });
+  taskReadStateUpsertMock.mockResolvedValue({});
 });
 
 describe("Case 1/2 — completeTaskAction", () => {

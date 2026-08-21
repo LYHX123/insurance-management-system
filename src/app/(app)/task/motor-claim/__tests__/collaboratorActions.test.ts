@@ -30,6 +30,10 @@ const motorClaimParticipantFindManyMock = vi.fn();
 const motorClaimParticipantDeleteManyMock = vi.fn();
 const motorClaimParticipantCreateManyMock = vi.fn();
 const userFindManyMock = vi.fn();
+// Claim User-Level Unread Indicator — every mutation also touches the
+// acting user's own MotorClaimReadState row (see
+// touchOwnMotorClaimReadState in ../actions.ts).
+const motorClaimReadStateUpsertMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -53,6 +57,7 @@ vi.mock("@/lib/prisma", () => ({
           deleteMany: (...args: unknown[]) => motorClaimParticipantDeleteManyMock(...args),
           createMany: (...args: unknown[]) => motorClaimParticipantCreateManyMock(...args),
         },
+        motorClaimReadState: { upsert: (...args: unknown[]) => motorClaimReadStateUpsertMock(...args) },
       }),
   },
 }));
@@ -98,6 +103,7 @@ beforeEach(() => {
   motorClaimParticipantDeleteManyMock.mockResolvedValue({ count: 1 });
   motorClaimParticipantCreateManyMock.mockResolvedValue({ count: 1 });
   userFindManyMock.mockResolvedValue([{ id: "helper-1" }]);
+  motorClaimReadStateUpsertMock.mockResolvedValue({});
 });
 
 describe("updateMotorClaimAction — a Participant can advance the Claim's existing progress states", () => {

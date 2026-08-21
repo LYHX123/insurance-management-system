@@ -2779,6 +2779,7 @@ model Task {
 
   participants TaskParticipant[]
   steps        TaskStep[]
+  readStates   TaskReadState[]
 
   @@index([category])
   @@index([status])
@@ -2960,6 +2961,7 @@ model MotorClaim {
   participants MotorClaimParticipant[]
   updates      MotorClaimUpdate[]
   documents    MotorClaimDocument[]
+  readStates   MotorClaimReadState[]
 
   // Dropbox Integration Phase 7 — only present for a Claim that has no
   // (or more than one — not applicable here, a Claim links to at most one
@@ -2998,6 +3000,16 @@ model NonMotorClaim {
   progress      NonMotorClaimProgress @default(DOCUMENT_PREPARATION)
   status        ClaimStatus           @default(OPEN)
 
+  // WIBA Injured Name — optional, nullable for backward compatibility with
+  // every pre-existing row (Motor Claim and every other Non-Motor
+  // insurance type never populate this). Kept on the shared NonMotorClaim
+  // row rather than a dedicated WIBA-only table: no per-insuranceType
+  // child table exists anywhere in this schema, and the app layer alone
+  // enforces "required when insuranceType is WIBA" (see validateInput in
+  // src/app/(app)/task/non-motor-claim/actions.ts) — the column itself
+  // stays plain nullable text for every other insuranceType.
+  injuredName String?
+
   // Dropbox Integration Phase 7, Part 2 — see MotorClaim.policyRecordId's
   // doc comment; identical reasoning/shape.
   policyRecordId String?
@@ -3017,6 +3029,7 @@ model NonMotorClaim {
   participants NonMotorClaimParticipant[]
   updates      NonMotorClaimUpdate[]
   documents    NonMotorClaimDocument[]
+  readStates   NonMotorClaimReadState[]
 
   dropboxBusinessFile NonMotorClaimDropboxBusinessFile?
 
@@ -3121,6 +3134,64 @@ model NonMotorClaimUpdate {
   @@index([nonMotorClaimId])
   @@index([createdAt])
   @@index([deletedAt])
+}
+
+// =============================================================================
+// Task/Claim User-Level Unread Indicator — per-(user, entity) "last viewed"
+// marker, one dedicated model per entity type (Task/MotorClaim/
+// NonMotorClaim), matching this schema's existing, explicitly stated
+// convention of dedicated child tables over a shared polymorphic
+// entityType+entityId table (see MotorClaimParticipant's doc comment above).
+// Unread is never stored as a boolean on the parent row — it's always
+// computed at read time as `parent.updatedAt > readState.lastViewedAt` (or
+// "no row yet" — see the read-state query helpers in src/lib/task/readState.ts
+// / src/lib/claims/readState.ts for the exact rule, including the
+// baseline-on-first-visit rule that keeps this migration from making every
+// pre-existing Task/Claim appear unread for every user on first deploy), so
+// LI YONG's and YANG YUEHUA's read status for the same Task are always
+// independent rows, never one shared flag.
+// =============================================================================
+
+model TaskReadState {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  // Plain unenforced id string, same convention as TaskParticipant.userId —
+  // never FK'd to User so a read marker is never lost/blocked by a later
+  // User edit; a deactivated user's stale read state is simply inert (they
+  // can no longer sign in to see it either way).
+  userId String
+
+  lastViewedAt DateTime @default(now())
+
+  // At most one read-state row per (Task, user) — enforced at the database
+  // level, not just in the upsert call site.
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+model MotorClaimReadState {
+  id           String     @id @default(cuid())
+  motorClaimId String
+  motorClaim   MotorClaim @relation(fields: [motorClaimId], references: [id], onDelete: Cascade)
+  userId       String
+
+  lastViewedAt DateTime @default(now())
+
+  @@unique([motorClaimId, userId])
+  @@index([userId])
+}
+
+model NonMotorClaimReadState {
+  id              String        @id @default(cuid())
+  nonMotorClaimId String
+  nonMotorClaim   NonMotorClaim @relation(fields: [nonMotorClaimId], references: [id], onDelete: Cascade)
+  userId          String
+
+  lastViewedAt DateTime @default(now())
+
+  @@unique([nonMotorClaimId, userId])
+  @@index([userId])
 }
 
 // =============================================================================

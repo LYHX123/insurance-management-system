@@ -64,6 +64,22 @@ describe("Non-Motor Claim table — URL-persisted list state", () => {
   });
 });
 
+describe("Non-Motor Claim table — WIBA Injured Name column + search", () => {
+  it("Case 7: adds an INJURED NAME column showing the name for WIBA and — otherwise", () => {
+    expect(tableSource).toMatch(/<th>\{t\.claims\.injuredName\}<\/th>/);
+    expect(tableSource).toMatch(/\{c\.insuranceType === "WIBA" \? \(c\.injuredName \|\| "—"\) : "—"\}/);
+  });
+
+  it("TableEmpty colSpan was bumped to match the new column count", () => {
+    expect(tableSource).toMatch(/<TableEmpty colSpan=\{9\}>/);
+    expect(tableSource).not.toMatch(/<TableEmpty colSpan=\{8\}>/);
+  });
+
+  it("Case 8/9: injuredName is included in the case-insensitive client-side search", () => {
+    expect(tableSource).toMatch(/c\.injuredName\?\.toLowerCase\(\)\.includes\(term\) \?\? false/);
+  });
+});
+
 describe("Non-Motor Claim detail — delete preserves the filtered return URL", () => {
   it("resolves the same smart-back href used by SmartBackLink instead of a hardcoded bare URL", () => {
     expect(detailSource).toMatch(/import\s*\{\s*useSmartBackHref\s*\}\s*from\s*"@\/lib\/navigation\/useSmartBack"/);
@@ -80,5 +96,24 @@ describe("Non-Motor Claim detail — delete preserves the filtered return URL", 
     );
     expect(deleteBranch).toMatch(/router\.replace/);
     expect(deleteBranch).not.toMatch(/router\.push/);
+  });
+});
+
+describe("Non-Motor Claim detail — WIBA Injured Name", () => {
+  it("Case 5/6: shown when insuranceType is WIBA OR injuredName has a value, never for a plain Non-Motor Claim with no value", () => {
+    expect(detailSource).toMatch(/\{\(claim\.insuranceType === "WIBA" \|\| claim\.injuredName\) && \(/);
+  });
+
+  it("Case 6: null-safe rendering — a historical WIBA claim with injuredName = null renders a dash instead of crashing", () => {
+    expect(detailSource).toMatch(/\{claim\.injuredName \?\? "—"\}/);
+  });
+});
+
+describe("Case 11: Motor Claim detail/table are completely unaffected by the WIBA Injured Name feature", () => {
+  it("motor-claim-table.tsx and motor-claim-detail.tsx have no injuredName references", () => {
+    const motorTableSource = readFileSync(join(__dirname, "..", "motor-claim-table.tsx"), "utf8");
+    const motorDetailSource = readFileSync(join(__dirname, "..", "motor-claim-detail.tsx"), "utf8");
+    expect(motorTableSource).not.toMatch(/injuredName/);
+    expect(motorDetailSource).not.toMatch(/injuredName/);
   });
 });

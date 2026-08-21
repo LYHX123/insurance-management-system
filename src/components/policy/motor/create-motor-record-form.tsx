@@ -10,12 +10,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { createMotorRecordAction } from "@/app/(app)/policy/motor/actions";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
+import { buildCustomerSearchOptions } from "@/lib/customers/searchOptions";
 import type { CustomerOption } from "@/components/policy/types";
 
 // Phase 2A: passed only when this form is reached via the quotation detail
@@ -103,6 +105,12 @@ export function CreateMotorRecordForm({
     () => customers.find((c) => c.id === customerId)?.projects ?? [],
     [customers, customerId]
   );
+
+  // Searchable by Company Name, Short Name, and Customer Number — same
+  // shape/convention as CreateQuotationCaseForm's/the Claim forms' own
+  // customerSearchOptions, factored into a shared builder (see this phase's
+  // spec, Part A.1).
+  const customerSearchOptions = useMemo(() => buildCustomerSearchOptions(customers), [customers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,21 +201,17 @@ export function CreateMotorRecordForm({
             <Input type="date" value={processingDate} onChange={(e) => setProcessingDate(e.target.value)} required />
           </FormField>
           <FormField label={t.policy.customer}>
-            <Select
+            <SearchableSelect
               value={customerId}
-              onChange={(e) => {
-                setCustomerId(e.target.value);
+              onChange={(id) => {
+                setCustomerId(id);
                 setProjectId("");
               }}
+              options={customerSearchOptions}
+              placeholder={t.policy.selectCustomer}
+              noResultsLabel={t.policy.customerSearchNoResults}
               required
-            >
-              <option value="">{t.policy.selectCustomer}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.customerNumber})
-                </option>
-              ))}
-            </Select>
+            />
           </FormField>
 
           {/* Row 2 */}

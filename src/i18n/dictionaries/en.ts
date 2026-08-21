@@ -1011,6 +1011,7 @@ const en = {
     projectOptional: "Project (optional)",
     noProject: "No project",
     selectCustomer: "Select Customer",
+    customerSearchNoResults: "No customers found",
     typeOfCover: "Type of Cover",
     selectTypeOfCover: "Select Type of Cover",
     registrationNumber: "Registration Number",
@@ -1794,6 +1795,11 @@ const en = {
     selectClaimNature: "Select Claim Nature",
     insuranceType: "Insurance Type",
     selectInsuranceType: "Select Insurance Type",
+    // WIBA-only field — shown/required only when Non-Motor Claim
+    // insuranceType is WIBA (see NonMotorClaim.injuredName's schema
+    // comment).
+    injuredName: "Injured Name",
+    injuredNamePlaceholder: "Enter injured name",
     progress: "Progress",
 
     open: "Open",
@@ -1849,6 +1855,7 @@ const en = {
     numberPlateRequired: "Please enter the number plate.",
     claimNatureInvalid: "Please select a valid claim nature.",
     insuranceTypeInvalid: "Please select a valid insurance type.",
+    injuredNameRequired: "Injured Name is required for WIBA claims.",
     progressInvalid: "Please select a valid progress.",
     claimNotFound: "This claim could not be found.",
     claimNotOpen: "This claim is not open.",

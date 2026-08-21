@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
+import { UnreadDot } from "@/components/ui/unread-dot";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -284,7 +285,12 @@ export function MotorClaimTable({
               return (
                 <tr key={c.id} className={isClosed ? "opacity-60" : ""}>
                   <td className="text-zinc-500">{dateFormatter.format(new Date(c.reportedAt))}</td>
-                  <td className={isClosed ? "text-zinc-500" : "font-medium text-zinc-800"}>{c.customerName}</td>
+                  <td className={isClosed ? "text-zinc-500" : "font-medium text-zinc-800"}>
+                    <span className="flex items-center gap-1.5">
+                      <UnreadDot show={c.isUnread} />
+                      {c.customerName}
+                    </span>
+                  </td>
                   <td className="text-zinc-500">{c.numberPlate}</td>
                   <td className="text-zinc-500">{c.insurer}</td>
                   <td>

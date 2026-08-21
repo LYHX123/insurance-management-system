@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
+import { UnreadDot } from "@/components/ui/unread-dot";
 import { NewTaskModal } from "@/components/task/new-task-modal";
 import { TaskDetailPanel } from "@/components/task/task-detail-panel";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
@@ -210,7 +211,8 @@ export function TaskWorkspace({
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className={`text-sm font-medium break-words ${task.status === "COMPLETED" ? "text-zinc-600" : "text-zinc-800"}`}>
+                        <span className={`flex min-w-0 items-center gap-1.5 text-sm font-medium break-words ${task.status === "COMPLETED" ? "text-zinc-600" : "text-zinc-800"}`}>
+                          <UnreadDot show={task.isUnread} />
                           {task.title}
                         </span>
                         <Badge tone={STATUS_TONE[task.status]} className="shrink-0">
