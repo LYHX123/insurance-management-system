@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users2,
@@ -15,6 +16,8 @@ import {
 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { hasMenuAccess, type AuthzUser } from "@/lib/permissions";
+import { UnreadDot } from "@/components/ui/unread-dot";
+import { subscribeToTaskActivity } from "@/lib/task/liveNotificationsClient";
 
 const menuItems = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
@@ -28,13 +31,58 @@ const menuItems = [
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
 
-export function Sidebar({ user }: { user: AuthzUser }) {
+export function Sidebar({ user, hasUnreadTask: serverHasUnreadTask = false }: { user: AuthzUser; hasUnreadTask?: boolean }) {
   const pathname = usePathname();
   const { t } = useLocale();
 
   const visibleMenuItems = menuItems.filter(({ key }) =>
     hasMenuAccess(user, key)
   );
+
+  // Phase 8 — starts from the server-rendered value (authoritative on every
+  // real navigation, since (app)/layout recomputes it per request) and is
+  // then kept live in between navigations by re-querying
+  // /api/task-notifications/unread-status whenever the SSE bus reports a
+  // signal (see src/components/task/task-realtime-notifications.tsx and
+  // src/lib/task/liveNotificationsClient.ts) — the user's stated preference
+  // for this phase (Part G): a dedicated endpoint + client state, not
+  // router.refresh().
+  //
+  // Re-synced from a genuinely new server-rendered value by adjusting state
+  // during render (React's own recommended pattern for this — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  // — rather than a setState-in-effect, which the project's lint config
+  // treats as an error).
+  const [hasUnreadTask, setHasUnreadTask] = useState(serverHasUnreadTask);
+  const [prevServerHasUnreadTask, setPrevServerHasUnreadTask] = useState(serverHasUnreadTask);
+  if (serverHasUnreadTask !== prevServerHasUnreadTask) {
+    setPrevServerHasUnreadTask(serverHasUnreadTask);
+    setHasUnreadTask(serverHasUnreadTask);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      fetch("/api/task-notifications/unread-status", { cache: "no-store" })
+        .then((res) => (res.ok ? (res.json() as Promise<{ hasUnread: boolean }>) : null))
+        .then((data) => {
+          if (!cancelled && data && typeof data.hasUnread === "boolean") setHasUnreadTask(data.hasUnread);
+        })
+        .catch(() => {
+          // Best-effort — a failed refresh just leaves the sidebar dot at
+          // its last known value; the next real navigation still gets the
+          // authoritative server-rendered one regardless.
+        });
+    };
+    // Any signal — a specific Task/Claim's activity, or a bare resync — can
+    // change the OR across Daily Task/Motor Claim/Non-Motor Claim, so every
+    // signal kind triggers the same lightweight re-check here.
+    const unsubscribe = subscribeToTaskActivity(refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col bg-emerald-900 text-emerald-50">
@@ -62,7 +110,10 @@ export function Sidebar({ user }: { user: AuthzUser }) {
               }`}
             >
               <Icon size={18} strokeWidth={2} />
-              {t.sidebar[key]}
+              <span className="inline-flex items-center gap-1.5">
+                {t.sidebar[key]}
+                {key === "task" && <UnreadDot show={hasUnreadTask} />}
+              </span>
             </Link>
           );
         })}

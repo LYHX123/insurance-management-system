@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, UserCog, XCircle, RotateCcw, Trash2 } from "lucide-react";
@@ -27,6 +27,8 @@ import { ClaimParticipantsModal } from "@/components/claims/claim-participants-m
 import { ClaimTimelinePanel } from "@/components/claims/claim-timeline-panel";
 import { ClaimDropboxSection } from "@/components/claims/claim-dropbox-section";
 import { ClaimDocumentsSection } from "@/components/claims/claim-documents-section";
+import { ExternalUpdateBanner } from "@/components/task/external-update-banner";
+import { subscribeToTaskActivity } from "@/lib/task/liveNotificationsClient";
 import {
   uploadNonMotorClaimDocumentAction,
   deleteNonMotorClaimDocumentAction,
@@ -131,6 +133,25 @@ export function NonMotorClaimDetailView({
   const [confirmKind, setConfirmKind] = useState<ConfirmKind | null>(null);
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
+  // Real-time unread notification (this session) — see
+  // src/components/task/task-detail-panel.tsx's identical pattern.
+  const [showExternalUpdate, setShowExternalUpdate] = useState(false);
+  const [ackedVersion, setAckedVersion] = useState(`${claim.id}:${claim.updatedAt}`);
+  const currentVersion = `${claim.id}:${claim.updatedAt}`;
+  if (currentVersion !== ackedVersion) {
+    setAckedVersion(currentVersion);
+    setShowExternalUpdate(false);
+  }
+  useEffect(() => {
+    const unsubscribe = subscribeToTaskActivity((signal) => {
+      if (signal.kind !== "activity" || signal.scope !== "NON_MOTOR_CLAIM") return;
+      if (signal.entityId !== claim.id) return;
+      if (signal.actorUserId === currentUserId) return;
+      setShowExternalUpdate(true);
+    });
+    return unsubscribe;
+  }, [claim.id, currentUserId]);
+
   const confirmClaimAction = async () => {
     if (!confirmKind) return;
     setIsConfirmBusy(true);
@@ -172,6 +193,17 @@ export function NonMotorClaimDetailView({
   return (
     <div className="flex flex-col gap-section">
       <SmartBackLink fallbackHref="/task/non-motor-claim" label={t.task.tabNonMotorClaim} />
+
+      {showExternalUpdate && (
+        <ExternalUpdateBanner
+          message={t.claims.updatedByOtherParticipant}
+          refreshLabel={t.task.refresh}
+          onRefresh={() => {
+            setShowExternalUpdate(false);
+            router.refresh();
+          }}
+        />
+      )}
 
       <PageHeader
         title={

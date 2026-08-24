@@ -24,10 +24,34 @@ import { prisma } from "@/lib/prisma";
 export async function ensureTaskReadStateBaseline(userId: string, visibleTaskIds: string[]): Promise<void> {
   if (visibleTaskIds.length === 0) return;
 
-  const alreadyInitialized = await prisma.taskReadState.findFirst({ where: { userId }, select: { id: true } });
-  if (alreadyInitialized) return;
+  // Audit finding (2026-08-24, "new Participant gets no red dot" follow-up):
+  // the old gate here was "does this user have ANY TaskReadState row
+  // anywhere" — which could not tell a genuinely brand-new user's very
+  // first-ever Task assignment apart from an established user's first
+  // login after this feature shipped. Concretely: an established,
+  // long-silent Participant of older Tasks who is ALSO freshly added to a
+  // brand-new Task in the same session would already have exactly one row
+  // (the new Task's explicit unread row — see initializeUnreadTaskReadStates
+  // below) by the time their list next loads, tripping the old "has 1 row"
+  // gate and making baseline skip ALL of their other, genuinely historical
+  // Tasks — flooding those unread instead of catching them up.
+  //
+  // Fixed by dropping the global gate entirely: only ever backfill a Task
+  // that is STILL missing a row after checking the exact visible set passed
+  // in here. Correctness no longer depends on the user's row count anywhere
+  // else — a Task a user was just freshly assigned to already has its own
+  // explicit row (written synchronously in the same mutation transaction,
+  // before this function can ever run for it), so it is never "missing"
+  // here and can never be re-covered as caught-up.
+  const existing = await prisma.taskReadState.findMany({
+    where: { userId, taskId: { in: visibleTaskIds } },
+    select: { taskId: true },
+  });
+  const existingIds = new Set(existing.map((r) => r.taskId));
+  const missingTaskIds = visibleTaskIds.filter((id) => !existingIds.has(id));
+  if (missingTaskIds.length === 0) return;
 
-  const tasks = await prisma.task.findMany({ where: { id: { in: visibleTaskIds } }, select: { id: true, updatedAt: true } });
+  const tasks = await prisma.task.findMany({ where: { id: { in: missingTaskIds } }, select: { id: true, updatedAt: true } });
   if (tasks.length === 0) return;
 
   try {
@@ -42,6 +66,36 @@ export async function ensureTaskReadStateBaseline(userId: string, visibleTaskIds
     // extra safety net.
     console.error("Failed to establish Task read-state baseline:", err);
   }
+}
+
+// Task User-Level Unread Indicator — explicit initialization for a
+// Participant newly added to a Task (at creation, or via
+// updateParticipantsAction), so their very first list load treats this
+// Task as unread instead of risking being silently caught up by
+// ensureTaskReadStateBaseline above. `skipDuplicates` makes this a pure
+// no-op for anyone who already has a row for this Task (e.g. a
+// removed-then-re-added Participant) — their existing row, whatever its
+// value, is left untouched; it will already correctly read as unread once
+// the caller's own parent-touch bumps Task.updatedAt past it.
+//
+// Never relies on two independent `new Date()` calls landing at different
+// milliseconds to establish `lastViewedAt < parent.updatedAt` — the value
+// here is derived directly from the Task's own just-written `updatedAt`
+// (passed in by the caller from the same transaction), offset a full
+// second earlier, so the inequality holds deterministically regardless of
+// clock or timestamp precision.
+export async function initializeUnreadTaskReadStates(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  taskId: string,
+  parentUpdatedAt: Date,
+  newParticipantUserIds: string[]
+): Promise<void> {
+  if (newParticipantUserIds.length === 0) return;
+  const guaranteedUnreadAt = new Date(parentUpdatedAt.getTime() - 1000);
+  await tx.taskReadState.createMany({
+    data: newParticipantUserIds.map((userId) => ({ taskId, userId, lastViewedAt: guaranteedUnreadAt })),
+    skipDuplicates: true,
+  });
 }
 
 // Callers pass the exact Task rows they're about to show the user

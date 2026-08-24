@@ -33,6 +33,10 @@ const taskStepCreateMock = vi.fn();
 // user's own TaskReadState row (see touchOwnTaskReadState in ../actions.ts);
 // the mocked `tx` must expose it too or every action above throws.
 const taskReadStateUpsertMock = vi.fn();
+// updateParticipantsAction also explicitly initializes newly-added
+// Participants' read state (see initializeUnreadTaskReadStates in
+// src/lib/task/readState.ts) via a createMany on the same delegate.
+const taskReadStateCreateManyMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -55,11 +59,15 @@ vi.mock("@/lib/prisma", () => ({
           updateMany: (...args: unknown[]) => taskUpdateManyMock(...args),
         },
         taskParticipant: {
+          findMany: (...args: unknown[]) => taskParticipantFindManyMock(...args),
           deleteMany: (...args: unknown[]) => taskParticipantDeleteManyMock(...args),
           createMany: (...args: unknown[]) => taskParticipantCreateManyMock(...args),
         },
         taskStep: { create: (...args: unknown[]) => taskStepCreateMock(...args) },
-        taskReadState: { upsert: (...args: unknown[]) => taskReadStateUpsertMock(...args) },
+        taskReadState: {
+          upsert: (...args: unknown[]) => taskReadStateUpsertMock(...args),
+          createMany: (...args: unknown[]) => taskReadStateCreateManyMock(...args),
+        },
       }),
   },
 }));
@@ -95,13 +103,14 @@ const creatorAccess = () => okAccess({ isCreator: true, isAdmin: false, canEdit:
 beforeEach(() => {
   vi.clearAllMocks();
   taskUpdateManyMock.mockResolvedValue({ count: 1 });
-  taskUpdateMock.mockResolvedValue({});
+  taskUpdateMock.mockResolvedValue({ updatedAt: new Date() });
   taskParticipantFindManyMock.mockResolvedValue([{ userId: "creator-1" }, { userId: "participant-1" }]);
   taskParticipantDeleteManyMock.mockResolvedValue({ count: 1 });
   taskParticipantCreateManyMock.mockResolvedValue({ count: 1 });
   userFindManyMock.mockResolvedValue([{ id: "helper-1" }]);
   taskStepCreateMock.mockResolvedValue({ id: "step-1" });
   taskReadStateUpsertMock.mockResolvedValue({});
+  taskReadStateCreateManyMock.mockResolvedValue({ count: 0 });
 });
 
 describe("Case 1/2 — completeTaskAction", () => {

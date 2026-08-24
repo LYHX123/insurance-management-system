@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canEdit } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { checkMotorClaimAccess } from "@/lib/claims/access";
 import { generateMotorClaimNumber } from "@/lib/claims/motorClaimNumber";
 import { isMotorClaimNature, isMotorClaimProgress, type MotorClaimNatureValue, type MotorClaimProgressValue } from "@/lib/claims/enums";
 import { MOTOR_PROGRESS_EN_LABEL } from "@/lib/claims/systemLabels";
 import { getMotorPolicyLinkOptions, validatePolicyLink } from "@/lib/claims/policyLink";
+import { initializeUnreadMotorClaimReadStates, getUnreadMotorClaimIds } from "@/lib/claims/readState";
+import { publishTaskActivityAfterMutation } from "@/lib/task/liveNotifications";
 import type { ClaimPolicyOption } from "@/components/claims/types";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
@@ -25,11 +27,14 @@ async function requireTaskPermission() {
 }
 
 function touchMotorClaim(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], claimId: string) {
-  // Same "empty update bumps @updatedAt" pattern as touchTask (see
-  // src/app/(app)/task/actions.ts) — makes MotorClaim.updatedAt reflect
-  // activity that lives in a different table (participants, timeline),
-  // which the list ordering depends on (see this phase's spec, Part F.20).
-  return tx.motorClaim.update({ where: { id: claimId }, data: {} });
+  // Audit finding (2026-08-24): an empty `data: {}` does NOT bump
+  // @updatedAt in this Prisma version/adapter — see touchTask's comment in
+  // src/app/(app)/task/actions.ts for the empirical confirmation. Passing
+  // `updatedAt` explicitly is the fix; still makes MotorClaim.updatedAt
+  // reflect activity that lives in a different table (participants,
+  // timeline), which the list ordering depends on (see this phase's spec,
+  // Part F.20).
+  return tx.motorClaim.update({ where: { id: claimId }, data: { updatedAt: new Date() } });
 }
 
 // Claim User-Level Unread Indicator, Part B2/B17 — mirrors
@@ -202,10 +207,18 @@ export async function createMotorClaimAction(
         },
       });
       await touchOwnMotorClaimReadState(tx, created.id, session.user.id);
+      // Same "being added to a new Claim is itself unread" rule as
+      // createTaskAction (see src/app/(app)/task/actions.ts and
+      // src/lib/claims/readState.ts's initializeUnreadMotorClaimReadStates).
+      const otherParticipantIds = participantUserIds.filter((id) => id !== session.user.id);
+      if (otherParticipantIds.length > 0) {
+        await initializeUnreadMotorClaimReadStates(tx, created.id, created.updatedAt, otherParticipantIds);
+      }
       return created;
     });
 
     revalidatePath("/task/motor-claim");
+    publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: claim.id, actorUserId: session.user.id, participantUserIds: participantUserIds });
     return { success: true, id: claim.id, claimNumber: claim.claimNumber };
   } catch (err) {
     console.error("Failed to create Motor Claim:", err);
@@ -258,7 +271,7 @@ export async function updateMotorClaimAction(id: string, input: MotorClaimInput)
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const participantIds = await prisma.$transaction(async (tx) => {
       await tx.motorClaim.update({
         where: { id },
         data: {
@@ -288,8 +301,11 @@ export async function updateMotorClaimAction(id: string, input: MotorClaimInput)
         });
       }
       await touchOwnMotorClaimReadState(tx, id, access.userId);
+      const participants = await tx.motorClaimParticipant.findMany({ where: { motorClaimId: id }, select: { userId: true } });
+      return participants.map((p) => p.userId);
     });
     revalidatePath("/task/motor-claim");
+    publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: id, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true };
   } catch (err) {
     console.error("Failed to update Motor Claim:", err);
@@ -332,10 +348,14 @@ export async function updateMotorClaimParticipantsAction(claimId: string, partic
         await tx.motorClaimParticipant.createMany({ data: toAdd.map((userId) => ({ motorClaimId: claimId, userId, addedById: access.userId })) });
       }
       await tx.motorClaimUpdate.create({ data: { motorClaimId: claimId, content: "Participants updated.", createdById: access.userId } });
-      await touchMotorClaim(tx, claimId);
+      const touchedClaim = await touchMotorClaim(tx, claimId);
       await touchOwnMotorClaimReadState(tx, claimId, access.userId);
+      if (toAdd.length > 0) {
+        await initializeUnreadMotorClaimReadStates(tx, claimId, touchedClaim.updatedAt, toAdd);
+      }
     });
     revalidatePath("/task/motor-claim");
+    publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: claimId, actorUserId: access.userId, participantUserIds: [...desiredIds] });
     return { success: true };
   } catch (err) {
     console.error("Failed to update Motor Claim participants:", err);
@@ -358,13 +378,15 @@ export async function addMotorClaimUpdateAction(claimId: string, content: string
   if (trimmed.length > CONTENT_MAX_LENGTH) return { success: false, error: "CONTENT_TOO_LONG" };
 
   try {
-    const entry = await prisma.$transaction(async (tx) => {
+    const { entry, participantIds } = await prisma.$transaction(async (tx) => {
       const created = await tx.motorClaimUpdate.create({ data: { motorClaimId: claimId, content: trimmed, createdById: access.userId } });
       await touchMotorClaim(tx, claimId);
       await touchOwnMotorClaimReadState(tx, claimId, access.userId);
-      return created;
+      const participants = await tx.motorClaimParticipant.findMany({ where: { motorClaimId: claimId }, select: { userId: true } });
+      return { entry: created, participantIds: participants.map((p) => p.userId) };
     });
     revalidatePath("/task/motor-claim");
+    publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: claimId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true, id: entry.id };
   } catch (err) {
     console.error("Failed to add Motor Claim update:", err);
@@ -391,12 +413,15 @@ export async function editMotorClaimUpdateAction(updateId: string, content: stri
   if (trimmed.length > CONTENT_MAX_LENGTH) return { success: false, error: "CONTENT_TOO_LONG" };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const participantIds = await prisma.$transaction(async (tx) => {
       await tx.motorClaimUpdate.update({ where: { id: updateId }, data: { content: trimmed, editedAt: new Date() } });
       await touchMotorClaim(tx, entry.motorClaimId);
       await touchOwnMotorClaimReadState(tx, entry.motorClaimId, access.userId);
+      const participants = await tx.motorClaimParticipant.findMany({ where: { motorClaimId: entry.motorClaimId }, select: { userId: true } });
+      return participants.map((p) => p.userId);
     });
     revalidatePath("/task/motor-claim");
+    publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: entry.motorClaimId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true };
   } catch (err) {
     console.error("Failed to edit Motor Claim update:", err);
@@ -422,17 +447,19 @@ export async function deleteMotorClaimUpdateAction(updateId: string): Promise<Ac
   if (visibleCount <= 1) return { success: false, error: "MIN_TIMELINE_REQUIRED" };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const participantIds = await prisma.$transaction(async (tx) => {
       const result = await tx.motorClaimUpdate.updateMany({
         where: { id: updateId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: access.userId },
       });
-      if (result.count > 0) {
-        await touchMotorClaim(tx, entry.motorClaimId);
-        await touchOwnMotorClaimReadState(tx, entry.motorClaimId, access.userId);
-      }
+      if (result.count === 0) return [];
+      await touchMotorClaim(tx, entry.motorClaimId);
+      await touchOwnMotorClaimReadState(tx, entry.motorClaimId, access.userId);
+      const participants = await tx.motorClaimParticipant.findMany({ where: { motorClaimId: entry.motorClaimId }, select: { userId: true } });
+      return participants.map((p) => p.userId);
     });
     revalidatePath("/task/motor-claim");
+    publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: entry.motorClaimId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true };
   } catch (err) {
     console.error("Failed to delete Motor Claim update:", err);
@@ -455,20 +482,21 @@ export async function closeMotorClaimAction(id: string): Promise<ActionResult> {
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
 
-  const result = await prisma.$transaction(async (tx) => {
+  const { count, participantIds } = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.motorClaim.updateMany({
       where: { id, deletedAt: null, status: "OPEN" },
       data: { status: "CLOSED", closedAt: new Date(), closedById: access.userId },
     });
-    if (updateResult.count === 1) {
-      await tx.motorClaimUpdate.create({ data: { motorClaimId: id, content: "Claim closed.", createdById: access.userId } });
-      await touchOwnMotorClaimReadState(tx, id, access.userId);
-    }
-    return updateResult.count;
+    if (updateResult.count !== 1) return { count: updateResult.count, participantIds: [] as string[] };
+    await tx.motorClaimUpdate.create({ data: { motorClaimId: id, content: "Claim closed.", createdById: access.userId } });
+    await touchOwnMotorClaimReadState(tx, id, access.userId);
+    const participants = await tx.motorClaimParticipant.findMany({ where: { motorClaimId: id }, select: { userId: true } });
+    return { count: updateResult.count, participantIds: participants.map((p) => p.userId) };
   });
-  if (result === 0) return { success: false, error: "CLAIM_NOT_OPEN" };
+  if (count === 0) return { success: false, error: "CLAIM_NOT_OPEN" };
 
   revalidatePath("/task/motor-claim");
+  publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: id, actorUserId: access.userId, participantUserIds: participantIds });
   return { success: true };
 }
 
@@ -477,20 +505,21 @@ export async function reopenMotorClaimAction(id: string): Promise<ActionResult> 
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
 
-  const result = await prisma.$transaction(async (tx) => {
+  const { count, participantIds } = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.motorClaim.updateMany({
       where: { id, deletedAt: null, status: "CLOSED" },
       data: { status: "OPEN", closedAt: null, closedById: null },
     });
-    if (updateResult.count === 1) {
-      await tx.motorClaimUpdate.create({ data: { motorClaimId: id, content: "Claim reopened.", createdById: access.userId } });
-      await touchOwnMotorClaimReadState(tx, id, access.userId);
-    }
-    return updateResult.count;
+    if (updateResult.count !== 1) return { count: updateResult.count, participantIds: [] as string[] };
+    await tx.motorClaimUpdate.create({ data: { motorClaimId: id, content: "Claim reopened.", createdById: access.userId } });
+    await touchOwnMotorClaimReadState(tx, id, access.userId);
+    const participants = await tx.motorClaimParticipant.findMany({ where: { motorClaimId: id }, select: { userId: true } });
+    return { count: updateResult.count, participantIds: participants.map((p) => p.userId) };
   });
-  if (result === 0) return { success: false, error: "CLAIM_NOT_CLOSED" };
+  if (count === 0) return { success: false, error: "CLAIM_NOT_CLOSED" };
 
   revalidatePath("/task/motor-claim");
+  publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: id, actorUserId: access.userId, participantUserIds: participantIds });
   return { success: true };
 }
 
@@ -502,6 +531,8 @@ export async function deleteMotorClaimAction(id: string): Promise<ActionResult> 
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "CLAIM_NOT_FOUND" };
   if (!access.canDelete) return { success: false, error: "FORBIDDEN" };
 
+  const participants = await prisma.motorClaimParticipant.findMany({ where: { motorClaimId: id }, select: { userId: true } });
+
   const result = await prisma.motorClaim.updateMany({
     where: { id, deletedAt: null },
     data: { deletedAt: new Date(), deletedById: access.userId },
@@ -509,5 +540,28 @@ export async function deleteMotorClaimAction(id: string): Promise<ActionResult> 
   if (result.count === 0) return { success: false, error: "ALREADY_DELETED" };
 
   revalidatePath("/task/motor-claim");
+  publishTaskActivityAfterMutation({ scope: "MOTOR_CLAIM", entityId: id, actorUserId: access.userId, participantUserIds: participants.map((p) => p.userId) });
   return { success: true };
+}
+
+// ============================================================================
+// Phase 8 — real-time row-level unread refresh
+// ============================================================================
+
+// See refreshTaskUnreadStatusAction in src/app/(app)/task/actions.ts for the
+// full rationale — identical shape, scoped to Motor Claim.
+export async function refreshMotorClaimUnreadStatusAction(claimIds: string[]): Promise<Record<string, boolean>> {
+  const session = await auth();
+  if (!session?.user || !hasPermission(session.user, "claim.motor") || claimIds.length === 0) return {};
+
+  const claims = await prisma.motorClaim.findMany({
+    where: { id: { in: claimIds }, deletedAt: null, participants: { some: { userId: session.user.id } } },
+    select: { id: true, updatedAt: true },
+  });
+  if (claims.length === 0) return {};
+
+  const unreadIds = await getUnreadMotorClaimIds(session.user.id, claims);
+  const result: Record<string, boolean> = {};
+  for (const c of claims) result[c.id] = unreadIds.has(c.id);
+  return result;
 }

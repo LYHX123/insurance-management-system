@@ -1760,6 +1760,13 @@ const en = {
     backToTasks: "Back to Tasks",
     inactiveAccount: "Inactive account",
 
+    // Phase 8 — real-time notice shown on a Task/Claim detail view the
+    // current user has open when another participant updates it; never
+    // auto-applied, only surfaced with a manual Refresh button (see this
+    // phase's spec, Part I).
+    updatedByOtherParticipant: "This task has been updated by another participant.",
+    refresh: "Refresh",
+
     confirmCompleteTitle: "Mark Task as Completed",
     confirmCompleteMessage: "Participants will no longer be able to add or edit actions until this task is reopened.",
     confirmReopenTitle: "Reopen Task",
@@ -1872,6 +1879,10 @@ const en = {
     confirmReopenMessage: "The claim will become open again and can be edited.",
     confirmDeleteTitle: "Delete Claim",
     confirmDeleteMessage: "This claim will be removed from the active list. This can only be undone by an administrator.",
+
+    // Phase 8 — same real-time notice as Task's updatedByOtherParticipant
+    // (see src/i18n/dictionaries/en.ts's task section), worded for a Claim.
+    updatedByOtherParticipant: "This claim has been updated by another participant.",
 
     // --- Phase 6C: Project ---
     project: "Project",

@@ -1725,6 +1725,9 @@ const zh: Dictionary = {
     backToTasks: "返回任务列表",
     inactiveAccount: "账号已停用",
 
+    updatedByOtherParticipant: "该任务已有其他参与人更新。",
+    refresh: "刷新",
+
     confirmCompleteTitle: "标记任务为已完成",
     confirmCompleteMessage: "任务重新开启前，参与人将无法添加或编辑行动。",
     confirmReopenTitle: "重新开启任务",
@@ -1834,6 +1837,8 @@ const zh: Dictionary = {
     confirmReopenMessage: "该索赔记录将重新变为未关闭状态，可以继续编辑。",
     confirmDeleteTitle: "删除索赔",
     confirmDeleteMessage: "该索赔记录将从当前列表中移除。此操作仅管理员可撤销。",
+
+    updatedByOtherParticipant: "该索赔已有其他参与人更新。",
 
     // --- Phase 6C：项目 ---
     project: "项目",

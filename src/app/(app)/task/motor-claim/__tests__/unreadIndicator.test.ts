@@ -182,7 +182,7 @@ describe("Case 17: Motor Claim update -> other participants unread, actor stays 
     expect((await getUnreadMotorClaimIds("user-b", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(false);
   });
 
-  it("updateMotorClaimParticipantsAction: acting participant stays read, other caught-up participants go unread", async () => {
+  it("updateMotorClaimParticipantsAction: acting participant stays read, other caught-up participants go unread, and the newly-added participant is unread immediately (2026-08-24 new-Participant fix)", async () => {
     const { markMotorClaimViewed, getUnreadMotorClaimIds } = await import("@/lib/claims/readState");
     const { updateMotorClaimParticipantsAction } = await import("../actions");
 
@@ -190,11 +190,40 @@ describe("Case 17: Motor Claim update -> other participants unread, actor stays 
     await markMotorClaimViewed("user-b", "claim-1");
 
     checkMotorClaimAccess.mockResolvedValue(okAccess({ userId: "user-b" }));
+    // helper-1 is brand new to this Claim (and has zero MotorClaimReadState
+    // rows anywhere) — before the fix, helper-1's very first
+    // getUnreadMotorClaimIds call below would trip
+    // ensureMotorClaimReadStateBaseline's old "has any row anywhere" gate
+    // and silently mark this Claim as already caught up instead of unread.
     const result = await updateMotorClaimParticipantsAction("claim-1", ["user-a", "user-b", "helper-1"]);
     expect(result).toEqual({ success: true });
 
     const claim = claims.get("claim-1")!;
     expect((await getUnreadMotorClaimIds("user-a", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(true);
     expect((await getUnreadMotorClaimIds("user-b", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(false);
+    expect((await getUnreadMotorClaimIds("helper-1", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(true);
+
+    await markMotorClaimViewed("helper-1", "claim-1");
+    expect((await getUnreadMotorClaimIds("helper-1", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(false);
+  });
+});
+
+describe("Motor Claim — initializeUnreadMotorClaimReadStates (the exact helper createMotorClaimAction calls for its other chosen Participants)", () => {
+  it("writes a deterministically-earlier-than-parent lastViewedAt for every given user, making the Claim unread for them but leaving an already-caught-up actor alone", async () => {
+    const { initializeUnreadMotorClaimReadStates, getUnreadMotorClaimIds, markMotorClaimViewed } = await import("@/lib/claims/readState");
+    const { prisma } = await import("@/lib/prisma");
+
+    // creator-1 is caught up (as touchOwnMotorClaimReadState would leave
+    // them right after createMotorClaimAction's own transaction).
+    await markMotorClaimViewed("creator-1", "claim-1");
+    const claim = claims.get("claim-1")!;
+
+    await prisma.$transaction((tx) =>
+      initializeUnreadMotorClaimReadStates(tx as never, "claim-1", claim.updatedAt, ["user-a", "helper-1"])
+    );
+
+    expect((await getUnreadMotorClaimIds("creator-1", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(false);
+    expect((await getUnreadMotorClaimIds("user-a", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(true);
+    expect((await getUnreadMotorClaimIds("helper-1", [{ id: "claim-1", updatedAt: claim.updatedAt }])).has("claim-1")).toBe(true);
   });
 });

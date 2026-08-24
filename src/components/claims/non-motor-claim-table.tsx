@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Plus, Eye, XCircle, RotateCcw, Trash2 } from "lucide-react";
@@ -16,7 +16,8 @@ import { UnreadDot } from "@/components/ui/unread-dot";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { closeNonMotorClaimAction, reopenNonMotorClaimAction, deleteNonMotorClaimAction } from "@/app/(app)/task/non-motor-claim/actions";
+import { closeNonMotorClaimAction, reopenNonMotorClaimAction, deleteNonMotorClaimAction, refreshNonMotorClaimUnreadStatusAction } from "@/app/(app)/task/non-motor-claim/actions";
+import { subscribeToTaskActivity } from "@/lib/task/liveNotificationsClient";
 import { NonMotorClaimFormModal } from "@/components/claims/non-motor-claim-form-modal";
 import { NON_MOTOR_CLAIM_PROGRESS_VALUES, NON_MOTOR_CLAIM_PROGRESS_TONE } from "@/lib/claims/enums";
 import { NON_MOTOR_COVER_TYPES } from "@/lib/policy/nonMotorCoverTypes";
@@ -86,6 +87,29 @@ export function NonMotorClaimTable({
   const [confirmAction, setConfirmAction] = useState<{ kind: ConfirmKind; claim: NonMotorClaimRow } | null>(null);
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
+  // Real-time unread notification (this session) — see
+  // src/components/claims/motor-claim-table.tsx's identical pattern.
+  const [claimItems, setClaimItems] = useState(claims);
+  const [prevClaims, setPrevClaims] = useState(claims);
+  if (claims !== prevClaims) {
+    setPrevClaims(claims);
+    setClaimItems(claims);
+  }
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTaskActivity((signal) => {
+      if (signal.kind === "activity" && signal.scope !== "NON_MOTOR_CLAIM") return;
+      const ids = claimItems.map((c) => c.id);
+      if (ids.length === 0) return;
+      refreshNonMotorClaimUnreadStatusAction(ids)
+        .then((statusMap) => {
+          setClaimItems((prev) => prev.map((c) => (c.id in statusMap ? { ...c, isUnread: statusMap[c.id] } : c)));
+        })
+        .catch(() => {});
+    });
+    return unsubscribe;
+  }, [claimItems]);
+
   const coverTypeLabel: Record<NonMotorCoverType, string> = useMemo(
     () => ({
       CONTRACTORS_ALL_RISKS: t.policy.coverContractorsAllRisks,
@@ -113,12 +137,12 @@ export function NonMotorClaimTable({
   };
   const statusLabel: Record<ClaimStatusValue, string> = { OPEN: t.claims.open, CLOSED: t.claims.closed };
 
-  const customerOptions = useMemo(() => Array.from(new Set(claims.map((c) => c.customerName))).sort(), [claims]);
-  const insurerOptions = useMemo(() => Array.from(new Set(claims.map((c) => c.insurer))).sort(), [claims]);
+  const customerOptions = useMemo(() => Array.from(new Set(claimItems.map((c) => c.customerName))).sort(), [claimItems]);
+  const insurerOptions = useMemo(() => Array.from(new Set(claimItems.map((c) => c.insurer))).sort(), [claimItems]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return claims.filter((c) => {
+    return claimItems.filter((c) => {
       const matchesTerm =
         !term ||
         c.claimNumber.toLowerCase().includes(term) ||
@@ -140,7 +164,7 @@ export function NonMotorClaimTable({
       const matchesTo = !dateTo || dateOnly <= dateTo;
       return matchesTerm && matchesCustomer && matchesInsurer && matchesType && matchesProgress && matchesStatus && matchesFrom && matchesTo;
     });
-  }, [claims, search, customerFilter, insurerFilter, typeFilter, progressFilter, statusFilter, dateFrom, dateTo, coverTypeLabel]);
+  }, [claimItems, search, customerFilter, insurerFilter, typeFilter, progressFilter, statusFilter, dateFrom, dateTo, coverTypeLabel]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);

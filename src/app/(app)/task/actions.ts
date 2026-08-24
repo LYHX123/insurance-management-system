@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canEdit } from "@/lib/permissions";
+import { canEdit, hasPermission } from "@/lib/permissions";
 import { checkTaskAccess } from "@/lib/task/access";
 import { isTaskCategorySlug, SLUG_TO_CATEGORY, type TaskCategorySlug } from "@/lib/task/category";
+import { initializeUnreadTaskReadStates, getUnreadTaskIds } from "@/lib/task/readState";
+import { publishTaskActivityAfterMutation } from "@/lib/task/liveNotifications";
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -13,13 +15,23 @@ const TITLE_MAX_LENGTH = 200;
 const CONTENT_MAX_LENGTH = 4000;
 
 function touchTask(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], taskId: string) {
-  // Prisma's @updatedAt bumps on every .update() call that touches the row,
-  // even with an empty data object — the simplest way to make Task.updatedAt
-  // (and therefore the visible list ordering) reflect step/participant
-  // activity that lives in a different table (see this phase's spec, Part
-  // G.23: "A Task receiving a new step should move toward the top of the
-  // ACTIVE list").
-  return tx.task.update({ where: { id: taskId }, data: {} });
+  // Audit finding (2026-08-24): an .update() call with a completely empty
+  // `data` object does NOT bump an @updatedAt field in this Prisma
+  // version/adapter (@prisma/adapter-pg) — confirmed empirically against a
+  // real Postgres instance (see
+  // src/lib/task/__tests__/readState.dualUser.integration.test.ts): Prisma
+  // only appends `updatedAt = now()` to the generated SQL's SET clause when
+  // `data` has at least one explicit key. An empty `data: {}` produces a
+  // no-op update with no SET clause at all, so Task.updatedAt silently
+  // never changed for any step/participant mutation — which was the actual
+  // root cause of the Task Unread red-dot never appearing in production
+  // (this function's old comment's assumption was wrong). Passing
+  // `updatedAt` explicitly forces the SET clause and is the fix, still
+  // making Task.updatedAt (and therefore the visible list ordering) reflect
+  // step/participant activity that lives in a different table (see this
+  // phase's spec, Part G.23: "A Task receiving a new step should move
+  // toward the top of the ACTIVE list").
+  return tx.task.update({ where: { id: taskId }, data: { updatedAt: new Date() } });
 }
 
 // Task User-Level Unread Indicator, Part B2 — every mutation below bumps
@@ -97,10 +109,28 @@ export async function createTaskAction(input: CreateTaskInput): Promise<ActionRe
       // this phase's spec, Part B2: their own creation must never leave
       // their own copy showing as unread.
       await touchOwnTaskReadState(tx, created.id, session.user.id);
+      // The other Participants chosen at creation time are being handed a
+      // brand-new Task — "being added to a new Task" is itself unread
+      // information (2026-08-24 spec), not something that should wait for
+      // a subsequent edit to show a red dot. Explicit, not left to
+      // ensureTaskReadStateBaseline's gap-fill (see that function's
+      // comment in src/lib/task/readState.ts for why relying on it here
+      // would silently mark these Participants as already caught up).
+      const otherParticipantIds = participantUserIds.filter((id) => id !== session.user.id);
+      if (otherParticipantIds.length > 0) {
+        await initializeUnreadTaskReadStates(tx, created.id, created.updatedAt, otherParticipantIds);
+      }
       return created;
     });
 
     revalidatePath("/task", "layout");
+    // Phase 8 — published only after the transaction above has actually
+    // committed (this phase's spec, Part E). Every other chosen Participant
+    // is being handed a brand-new Task, so this is exactly the "unread
+    // information" event they should be notified about; the creator
+    // themselves is excluded automatically (publishTaskActivityAfterMutation
+    // filters out actorUserId).
+    publishTaskActivityAfterMutation({ scope: "TASK", entityId: task.id, actorUserId: session.user.id, participantUserIds: participantUserIds });
     return { success: true, id: task.id, categorySlug: input.categorySlug };
   } catch (err) {
     console.error("Failed to create Task:", err);
@@ -130,11 +160,14 @@ export async function updateTaskTitleAction(taskId: string, title: string): Prom
   if (trimmed.length > TITLE_MAX_LENGTH) return { success: false, error: "TITLE_TOO_LONG" };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const participantIds = await prisma.$transaction(async (tx) => {
       await tx.task.update({ where: { id: taskId }, data: { title: trimmed } });
       await touchOwnTaskReadState(tx, taskId, access.userId);
+      const participants = await tx.taskParticipant.findMany({ where: { taskId }, select: { userId: true } });
+      return participants.map((p) => p.userId);
     });
     revalidatePath("/task", "layout");
+    publishTaskActivityAfterMutation({ scope: "TASK", entityId: taskId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true };
   } catch (err) {
     console.error("Failed to update Task title:", err);
@@ -184,10 +217,23 @@ export async function updateParticipantsAction(taskId: string, participantIds: s
           data: toAdd.map((userId) => ({ taskId, userId, addedById: access.userId })),
         });
       }
-      await touchTask(tx, taskId);
+      const touchedTask = await touchTask(tx, taskId);
       await touchOwnTaskReadState(tx, taskId, access.userId);
+      // Newly added Participants are being handed a Task for the first
+      // time — same "being added is itself unread" rule as
+      // createTaskAction above. Existing Participants (e.g. A in the
+      // spec's example) need no special handling here: touchTask already
+      // bumped Task.updatedAt past their own lastViewedAt, which is what
+      // makes them unread through the normal computation.
+      if (toAdd.length > 0) {
+        await initializeUnreadTaskReadStates(tx, taskId, touchedTask.updatedAt, toAdd);
+      }
     });
     revalidatePath("/task", "layout");
+    // desiredIds is already the final, post-mutation participant set
+    // (creator + submitted list, deduped) computed above — no extra query
+    // needed.
+    publishTaskActivityAfterMutation({ scope: "TASK", entityId: taskId, actorUserId: access.userId, participantUserIds: [...desiredIds] });
     return { success: true };
   } catch (err) {
     console.error("Failed to update Task participants:", err);
@@ -210,13 +256,15 @@ export async function addStepAction(taskId: string, content: string): Promise<Ac
   if (trimmed.length > CONTENT_MAX_LENGTH) return { success: false, error: "CONTENT_TOO_LONG" };
 
   try {
-    const step = await prisma.$transaction(async (tx) => {
+    const { step, participantIds } = await prisma.$transaction(async (tx) => {
       const created = await tx.taskStep.create({ data: { taskId, content: trimmed, createdById: access.userId } });
       await touchTask(tx, taskId);
       await touchOwnTaskReadState(tx, taskId, access.userId);
-      return created;
+      const participants = await tx.taskParticipant.findMany({ where: { taskId }, select: { userId: true } });
+      return { step: created, participantIds: participants.map((p) => p.userId) };
     });
     revalidatePath("/task", "layout");
+    publishTaskActivityAfterMutation({ scope: "TASK", entityId: taskId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true, id: step.id };
   } catch (err) {
     console.error("Failed to add Task step:", err);
@@ -239,15 +287,18 @@ export async function updateStepAction(stepId: string, content: string): Promise
   if (trimmed.length > CONTENT_MAX_LENGTH) return { success: false, error: "CONTENT_TOO_LONG" };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const participantIds = await prisma.$transaction(async (tx) => {
       // Preserves the original createdById/createdAt untouched — only
       // content and the edit markers change (see this phase's spec, Part
       // I.32).
       await tx.taskStep.update({ where: { id: stepId }, data: { content: trimmed, editedAt: new Date() } });
       await touchTask(tx, step.taskId);
       await touchOwnTaskReadState(tx, step.taskId, access.userId);
+      const participants = await tx.taskParticipant.findMany({ where: { taskId: step.taskId }, select: { userId: true } });
+      return participants.map((p) => p.userId);
     });
     revalidatePath("/task", "layout");
+    publishTaskActivityAfterMutation({ scope: "TASK", entityId: step.taskId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true };
   } catch (err) {
     console.error("Failed to update Task step:", err);
@@ -269,17 +320,19 @@ export async function deleteStepAction(stepId: string): Promise<ActionResult> {
   if (visibleCount <= 1) return { success: false, error: "MIN_STEP_REQUIRED" };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const participantIds = await prisma.$transaction(async (tx) => {
       const result = await tx.taskStep.updateMany({
         where: { id: stepId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: access.userId },
       });
-      if (result.count > 0) {
-        await touchTask(tx, step.taskId);
-        await touchOwnTaskReadState(tx, step.taskId, access.userId);
-      }
+      if (result.count === 0) return [];
+      await touchTask(tx, step.taskId);
+      await touchOwnTaskReadState(tx, step.taskId, access.userId);
+      const participants = await tx.taskParticipant.findMany({ where: { taskId: step.taskId }, select: { userId: true } });
+      return participants.map((p) => p.userId);
     });
     revalidatePath("/task", "layout");
+    publishTaskActivityAfterMutation({ scope: "TASK", entityId: step.taskId, actorUserId: access.userId, participantUserIds: participantIds });
     return { success: true };
   } catch (err) {
     console.error("Failed to delete Task step:", err);
@@ -301,17 +354,20 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
 
-  const result = await prisma.$transaction(async (tx) => {
+  const { count, participantIds } = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.task.updateMany({
       where: { id: taskId, status: "ACTIVE" },
       data: { status: "COMPLETED", completedAt: new Date(), completedById: access.userId },
     });
-    if (updateResult.count > 0) await touchOwnTaskReadState(tx, taskId, access.userId);
-    return updateResult.count;
+    if (updateResult.count === 0) return { count: 0, participantIds: [] as string[] };
+    await touchOwnTaskReadState(tx, taskId, access.userId);
+    const participants = await tx.taskParticipant.findMany({ where: { taskId }, select: { userId: true } });
+    return { count: updateResult.count, participantIds: participants.map((p) => p.userId) };
   });
-  if (result === 0) return { success: false, error: "TASK_NOT_ACTIVE" };
+  if (count === 0) return { success: false, error: "TASK_NOT_ACTIVE" };
 
   revalidatePath("/task", "layout");
+  publishTaskActivityAfterMutation({ scope: "TASK", entityId: taskId, actorUserId: access.userId, participantUserIds: participantIds });
   return { success: true };
 }
 
@@ -320,7 +376,7 @@ export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canEdit) return { success: false, error: "FORBIDDEN" };
 
-  const result = await prisma.$transaction(async (tx) => {
+  const { count, participantIds } = await prisma.$transaction(async (tx) => {
     const updateResult = await tx.task.updateMany({
       where: { id: taskId, status: "COMPLETED" },
       // Cleared rather than retained: the audit trail of what happened lives
@@ -329,12 +385,15 @@ export async function reopenTaskAction(taskId: string): Promise<ActionResult> {
       // (see this phase's spec, Part D.13).
       data: { status: "ACTIVE", completedAt: null, completedById: null },
     });
-    if (updateResult.count > 0) await touchOwnTaskReadState(tx, taskId, access.userId);
-    return updateResult.count;
+    if (updateResult.count === 0) return { count: 0, participantIds: [] as string[] };
+    await touchOwnTaskReadState(tx, taskId, access.userId);
+    const participants = await tx.taskParticipant.findMany({ where: { taskId }, select: { userId: true } });
+    return { count: updateResult.count, participantIds: participants.map((p) => p.userId) };
   });
-  if (result === 0) return { success: false, error: "TASK_NOT_COMPLETED" };
+  if (count === 0) return { success: false, error: "TASK_NOT_COMPLETED" };
 
   revalidatePath("/task", "layout");
+  publishTaskActivityAfterMutation({ scope: "TASK", entityId: taskId, actorUserId: access.userId, participantUserIds: participantIds });
   return { success: true };
 }
 
@@ -347,6 +406,15 @@ export async function deleteTaskAction(taskId: string): Promise<ActionResult> {
   if (access.kind !== "ok") return { success: false, error: access.kind === "no-module-access" ? "FORBIDDEN" : "TASK_NOT_FOUND" };
   if (!access.canDelete) return { success: false, error: "FORBIDDEN" };
 
+  // Fetched before the delete (not that it would matter — TaskParticipant
+  // rows are never touched by a Task delete, only Task.deletedAt) so a
+  // deleted Task's disappearance is still reflected for its former
+  // participants (their next unread re-check simply finds it no longer
+  // visible, which is itself a harmless correct outcome — see this phase's
+  // spec, Part E: SSE only ever tells a client "go re-check," never
+  // asserts the actual result).
+  const participants = await prisma.taskParticipant.findMany({ where: { taskId }, select: { userId: true } });
+
   const result = await prisma.task.updateMany({
     where: { id: taskId, deletedAt: null },
     data: { deletedAt: new Date(), deletedById: access.userId },
@@ -354,5 +422,44 @@ export async function deleteTaskAction(taskId: string): Promise<ActionResult> {
   if (result.count === 0) return { success: false, error: "ALREADY_DELETED" };
 
   revalidatePath("/task", "layout");
+  publishTaskActivityAfterMutation({
+    scope: "TASK",
+    entityId: taskId,
+    actorUserId: access.userId,
+    participantUserIds: participants.map((p) => p.userId),
+  });
   return { success: true };
+}
+
+// ============================================================================
+// Phase 8 — real-time row-level unread refresh
+// ============================================================================
+
+// Called by TaskWorkspace (client) after an SSE "task-unread-changed"
+// signal for scope TASK — re-derives isUnread for exactly the Task rows
+// currently rendered, via the same getUnreadTaskIds/ensureTaskReadStateBaseline
+// path the initial server render uses (this phase's spec, Part A5: no
+// second unread computation). Deliberately narrow: returns only an
+// id -> isUnread map, never Task content, so the caller can patch its
+// existing list state in place without losing scroll position, selection,
+// or re-fetching anything else (Part B: "优先做更细粒度的刷新").
+//
+// Re-scopes to the caller's own current participation server-side (never
+// trusts the client's id list as already-authorized) — a taskId the caller
+// is no longer a participant of (e.g. just removed) is silently absent from
+// the returned map rather than included with a guessed value.
+export async function refreshTaskUnreadStatusAction(taskIds: string[]): Promise<Record<string, boolean>> {
+  const session = await auth();
+  if (!session?.user || !hasPermission(session.user, "task.daily_task") || taskIds.length === 0) return {};
+
+  const tasks = await prisma.task.findMany({
+    where: { id: { in: taskIds }, deletedAt: null, participants: { some: { userId: session.user.id } } },
+    select: { id: true, updatedAt: true },
+  });
+  if (tasks.length === 0) return {};
+
+  const unreadIds = await getUnreadTaskIds(session.user.id, tasks);
+  const result: Record<string, boolean> = {};
+  for (const t of tasks) result[t.id] = unreadIds.has(t.id);
+  return result;
 }

@@ -31,6 +31,7 @@ const nonMotorClaimFindUniqueMock = vi.fn();
 const nonMotorClaimCreateMock = vi.fn();
 const nonMotorClaimUpdateMock = vi.fn();
 const nonMotorClaimParticipantCreateManyMock = vi.fn();
+const nonMotorClaimParticipantFindManyMock = vi.fn();
 const nonMotorClaimUpdateCreateMock = vi.fn();
 const nonMotorClaimReadStateUpsertMock = vi.fn();
 const userFindManyMock = vi.fn();
@@ -48,7 +49,10 @@ vi.mock("@/lib/prisma", () => ({
           create: (...args: unknown[]) => nonMotorClaimCreateMock(...args),
           update: (...args: unknown[]) => nonMotorClaimUpdateMock(...args),
         },
-        nonMotorClaimParticipant: { createMany: (...args: unknown[]) => nonMotorClaimParticipantCreateManyMock(...args) },
+        nonMotorClaimParticipant: {
+          createMany: (...args: unknown[]) => nonMotorClaimParticipantCreateManyMock(...args),
+          findMany: (...args: unknown[]) => nonMotorClaimParticipantFindManyMock(...args),
+        },
         nonMotorClaimUpdate: { create: (...args: unknown[]) => nonMotorClaimUpdateCreateMock(...args) },
         nonMotorClaimReadState: { upsert: (...args: unknown[]) => nonMotorClaimReadStateUpsertMock(...args) },
       }),
@@ -103,6 +107,7 @@ beforeEach(() => {
   nonMotorClaimCreateMock.mockImplementation(async ({ data }: { data: { claimNumber: string } }) => ({ id: "claim-new", claimNumber: data.claimNumber }));
   nonMotorClaimUpdateMock.mockResolvedValue({});
   nonMotorClaimParticipantCreateManyMock.mockResolvedValue({ count: 1 });
+  nonMotorClaimParticipantFindManyMock.mockResolvedValue([{ userId: "creator-1" }, { userId: "participant-1" }]);
   nonMotorClaimUpdateCreateMock.mockResolvedValue({});
   nonMotorClaimReadStateUpsertMock.mockResolvedValue({});
   userFindManyMock.mockResolvedValue([]);

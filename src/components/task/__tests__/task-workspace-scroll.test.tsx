@@ -21,6 +21,15 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/task/new-task-modal", () => ({ NewTaskModal: () => null }));
 vi.mock("@/components/task/task-detail-panel", () => ({ TaskDetailPanel: () => <div data-testid="detail-panel" /> }));
+// Real-time unread notification (this session) — TaskWorkspace now imports
+// refreshTaskUnreadStatusAction directly; the real action module statically
+// pulls in next-auth, which this plain vitest/jsdom environment can't
+// resolve (see the identical mock in task-detail-panel.test.tsx for the
+// other Task Server Actions). Never actually exercised here — this file's
+// scroll-persistence assertions never trigger a live SSE signal.
+vi.mock("@/app/(app)/task/actions", () => ({
+  refreshTaskUnreadStatusAction: vi.fn(async () => ({})),
+}));
 
 function makeTasks(count: number): TaskListItem[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -30,6 +39,7 @@ function makeTasks(count: number): TaskListItem[] {
     createdByName: "Tester",
     createdAt: new Date(2026, 0, i + 1).toISOString(),
     participantNames: [],
+    isUnread: false,
   }));
 }
 
@@ -164,5 +174,50 @@ describe("TaskWorkspace — Phase 7 Part B scroll persistence", () => {
     expect(() => renderWorkspace({ tasks: makeTasks(5), selectedTask: null })).not.toThrow();
     // No detail panel rendered when nothing is selected.
     expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument();
+  });
+
+  // Task User-Level Unread Indicator, Case 16 — clicking an unread Task must
+  // not reset the list's scroll position back to the top. Selecting a Task
+  // in production is a real navigation to a new selectedTask (a fresh
+  // TaskWorkspace render with updated `tasks`/`selectedTask` props, exactly
+  // what `rerender` below simulates) — the saved position must still be
+  // re-applied via the same mount/selectedTask-change effect regardless of
+  // whether any row in the list happens to carry isUnread: true.
+  it("Case 16: selecting a Task that has an unread indicator still preserves (does not reset) the saved scroll position", () => {
+    const unreadTasks = makeTasks(35).map((t, i) => (i === 10 ? { ...t, isUnread: true } : t));
+    const { rerender } = renderWorkspace({ tasks: unreadTasks, selectedTask: makeDetail("task-1") });
+    const list = getListScrollContainer();
+
+    list.scrollTop = 350;
+    fireEvent.scroll(list);
+    expect(getTaskListScroll("daily")).toBe(350);
+    list.scrollTop = 0; // simulate the DOM losing scrollTop across the navigation
+
+    // Select the unread row (task-11, i === 10) — the row itself renders a
+    // visible red dot (see UnreadDot in task-workspace.tsx).
+    rerender(
+      <LocaleProvider initialLocale="en">
+        <TaskWorkspace
+          categorySlug="daily"
+          tasks={unreadTasks}
+          selectedTask={makeDetail("task-11")}
+          currentUserId="u1"
+          canEdit={true}
+          taskCanEdit={true}
+          taskCanDelete={false}
+          isAdmin={false}
+          activeUsers={[]}
+        />
+      </LocaleProvider>
+    );
+
+    expect(list.scrollTop).toBe(350);
+  });
+
+  it("Task User-Level Unread Indicator — renders the red dot only for rows with isUnread: true", () => {
+    const tasks = makeTasks(3).map((t, i) => ({ ...t, isUnread: i === 1 }));
+    renderWorkspace({ tasks, selectedTask: null });
+
+    expect(screen.getAllByLabelText("Unread")).toHaveLength(1);
   });
 });

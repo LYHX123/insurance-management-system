@@ -30,6 +30,10 @@ const userFindManyMock = vi.fn();
 // acting user's own NonMotorClaimReadState row (see
 // touchOwnNonMotorClaimReadState in ../actions.ts).
 const nonMotorClaimReadStateUpsertMock = vi.fn();
+// updateNonMotorClaimParticipantsAction also explicitly initializes
+// newly-added Participants' read state (see
+// initializeUnreadNonMotorClaimReadStates in src/lib/claims/readState.ts).
+const nonMotorClaimReadStateCreateManyMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -53,10 +57,14 @@ vi.mock("@/lib/prisma", () => ({
         },
         nonMotorClaimUpdate: { create: (...args: unknown[]) => nonMotorClaimUpdateCreateMock(...args) },
         nonMotorClaimParticipant: {
+          findMany: (...args: unknown[]) => nonMotorClaimParticipantFindManyMock(...args),
           deleteMany: (...args: unknown[]) => nonMotorClaimParticipantDeleteManyMock(...args),
           createMany: (...args: unknown[]) => nonMotorClaimParticipantCreateManyMock(...args),
         },
-        nonMotorClaimReadState: { upsert: (...args: unknown[]) => nonMotorClaimReadStateUpsertMock(...args) },
+        nonMotorClaimReadState: {
+          upsert: (...args: unknown[]) => nonMotorClaimReadStateUpsertMock(...args),
+          createMany: (...args: unknown[]) => nonMotorClaimReadStateCreateManyMock(...args),
+        },
       }),
   },
 }));
@@ -94,13 +102,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   customerFindUniqueMock.mockResolvedValue({ id: "customer-1" });
   nonMotorClaimFindUniqueMock.mockResolvedValue({ progress: "DOCUMENT_PREPARATION", policyRecordId: null });
-  nonMotorClaimUpdateMock.mockResolvedValue({});
+  nonMotorClaimUpdateMock.mockResolvedValue({ updatedAt: new Date() });
   nonMotorClaimUpdateManyMock.mockResolvedValue({ count: 1 });
   nonMotorClaimUpdateCreateMock.mockResolvedValue({});
   nonMotorClaimParticipantFindManyMock.mockResolvedValue([{ userId: "creator-1" }, { userId: "participant-1" }]);
   nonMotorClaimParticipantDeleteManyMock.mockResolvedValue({ count: 1 });
   nonMotorClaimParticipantCreateManyMock.mockResolvedValue({ count: 1 });
   nonMotorClaimReadStateUpsertMock.mockResolvedValue({});
+  nonMotorClaimReadStateCreateManyMock.mockResolvedValue({ count: 0 });
   userFindManyMock.mockResolvedValue([{ id: "helper-1" }]);
 });
 

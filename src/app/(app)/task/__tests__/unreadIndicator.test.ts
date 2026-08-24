@@ -181,20 +181,47 @@ beforeEach(() => {
 });
 
 describe("Task User-Level Unread Indicator", () => {
-  it("Case 6: a user who has never viewed the Task, but already has other read-state rows (an established feature user), sees it unread until they view it", async () => {
-    // Establishes user-a as an "established feature user" so the baseline
-    // rule doesn't silently mark this Task read for them (see Part B8) —
-    // isolates this test to the ordinary "genuinely never viewed" case.
-    readStates.set(rsKey("task-999", "user-a"), { taskId: "task-999", userId: "user-a", lastViewedAt: tick() });
+  // Case 6 was rewritten as part of the 2026-08-24 "new Participant gets no
+  // red dot" fix. The old version of this test asserted that ANY user with
+  // at least one TaskReadState row elsewhere ("an established feature
+  // user") must see any other missing-row Task as unread — i.e. it pinned
+  // down the exact global "has any row anywhere" gate in
+  // ensureTaskReadStateBaseline that turned out to be the root cause of the
+  // "new Participant, no red dot" bug (see that function's updated comment
+  // in src/lib/task/readState.ts): a user who happens to already have a
+  // row from being freshly, explicitly added to some OTHER brand-new Task
+  // (initializeUnreadTaskReadStates) is not truly "established" with
+  // respect to every other Task they silently participate in — baseline
+  // must still be free to catch those up, exactly as it would for a
+  // genuinely first-time user. This is that guarantee, made explicit.
+  it("Case 6: a merely-established user (has a row for one unrelated Task) does not stop baseline from catching up a DIFFERENT, genuinely never-visited Task", async () => {
+    seedTask("task-2");
+    participants.set(rsKey("task-2", "user-a"), { taskId: "task-2", userId: "user-a" });
+    // user-a already has an explicit row for task-2 (e.g. freshly added
+    // there just now) — this alone must not make task-1 look "already
+    // established" and get wrongly caught up... nor, per this fix, should
+    // it make task-1 wrongly unread either: task-1 is a task user-a has
+    // silently participated in with no row of their own at all, which is
+    // exactly what baseline's gap-fill exists to catch up.
+    readStates.set(rsKey("task-2", "user-a"), { taskId: "task-2", userId: "user-a", lastViewedAt: tick() });
 
     const { getUnreadTaskIds, markTaskViewed } = await import("@/lib/task/readState");
-    const task = tasks.get("task-1")!;
+    const task1 = tasks.get("task-1")!;
 
-    let unread = await getUnreadTaskIds("user-a", [{ id: "task-1", updatedAt: task.updatedAt }]);
+    // task-1 has no row for user-a at all -> baseline catches it up as read
+    // (not flooded unread) despite user-a already having a row elsewhere.
+    let unread = await getUnreadTaskIds("user-a", [{ id: "task-1", updatedAt: task1.updatedAt }]);
+    expect(unread.has("task-1")).toBe(false);
+    expect(readStates.has(rsKey("task-1", "user-a"))).toBe(true);
+
+    // Once genuinely edited after that baseline catch-up, it behaves like
+    // any other Task: it goes unread again, and viewing it clears that.
+    tasks.get("task-1")!.updatedAt = tick();
+    unread = await getUnreadTaskIds("user-a", [{ id: "task-1", updatedAt: tasks.get("task-1")!.updatedAt }]);
     expect(unread.has("task-1")).toBe(true);
 
     await markTaskViewed("user-a", "task-1");
-    unread = await getUnreadTaskIds("user-a", [{ id: "task-1", updatedAt: task.updatedAt }]);
+    unread = await getUnreadTaskIds("user-a", [{ id: "task-1", updatedAt: tasks.get("task-1")!.updatedAt }]);
     expect(unread.has("task-1")).toBe(false);
   });
 

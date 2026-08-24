@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -14,6 +14,8 @@ import { NewTaskModal } from "@/components/task/new-task-modal";
 import { TaskDetailPanel } from "@/components/task/task-detail-panel";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import { getTaskListScroll, saveTaskListScroll, clearTaskListScroll } from "@/components/task/taskListScroll";
+import { subscribeToTaskActivity } from "@/lib/task/liveNotificationsClient";
+import { refreshTaskUnreadStatusAction } from "@/app/(app)/task/actions";
 import type { TaskCategorySlug, TaskListItem, TaskDetail, ActiveUserOption, TaskStatusValue } from "@/components/task/types";
 
 // Phase 7 Part B audit — only Daily Task renders this component (Motor
@@ -94,6 +96,42 @@ export function TaskWorkspace({
   const [listState, setListState] = useUrlListState(TASK_LIST_DEFAULTS);
   const { search, status: statusFilter } = listState;
   const [showNewTask, setShowNewTask] = useState(false);
+
+  // Phase 8 — local copy of the server-rendered `tasks` prop so a real-time
+  // unread refresh can patch just the isUnread field of specific rows
+  // without waiting for (or forcing) a full navigation/reload. Re-synced
+  // from a genuinely new `tasks` array by adjusting state during render
+  // (React's own recommended pattern for this — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  // — rather than a setState-in-effect, which the project's lint config
+  // treats as an error).
+  const [taskItems, setTaskItems] = useState(tasks);
+  const [prevTasks, setPrevTasks] = useState(tasks);
+  if (tasks !== prevTasks) {
+    setPrevTasks(tasks);
+    setTaskItems(tasks);
+  }
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTaskActivity((signal) => {
+      if (signal.kind === "activity" && signal.scope !== "TASK") return;
+      const ids = taskItems.map((t) => t.id);
+      if (ids.length === 0) return;
+      refreshTaskUnreadStatusAction(ids)
+        .then((statusMap) => {
+          setTaskItems((prev) => prev.map((t) => (t.id in statusMap ? { ...t, isUnread: statusMap[t.id] } : t)));
+        })
+        .catch(() => {
+          // Best-effort — a failed refresh just leaves rows at their last
+          // known isUnread; the next real navigation re-derives from the
+          // server regardless.
+        });
+    });
+    return unsubscribe;
+    // Re-subscribes whenever taskItems changes (cheap — an EventTarget
+    // listener add/remove, not a network reconnect) so the closure above
+    // never reads a stale row list.
+  }, [taskItems]);
   // Selecting a task navigates to its own route (/task/{slug}/{id}) — carry
   // the current search/status query string along so the left panel's
   // filters aren't reset just from picking a task to view (Phase 8.1 Part
@@ -143,7 +181,7 @@ export function TaskWorkspace({
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return tasks.filter((task) => {
+    return taskItems.filter((task) => {
       const matchesStatus = statusFilter === "ALL" || task.status === statusFilter;
       const matchesTerm =
         !term ||
@@ -151,7 +189,7 @@ export function TaskWorkspace({
         task.participantNames.some((n) => n.toLowerCase().includes(term));
       return matchesStatus && matchesTerm;
     });
-  }, [tasks, search, statusFilter]);
+  }, [taskItems, search, statusFilter]);
 
   const hasSelection = !!selectedTask;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Pencil, Trash2, UserCog, CheckCircle2, RotateCcw, Plus } from "lucide-react";
 import { SmartBackLink } from "@/components/ui/smart-back-link";
@@ -14,6 +14,8 @@ import { completeTaskAction, reopenTaskAction, deleteTaskAction, deleteStepActio
 import { EditTaskTitleModal } from "@/components/task/edit-task-title-modal";
 import { ManageParticipantsModal } from "@/components/task/manage-participants-modal";
 import { StepModal } from "@/components/task/step-modal";
+import { ExternalUpdateBanner } from "@/components/task/external-update-banner";
+import { subscribeToTaskActivity } from "@/lib/task/liveNotificationsClient";
 import type { TaskCategorySlug, TaskDetail, TaskStepRow, ActiveUserOption } from "@/components/task/types";
 
 type ConfirmKind = "complete" | "reopen" | "delete";
@@ -59,6 +61,33 @@ export function TaskDetailPanel({
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
   const [isDeletingStep, setIsDeletingStep] = useState(false);
 
+  // Real-time unread notification (this session) — a lightweight notice
+  // when another participant updates THIS exact Task while it's open here,
+  // never an automatic content refresh (see this session's spec, Part I:
+  // don't overwrite an in-progress edit, don't auto-close an open modal).
+  //
+  // New detail data actually arrived (route change to a different Task, or
+  // the user clicked Refresh below) — any stale notice no longer applies.
+  // Adjusted during render (React's own recommended pattern — see
+  // task-workspace.tsx's identical comment) rather than a setState-in-effect.
+  const [showExternalUpdate, setShowExternalUpdate] = useState(false);
+  const [ackedVersion, setAckedVersion] = useState(`${task.id}:${task.updatedAt}`);
+  const currentVersion = `${task.id}:${task.updatedAt}`;
+  if (currentVersion !== ackedVersion) {
+    setAckedVersion(currentVersion);
+    setShowExternalUpdate(false);
+  }
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTaskActivity((signal) => {
+      if (signal.kind !== "activity" || signal.scope !== "TASK") return;
+      if (signal.entityId !== task.id) return;
+      if (signal.actorUserId === currentUserId) return;
+      setShowExternalUpdate(true);
+    });
+    return unsubscribe;
+  }, [task.id, currentUserId]);
+
   const confirmTaskAction = async () => {
     if (!confirmKind) return;
     setIsConfirmBusy(true);
@@ -102,6 +131,17 @@ export function TaskDetailPanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto rounded-surface border border-zinc-200 bg-white p-card shadow-sm">
       <SmartBackLink fallbackHref={`/task/${categorySlug}`} label={t.task.backToTasks} className="md:hidden" />
+
+      {showExternalUpdate && (
+        <ExternalUpdateBanner
+          message={t.task.updatedByOtherParticipant}
+          refreshLabel={t.task.refresh}
+          onRefresh={() => {
+            setShowExternalUpdate(false);
+            router.refresh();
+          }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col gap-2 border-b border-zinc-100 pb-4">

@@ -34,6 +34,10 @@ const userFindManyMock = vi.fn();
 // acting user's own MotorClaimReadState row (see
 // touchOwnMotorClaimReadState in ../actions.ts).
 const motorClaimReadStateUpsertMock = vi.fn();
+// updateMotorClaimParticipantsAction also explicitly initializes
+// newly-added Participants' read state (see
+// initializeUnreadMotorClaimReadStates in src/lib/claims/readState.ts).
+const motorClaimReadStateCreateManyMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -54,10 +58,14 @@ vi.mock("@/lib/prisma", () => ({
         motorClaim: { update: (...args: unknown[]) => motorClaimUpdateMock(...args), updateMany: (...args: unknown[]) => motorClaimUpdateManyMock(...args) },
         motorClaimUpdate: { create: (...args: unknown[]) => motorClaimUpdateCreateMock(...args) },
         motorClaimParticipant: {
+          findMany: (...args: unknown[]) => motorClaimParticipantFindManyMock(...args),
           deleteMany: (...args: unknown[]) => motorClaimParticipantDeleteManyMock(...args),
           createMany: (...args: unknown[]) => motorClaimParticipantCreateManyMock(...args),
         },
-        motorClaimReadState: { upsert: (...args: unknown[]) => motorClaimReadStateUpsertMock(...args) },
+        motorClaimReadState: {
+          upsert: (...args: unknown[]) => motorClaimReadStateUpsertMock(...args),
+          createMany: (...args: unknown[]) => motorClaimReadStateCreateManyMock(...args),
+        },
       }),
   },
 }));
@@ -96,7 +104,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   customerFindUniqueMock.mockResolvedValue({ id: "customer-1" });
   motorClaimFindUniqueMock.mockResolvedValue({ progress: "PREPARE_CLAIM_DOCUMENT", policyRecordId: null });
-  motorClaimUpdateMock.mockResolvedValue({});
+  motorClaimUpdateMock.mockResolvedValue({ updatedAt: new Date() });
   motorClaimUpdateManyMock.mockResolvedValue({ count: 1 });
   motorClaimUpdateCreateMock.mockResolvedValue({});
   motorClaimParticipantFindManyMock.mockResolvedValue([{ userId: "creator-1" }, { userId: "participant-1" }]);
@@ -104,6 +112,7 @@ beforeEach(() => {
   motorClaimParticipantCreateManyMock.mockResolvedValue({ count: 1 });
   userFindManyMock.mockResolvedValue([{ id: "helper-1" }]);
   motorClaimReadStateUpsertMock.mockResolvedValue({});
+  motorClaimReadStateCreateManyMock.mockResolvedValue({ count: 0 });
 });
 
 describe("updateMotorClaimAction — a Participant can advance the Claim's existing progress states", () => {
