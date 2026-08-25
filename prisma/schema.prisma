@@ -1062,11 +1062,19 @@ model WibaPayrollRow {
   sortOrder     Int     @default(0)
 
   // Optional inputs behind the Annual Salary formula
-  // (basicMonthlySalary + monthlyAllowance) * employeeCount * 12. Nullable
-  // because every row saved before this feature existed has neither — see
-  // annualWages' doc comment above for how those old rows keep working.
+  // (basicMonthlySalary + monthlyAllowance + monthlyOtherEarnings) *
+  // employeeCount * 12. Nullable because every row saved before this
+  // feature existed has neither — see annualWages' doc comment above for
+  // how those old rows keep working.
   basicMonthlySalary Decimal? @db.Decimal(16, 2)
   monthlyAllowance   Decimal? @db.Decimal(16, 2)
+  // Phase 9 (WIBA Schedule Import) — "Overtime / Bonus / Other Earnings /
+  // month" from the WIBA Import Schedule template, column E. Nullable/
+  // additive: every row saved before this field existed (and any row a
+  // user edits without touching it) has null here, which
+  // resolveWibaRowAnnualWages treats as 0 — the Annual Salary formula for
+  // those rows is therefore unchanged.
+  monthlyOtherEarnings Decimal? @db.Decimal(16, 2)
 
   @@index([wibaDetailId])
 }
@@ -1129,6 +1137,13 @@ model CpmEquipmentRow {
   unitValue     Decimal @db.Decimal(18, 2)
   totalValue    Decimal @db.Decimal(18, 2)
   sortOrder     Int     @default(0)
+
+  // Phase 9 (CPM Schedule Import) — "Chassis Number / Number Plate
+  // (Optional)" from the CPM Import Schedule template, column C. Never
+  // validated as numeric — preserved as free text exactly as entered.
+  // Nullable/additive: every row saved before this field existed has null
+  // here, which is simply "not shown", not an error.
+  chassisOrPlate String?
 
   @@index([cpmDetailId])
 }

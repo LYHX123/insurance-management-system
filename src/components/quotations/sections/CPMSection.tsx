@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Trash2, FileUp } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Input } from "@/components/ui/input";
 import { RateInput } from "@/components/ui/rate-input";
@@ -10,7 +10,16 @@ import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput, formatMoney } from "@/components/ui/money-input";
 import { previewCpmStandalone } from "@/lib/insuranceCalculations/clientPreview";
-import { emptyCpmEquipmentRow, type CpmDraft } from "@/components/quotations/sectionDrafts";
+import { emptyCpmEquipmentRow, type CpmDraft, type CpmEquipmentRowDraft } from "@/components/quotations/sectionDrafts";
+import { ScheduleImportModal } from "@/components/quotations/schedule-import-modal";
+import type { CpmScheduleRow } from "@/lib/quotationScheduleImport/types";
+
+// See WIBASection.tsx's identical hasNonEmptyWibaRows for the rationale —
+// a fresh/untouched draft (still exactly one emptyCpmEquipmentRow()) never
+// triggers the re-import replace warning.
+function hasNonEmptyCpmRows(rows: CpmEquipmentRowDraft[]): boolean {
+  return rows.some((r) => r.equipmentName.trim() || r.chassisOrPlate.trim() || r.quantity || r.unitValue);
+}
 
 export function CPMSection({
   draft,
@@ -20,6 +29,7 @@ export function CPMSection({
   onChange: (patch: Partial<CpmDraft>) => void;
 }) {
   const { t } = useLocale();
+  const [showImport, setShowImport] = useState(false);
 
   const totals = useMemo(() => previewCpmStandalone(draft), [draft]);
 
@@ -31,21 +41,42 @@ export function CPMSection({
     onChange({ equipmentRows: draft.equipmentRows.filter((r) => r.key !== key) });
   };
 
+  // See WIBASection.tsx's identical handleImport — imported rows become
+  // normal, fully editable draft rows, persisted through the same Save
+  // Quotation flow as manual entry.
+  const handleImport = (rows: CpmScheduleRow[]) => {
+    onChange({
+      equipmentRows: rows.map((r) => ({
+        key: crypto.randomUUID(),
+        equipmentName: r.equipmentName,
+        quantity: r.quantity,
+        unitValue: r.unitValue,
+        chassisOrPlate: r.chassisOrPlate,
+      })),
+    });
+  };
+
   const rowTotal = (row: CpmDraft["equipmentRows"][number]) =>
     (parseInt(row.quantity, 10) || 0) * (Number(row.unitValue) || 0);
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="table-title">{t.quotations.cpmEquipmentTable}</span>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => onChange({ equipmentRows: [...draft.equipmentRows, emptyCpmEquipmentRow()] })}
-        >
-          <Plus size={16} />
-          {t.quotations.addRow}
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" onClick={() => setShowImport(true)}>
+            <FileUp size={16} />
+            {t.quotations.importSchedule}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => onChange({ equipmentRows: [...draft.equipmentRows, emptyCpmEquipmentRow()] })}
+          >
+            <Plus size={16} />
+            {t.quotations.addRow}
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -56,6 +87,12 @@ export function CPMSection({
                 <Input
                   value={row.equipmentName}
                   onChange={(e) => updateRow(row.key, { equipmentName: e.target.value })}
+                />
+              </FormField>
+              <FormField label={t.quotations.chassisOrPlate}>
+                <Input
+                  value={row.chassisOrPlate}
+                  onChange={(e) => updateRow(row.key, { chassisOrPlate: e.target.value })}
                 />
               </FormField>
               <FormField label={t.quotations.quantity}>
@@ -144,6 +181,15 @@ export function CPMSection({
           <div className="font-semibold text-emerald-800">{formatMoney(totals.totalPremium)}</div>
         </div>
       </div>
+
+      {showImport && (
+        <ScheduleImportModal
+          kind="CPM"
+          hasExistingRows={hasNonEmptyCpmRows(draft.equipmentRows)}
+          onClose={() => setShowImport(false)}
+          onImport={handleImport}
+        />
+      )}
     </div>
   );
 }

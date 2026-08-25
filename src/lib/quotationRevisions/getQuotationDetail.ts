@@ -202,6 +202,7 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
               annualWages: r.annualWages.toString(),
               basicMonthlySalary: r.basicMonthlySalary?.toString() ?? null,
               monthlyAllowance: r.monthlyAllowance?.toString() ?? null,
+              monthlyOtherEarnings: r.monthlyOtherEarnings?.toString() ?? null,
             })),
           }
         : null,
@@ -217,6 +218,7 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
               quantity: r.quantity,
               unitValue: r.unitValue.toString(),
               totalValue: r.totalValue.toString(),
+              chassisOrPlate: r.chassisOrPlate,
             })),
           }
         : null,

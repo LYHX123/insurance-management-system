@@ -168,6 +168,7 @@ export default async function EditQuotationPage({
               annualWages: r.annualWages.toString(),
               basicMonthlySalary: r.basicMonthlySalary?.toString() ?? null,
               monthlyAllowance: r.monthlyAllowance?.toString() ?? null,
+              monthlyOtherEarnings: r.monthlyOtherEarnings?.toString() ?? null,
             })),
           }
         : null,
@@ -183,6 +184,7 @@ export default async function EditQuotationPage({
               quantity: r.quantity,
               unitValue: r.unitValue.toString(),
               totalValue: r.totalValue.toString(),
+              chassisOrPlate: r.chassisOrPlate,
             })),
           }
         : null,

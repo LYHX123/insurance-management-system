@@ -47,6 +47,7 @@ export type WibaPayrollRowDraft = {
   annualWages: string;
   basicMonthlySalary: string;
   monthlyAllowance: string;
+  monthlyOtherEarnings: string;
 };
 
 export type WibaDraft = {
@@ -62,6 +63,7 @@ export function emptyWibaPayrollRow(): WibaPayrollRowDraft {
     annualWages: "",
     basicMonthlySalary: "",
     monthlyAllowance: "",
+    monthlyOtherEarnings: "",
   };
 }
 
@@ -74,6 +76,7 @@ export type CpmEquipmentRowDraft = {
   equipmentName: string;
   quantity: string;
   unitValue: string;
+  chassisOrPlate: string;
 };
 
 export type CpmDraft = {
@@ -84,7 +87,7 @@ export type CpmDraft = {
 };
 
 export function emptyCpmEquipmentRow(): CpmEquipmentRowDraft {
-  return { key: crypto.randomUUID(), equipmentName: "", quantity: "", unitValue: "" };
+  return { key: crypto.randomUUID(), equipmentName: "", quantity: "", unitValue: "", chassisOrPlate: "" };
 }
 
 export function emptyCpmDraft(): CpmDraft {

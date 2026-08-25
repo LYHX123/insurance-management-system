@@ -85,6 +85,7 @@ export type WibaPayrollRowData = {
   annualWages: string;
   basicMonthlySalary: string | null;
   monthlyAllowance: string | null;
+  monthlyOtherEarnings: string | null;
 };
 
 export type WibaSectionDetailRow = {
@@ -97,6 +98,7 @@ export type CpmEquipmentRowData = {
   quantity: number;
   unitValue: string;
   totalValue: string;
+  chassisOrPlate: string | null;
 };
 
 export type CpmSectionDetailRow = {

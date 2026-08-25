@@ -327,6 +327,7 @@ function hydrateWibaDraft(sections: SectionRow[]): WibaDraft {
             annualWages: r.annualWages,
             basicMonthlySalary: r.basicMonthlySalary ?? "",
             monthlyAllowance: r.monthlyAllowance ?? "",
+            monthlyOtherEarnings: r.monthlyOtherEarnings ?? "",
           }))
         : [emptyWibaPayrollRow()],
   };
@@ -346,6 +347,7 @@ function hydrateCpmDraft(sections: SectionRow[]): CpmDraft {
             equipmentName: r.equipmentName,
             quantity: String(r.quantity),
             unitValue: r.unitValue,
+            chassisOrPlate: r.chassisOrPlate ?? "",
           }))
         : [emptyCpmEquipmentRow()],
   };
@@ -1186,6 +1188,7 @@ export function QuotationForm({
             annualWages: r.annualWages || null,
             basicMonthlySalary: r.basicMonthlySalary || null,
             monthlyAllowance: r.monthlyAllowance || null,
+            monthlyOtherEarnings: r.monthlyOtherEarnings || null,
           })),
         },
       });
@@ -1222,6 +1225,7 @@ export function QuotationForm({
             equipmentName: r.equipmentName,
             quantity: r.quantity || null,
             unitValue: r.unitValue || null,
+            chassisOrPlate: r.chassisOrPlate || null,
           })),
         },
       });

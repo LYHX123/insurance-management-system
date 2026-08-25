@@ -107,20 +107,22 @@ type WibaPayrollRowPreviewInput = {
   annualWages: string;
   basicMonthlySalary?: string;
   monthlyAllowance?: string;
+  monthlyOtherEarnings?: string;
 };
 
 // Number mirror of resolveWibaRowAnnualWages in insuranceCalculations/wiba.ts
-// — same fallback rule: a row with neither basicMonthlySalary nor
-// monthlyAllowance filled in keeps its existing (legacy or already-computed)
-// annualWages value untouched instead of resolving to 0.
+// — same fallback rule: a row with none of basicMonthlySalary/
+// monthlyAllowance/monthlyOtherEarnings filled in keeps its existing (legacy
+// or already-computed) annualWages value untouched instead of resolving to 0.
 export function resolveWibaRowAnnualWages(row: WibaPayrollRowPreviewInput): number {
-  const hasSalaryInputs = !!row.basicMonthlySalary || !!row.monthlyAllowance;
+  const hasSalaryInputs = !!row.basicMonthlySalary || !!row.monthlyAllowance || !!row.monthlyOtherEarnings;
   if (!hasSalaryInputs) return num(row.annualWages);
 
   const basic = num(row.basicMonthlySalary);
   const allowance = num(row.monthlyAllowance);
+  const otherEarnings = num(row.monthlyOtherEarnings);
   const employeeCount = parseInt(row.employeeCount, 10) || 0;
-  return round2((basic + allowance) * employeeCount * 12);
+  return round2((basic + allowance + otherEarnings) * employeeCount * 12);
 }
 
 export function previewWiba(input: {

@@ -32,6 +32,9 @@ import { calculateGuarantee, type GuaranteeResult } from "@/lib/insuranceCalcula
 import { calculateCustomsBond } from "@/lib/insuranceCalculations/customsBond";
 import { ITL_RATE, PHCF_RATE } from "@/lib/insuranceCalculations/constants";
 import { generateAndSyncQuotationExcel } from "@/lib/integrations/dropbox/quotationDropboxSync";
+import { parseWibaSchedule } from "@/lib/quotationScheduleImport/wibaParser";
+import { parseCpmSchedule } from "@/lib/quotationScheduleImport/cpmParser";
+import { MAX_SCHEDULE_FILE_SIZE_BYTES, type WibaScheduleParseResult, type CpmScheduleParseResult } from "@/lib/quotationScheduleImport/types";
 import { Prisma } from "@/generated/prisma/client";
 import type { CalculationMethod, QuotationSectionKind, QuotationStatus, MedicalFamilyCategory } from "@/generated/prisma/enums";
 import type { InsuranceTypeModel } from "@/generated/prisma/models";
@@ -122,6 +125,7 @@ export type WibaSectionInput = {
       annualWages: number | string | null;
       basicMonthlySalary?: number | string | null;
       monthlyAllowance?: number | string | null;
+      monthlyOtherEarnings?: number | string | null;
     }[];
   };
 };
@@ -144,6 +148,7 @@ export type CpmStandaloneSectionInput = {
       equipmentName: string;
       quantity: number | string | null;
       unitValue: number | string | null;
+      chassisOrPlate?: string | null;
     }[];
   };
 };
@@ -828,6 +833,7 @@ type PreparedWibaRow = {
   annualWages: Prisma.Decimal;
   basicMonthlySalary: Prisma.Decimal | null;
   monthlyAllowance: Prisma.Decimal | null;
+  monthlyOtherEarnings: Prisma.Decimal | null;
 };
 
 function prepareWiba(
@@ -842,7 +848,8 @@ function prepareWiba(
         isBlank(r.employeeCount) &&
         isBlank(r.annualWages) &&
         isBlank(r.basicMonthlySalary) &&
-        isBlank(r.monthlyAllowance)
+        isBlank(r.monthlyAllowance) &&
+        isBlank(r.monthlyOtherEarnings)
       )
   );
   if (rawRows.length === 0) return { error: "WIBA_AT_LEAST_ONE_ROW" };
@@ -854,26 +861,36 @@ function prepareWiba(
     const employeeCount = parseRequiredNonNegativeInt(row.employeeCount, "WIBA_ROW_EMPLOYEE_COUNT_INVALID");
     if (isErr(employeeCount)) return employeeCount;
 
-    // A row with either salary input filled in uses the Basic Monthly
-    // Salary/Monthly Allowance formula (Basic Monthly Salary becomes
-    // required, Allowance defaults to 0 left blank). A row with neither —
+    // A row with any salary-component input filled in uses the Basic
+    // Monthly Salary/Monthly Allowance/Monthly Other Earnings formula
+    // (Basic Monthly Salary becomes required, Allowance and Other Earnings
+    // default to 0 when left blank). A row with none of the three —
     // every pre-existing quotation, and any row nobody has touched yet —
     // keeps using its own annualWages value exactly as before.
-    const hasSalaryInputs = !isBlank(row.basicMonthlySalary) || !isBlank(row.monthlyAllowance);
+    const hasSalaryInputs =
+      !isBlank(row.basicMonthlySalary) || !isBlank(row.monthlyAllowance) || !isBlank(row.monthlyOtherEarnings);
 
     let annualWages: Prisma.Decimal;
     let basicMonthlySalary: Prisma.Decimal | null = null;
     let monthlyAllowance: Prisma.Decimal | null = null;
+    let monthlyOtherEarnings: Prisma.Decimal | null = null;
 
     if (hasSalaryInputs) {
       const basic = parseRequiredNonNegative(row.basicMonthlySalary, "WIBA_ROW_BASIC_SALARY_INVALID");
       if (isErr(basic)) return basic;
       const allowance = parseOptionalNonNegative(row.monthlyAllowance, "WIBA_ROW_ALLOWANCE_INVALID");
       if (isErr(allowance)) return allowance;
+      const otherEarnings = parseOptionalNonNegative(row.monthlyOtherEarnings, "WIBA_ROW_OTHER_EARNINGS_INVALID");
+      if (isErr(otherEarnings)) return otherEarnings;
       basicMonthlySalary = basic;
       monthlyAllowance = allowance;
+      monthlyOtherEarnings = otherEarnings;
       annualWages = roundMoney(
-        basic.plus(allowance ?? toDecimal(0)).times(employeeCount).times(12)
+        basic
+          .plus(allowance ?? toDecimal(0))
+          .plus(otherEarnings ?? toDecimal(0))
+          .times(employeeCount)
+          .times(12)
       );
     } else {
       const wages = parseRequiredNonNegative(row.annualWages, "WIBA_ROW_WAGES_INVALID");
@@ -881,7 +898,7 @@ function prepareWiba(
       annualWages = wages;
     }
 
-    rows.push({ occupation, employeeCount, annualWages, basicMonthlySalary, monthlyAllowance });
+    rows.push({ occupation, employeeCount, annualWages, basicMonthlySalary, monthlyAllowance, monthlyOtherEarnings });
   }
 
   const wibaRate = parseRequiredNonNegative(wibaSection.wiba.wibaRate, "WIBA_RATE_INVALID");
@@ -943,6 +960,7 @@ function buildWibaSection(
               annualWages: prepared.calc.resolvedAnnualWages[index],
               basicMonthlySalary: row.basicMonthlySalary,
               monthlyAllowance: row.monthlyAllowance,
+              monthlyOtherEarnings: row.monthlyOtherEarnings,
               sortOrder: index,
             })),
           },
@@ -1008,7 +1026,7 @@ function buildCpmSection(
   );
   if (rawRows.length === 0) return { error: "CPM_AT_LEAST_ONE_ROW" };
 
-  const rows: { equipmentName: string; quantity: number; unitValue: Prisma.Decimal }[] = [];
+  const rows: { equipmentName: string; quantity: number; unitValue: Prisma.Decimal; chassisOrPlate: string | null }[] = [];
   for (const row of rawRows) {
     const equipmentName = row.equipmentName?.trim();
     if (!equipmentName) return { error: "CPM_ROW_NAME_REQUIRED" };
@@ -1016,7 +1034,11 @@ function buildCpmSection(
     if (isErr(quantity)) return quantity;
     const unitValue = parseRequiredNonNegative(row.unitValue, "CPM_ROW_UNIT_VALUE_INVALID");
     if (isErr(unitValue)) return unitValue;
-    rows.push({ equipmentName, quantity, unitValue });
+    // Never validated as numeric, never trimmed away entirely — preserved
+    // as free text exactly as entered (Phase 9 spec: "preserve original
+    // text, do not force numeric conversion"). Blank/whitespace-only -> null.
+    const chassisOrPlate = row.chassisOrPlate?.trim() || null;
+    rows.push({ equipmentName, quantity, unitValue, chassisOrPlate });
   }
 
   const cpmRate = parseRequiredNonNegative(cpm.cpmRate, "CPM_RATE_INVALID");
@@ -1093,6 +1115,7 @@ function buildCpmSection(
               quantity: row.quantity,
               unitValue: row.unitValue,
               totalValue: row.quantity != null ? toDecimal(row.quantity).times(row.unitValue) : toDecimal(0),
+              chassisOrPlate: row.chassisOrPlate,
               sortOrder: index,
             })),
           },
@@ -2712,4 +2735,55 @@ export async function deleteQuotationCaseAction(caseId: string, confirmedQuotati
     console.error("Failed to delete quotation case:", err);
     return { success: false, error: "DELETE_FAILED" };
   }
+}
+
+// ============================================================================
+// Phase 9 — WIBA / CPM Schedule Import: stateless parse/preview
+// ============================================================================
+//
+// Deliberately the ONLY thing these two actions do: authenticate, validate
+// the upload, parse+recalculate, and return a preview. Neither ever touches
+// Prisma/the database — per this phase's approved architecture, "Confirm
+// Import" in the browser merges the returned rows into the existing
+// WibaDraft.payrollRows / CpmDraft.equipmentRows client state (exactly as
+// if the user had typed them in manually); the actual persistence continues
+// to happen exclusively through the existing createQuotationCaseAction/
+// updateQuotationAction transaction when the user saves the quotation. This
+// is intentional — see this phase's report for why a separate direct-to-DB
+// import path was rejected (it would duplicate WIBA/EL-linkage and CPM
+// calculation/snapshot logic and become the parallel quotation system the
+// spec explicitly forbids).
+//
+// File type is restricted to .xlsx only (this phase's spec, Part IX) — no
+// macro execution, no formula evaluation, no filesystem access: ExcelJS
+// only parses the OOXML zip structure in memory from the uploaded buffer.
+
+const SCHEDULE_FILE_EXTENSION_RE = /\.xlsx$/i;
+
+export async function parseWibaScheduleAction(formData: FormData): Promise<WibaScheduleParseResult | { ok: false; error: "FORBIDDEN" }> {
+  const session = await requireQuotationPermission();
+  if (!session) return { ok: false, error: "FORBIDDEN" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || !SCHEDULE_FILE_EXTENSION_RE.test(file.name)) {
+    return { ok: false, error: "INVALID_FILE_TYPE" };
+  }
+  if (file.size > MAX_SCHEDULE_FILE_SIZE_BYTES) return { ok: false, error: "FILE_TOO_LARGE" };
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return parseWibaSchedule(buffer);
+}
+
+export async function parseCpmScheduleAction(formData: FormData): Promise<CpmScheduleParseResult | { ok: false; error: "FORBIDDEN" }> {
+  const session = await requireQuotationPermission();
+  if (!session) return { ok: false, error: "FORBIDDEN" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || !SCHEDULE_FILE_EXTENSION_RE.test(file.name)) {
+    return { ok: false, error: "INVALID_FILE_TYPE" };
+  }
+  if (file.size > MAX_SCHEDULE_FILE_SIZE_BYTES) return { ok: false, error: "FILE_TOO_LARGE" };
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return parseCpmSchedule(buffer);
 }
