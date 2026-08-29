@@ -144,6 +144,14 @@ function mapEl(section: Section): MappedSection | null {
   return {
     kind: "EMPLOYERS_LIABILITY",
     values: {
+      // Phase 10 — the selected option tier drives the heading, the rate
+      // cell and all three liability limits. el_rate_percent is written as a
+      // plain number ("30") into "OPTION ({{el_rate_percent}}% of WIBA)" /
+      // "{{el_rate_percent}}%", so the literal % stays in the template text.
+      el_rate_percent: num(d.elRatePercent),
+      el_any_one_person: num(d.anyOnePersonLimit),
+      el_any_one_occurrence: num(d.anyOneOccurrenceLimit),
+      el_any_one_year: num(d.anyOneYearLimit),
       el_gross_premium: num(d.grossPremium),
       el_phcf: num(d.phcfAmount),
       el_itl: num(d.itlAmount),
@@ -347,11 +355,10 @@ function mapMarine(section: Section): MappedSection | null {
       marine_sum_insured: num(row.sumInsured),
       marine_incidental_loading: num(deriveMarineIncidentalLoading(row.sumInsured)),
       marine_basic_sum_insured: num(deriveMarineBasicSumInsured(row.sumInsured)),
-      // App convention: 0.25 means 0.25%, but the dynamic-row write path
-      // (fillDynamicRows.ts) does not apply the /100 "rate" conversion that
-      // replaceVariables.ts does for static variables — divided here so the
-      // %-formatted cell displays 0.25%, not 25%.
-      marine_rate: num(row.rate) / 100,
+      // Percentage points (0.25 means 0.25%), same convention as every
+      // other rate in this module. fillDynamicRows.ts formats "rate"
+      // columns via formatRatePercent (Phase 10 issue 3) — no /100 here.
+      marine_rate: num(row.rate),
       marine_line_premium: num(row.linePremium),
     })),
   };
@@ -485,7 +492,8 @@ function mapTenderSecurity(section: Section): MappedSection | null {
       bond_gross_premium: num(d.grossPremium),
       bond_phcf: num(d.phcfAmount),
       bond_itl: num(d.itlAmount),
-      bond_stamp_duty: num(d.stampDutyAmount),
+      // Phase 10 — no Stamp Duty on Bond products; placeholder removed from
+      // the template and no longer emitted here.
       bond_total_premium: num(d.totalPremium),
     },
   };
@@ -506,7 +514,7 @@ function mapGuarantee(
       guarantee_gross_premium: num(detail.grossPremium),
       guarantee_phcf: num(detail.phcfAmount),
       guarantee_itl: num(detail.itlAmount),
-      guarantee_stamp_duty: num(detail.stampDutyAmount),
+      // Phase 10 — no Stamp Duty on Bond products.
       guarantee_total_premium: num(detail.totalPremium),
     },
   };
@@ -521,18 +529,16 @@ function mapCustomsBond(section: Section): MappedSection | null {
       custom_bond_gross_premium: num(d.grossPremium),
       custom_bond_phcf: num(d.phcfAmount),
       custom_bond_itl: num(d.itlAmount),
-      custom_bond_stamp_duty: num(d.stampDutyAmount),
+      // Phase 10 — no Stamp Duty on Customs / Clearing Bond.
       custom_bond_total_premium: num(d.totalPremium),
     },
     dynamicRows: d.itemRows.map((row) => ({
       custom_bond_type: row.bondType,
       custom_bond_value: num(row.bondValue),
-      // App convention: 1.5 means 1.5%, but the dynamic-row write path
-      // (fillDynamicRows.ts) does not apply the /100 "rate" conversion that
-      // replaceVariables.ts does for static variables — divided here so the
-      // %-formatted cell displays 1.5%, not 150% (same pattern as Marine's
-      // marine_rate above).
-      custom_bond_rate: num(row.rate) / 100,
+      // Percentage points (1.5 means 1.5%), same convention as every other
+      // rate in this module. fillDynamicRows.ts formats "rate" columns via
+      // formatRatePercent (Phase 10 issue 3) — no /100 here.
+      custom_bond_rate: num(row.rate),
       custom_bond_premium: num(row.premium),
     })),
   };

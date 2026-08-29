@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { percentOf, roundMoney, toDecimal, type DecimalInput } from "@/lib/money";
-import { ITL_RATE, PHCF_RATE, STAMP_DUTY } from "./constants";
+import { ITL_RATE, PHCF_RATE } from "./constants";
 
 export type CustomsBondRowInput = {
   bondValue: DecimalInput;
@@ -22,7 +22,8 @@ export type CustomsBondResult = {
   grossPremium: Prisma.Decimal;
   phcfAmount: Prisma.Decimal;
   itlAmount: Prisma.Decimal;
-  // One flat KES 40 for the whole section, never per row.
+  // Phase 10 — Customs / Clearing Bond no longer attracts Stamp Duty;
+  // always zero, kept in the shape for backward compatibility.
   stampDutyAmount: Prisma.Decimal;
   totalPremium: Prisma.Decimal;
 };
@@ -37,10 +38,10 @@ export function calculateCustomsBond(input: CustomsBondInput): CustomsBondResult
   const grossPremium = roundMoney(rows.reduce((acc, row) => acc.plus(row.premium), toDecimal(0)));
   const phcfAmount = roundMoney(percentOf(grossPremium, PHCF_RATE));
   const itlAmount = roundMoney(percentOf(grossPremium, ITL_RATE));
-  const stampDutyAmount = toDecimal(STAMP_DUTY);
-  const totalPremium = roundMoney(
-    grossPremium.plus(phcfAmount).plus(itlAmount).plus(stampDutyAmount)
-  );
+  // Phase 10 — no Stamp Duty on Customs / Clearing Bond. Zero, and not part
+  // of Total Premium: Total = Gross + PHCF + ITL.
+  const stampDutyAmount = toDecimal(0);
+  const totalPremium = roundMoney(grossPremium.plus(phcfAmount).plus(itlAmount));
 
   return { rows, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
 }

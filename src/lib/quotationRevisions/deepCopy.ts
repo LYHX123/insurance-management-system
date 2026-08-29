@@ -162,6 +162,13 @@ function copySectionDetail(section: SourceSection): Pick<
       elDetail: {
         create: {
           linkedWibaGrossPremium: e.linkedWibaGrossPremium,
+          // Phase 10 — carry the selected EL option tier + its snapshotted
+          // rate/limits into the revision unchanged.
+          elOption: e.elOption,
+          elRatePercent: e.elRatePercent,
+          anyOnePersonLimit: e.anyOnePersonLimit,
+          anyOneOccurrenceLimit: e.anyOneOccurrenceLimit,
+          anyOneYearLimit: e.anyOneYearLimit,
           grossPremium: e.grossPremium,
           phcfAmount: e.phcfAmount,
           itlAmount: e.itlAmount,

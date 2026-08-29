@@ -3,7 +3,7 @@ export type PolicyPaymentStatus = "UNPAID" | "PARTIALLY_PAID" | "FULLY_PAID" | "
 export type PolicyRecordSource = "MANUAL" | "HISTORICAL_IMPORT";
 export type PolicyBalanceVerification = "VERIFIED" | "UNVERIFIED";
 export type PolicyBalanceWarningReason = "BROKEN_SOURCE_FORMULA" | "BLANK_SOURCE_BALANCE" | "OTHER_UNREADABLE_BALANCE";
-export type MotorTaxClass = "PRIVATE" | "COMMERCIAL" | "SPV" | "SPECIAL_USE";
+export type MotorTaxClass = "PRIVATE" | "COMMERCIAL" | "PSV" | "SPECIAL_USE";
 export type BondType = "TENDER_BOND" | "PERFORMANCE_BOND" | "ADVANCE_PAYMENT_GUARANTEE" | "CUSTOM_BOND";
 export type WorkPermitType = "CLASS_D" | "CLASS_G" | "SPECIAL_PASS" | "DEPENDANT_PASS" | "OTHER";
 

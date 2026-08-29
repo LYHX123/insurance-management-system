@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { percentOf, roundMoney, toDecimal, type DecimalInput } from "@/lib/money";
-import { ITL_RATE, PHCF_RATE, STAMP_DUTY } from "./constants";
+import { ITL_RATE, PHCF_RATE } from "./constants";
 
 // Shared by Tender Security, Performance Bond and Advance Payment Guarantee
 // — identical bondValue x rate formula. Each still gets its own section
@@ -23,10 +23,12 @@ export function calculateGuarantee(input: GuaranteeInput): GuaranteeResult {
   const grossPremium = roundMoney(percentOf(input.bondValue, input.rate));
   const phcfAmount = roundMoney(percentOf(grossPremium, PHCF_RATE));
   const itlAmount = roundMoney(percentOf(grossPremium, ITL_RATE));
-  const stampDutyAmount = toDecimal(STAMP_DUTY);
-  const totalPremium = roundMoney(
-    grossPremium.plus(phcfAmount).plus(itlAmount).plus(stampDutyAmount)
-  );
+  // Phase 10 — Bond products (Tender Security / Bid Bond, Performance Bond,
+  // Advance Payment Guarantee) do NOT attract Stamp Duty. It is genuinely
+  // zero here (not merely hidden in the Excel), and is therefore NOT part
+  // of Total Premium: Total = Gross + PHCF + ITL.
+  const stampDutyAmount = toDecimal(0);
+  const totalPremium = roundMoney(grossPremium.plus(phcfAmount).plus(itlAmount));
 
   return { grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
 }

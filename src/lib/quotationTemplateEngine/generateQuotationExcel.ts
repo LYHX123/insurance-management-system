@@ -11,6 +11,7 @@ import { restoreTemplateDrawings } from "./restoreTemplateDrawings";
 import { applyOuterBorder } from "./applyOuterBorder";
 import { applySectionExcessBorders } from "./applySectionExcessBorders";
 import { normalizeSectionTotalFontSize, applyGrandTotalFontSize } from "./subtotalFont";
+import { autoFitMergedTextHeights } from "./autoFitRowHeights";
 import type { GeneratedWorkbookResult, TemplateSectionKind } from "./types";
 
 export async function generateQuotationExcel(quotation: QuotationForExport): Promise<GeneratedWorkbookResult> {
@@ -131,6 +132,14 @@ export async function generateQuotationExcel(quotation: QuotationForExport): Pro
 
   applySectionExcessBorders(worksheet, layouts);
   applyOuterBorder(worksheet);
+
+  // Grow ONLY the blank (flexible) rows of any merged Clause / Excess /
+  // Remark / Warranty / Conditions / Document-Requirement block whose
+  // wrapped text no longer fits — the left-hand A-D business/financial rows
+  // keep their template height (see autoFitRowHeights.ts). Runs last, once
+  // every row splice / dynamic fill / substitution is final. Short clauses
+  // are untouched — the quotation stays compact.
+  autoFitMergedTextHeights(worksheet, layouts);
 
   // ExcelJS's own .d.ts shadows the global `Buffer` type with a minimal
   // `extends ArrayBuffer` shim, which is incompatible with @types/node's

@@ -31,7 +31,13 @@ import { calculateMedical } from "@/lib/insuranceCalculations/medical";
 import { calculateGuarantee, type GuaranteeResult } from "@/lib/insuranceCalculations/guarantee";
 import { calculateCustomsBond } from "@/lib/insuranceCalculations/customsBond";
 import { ITL_RATE, PHCF_RATE } from "@/lib/insuranceCalculations/constants";
-import { generateAndSyncQuotationExcel } from "@/lib/integrations/dropbox/quotationDropboxSync";
+// generateAndSyncQuotationExcel — and through it the entire
+// quotationTemplateEngine graph (ExcelJS, JSZip, fs template loading) — is
+// imported dynamically at its single call site (startFirstQuotationAction),
+// never at module scope: this file's actions are pulled into the read-only
+// /quotation/[id] detail page via <QuotationDetailView>'s deleteQuotationAction
+// import, and a static import here would drag the whole Excel-generation
+// runtime into that page's server module graph for no reason.
 import { parseWibaSchedule } from "@/lib/quotationScheduleImport/wibaParser";
 import { parseCpmSchedule } from "@/lib/quotationScheduleImport/cpmParser";
 import { MAX_SCHEDULE_FILE_SIZE_BYTES, type WibaScheduleParseResult, type CpmScheduleParseResult } from "@/lib/quotationScheduleImport/types";
@@ -134,6 +140,13 @@ export type ElSectionInput = {
   sectionKind: "EMPLOYERS_LIABILITY";
   insuranceTypeId: string;
   description?: string | null;
+  // Phase 10 — the selected EL option tier (1-4). The tier alone fixes the
+  // rate and all three liability limits (see EL_OPTIONS). Optional/omitted
+  // or unrecognised resolves to Option 1 (the pre-Phase-10 fixed 25%
+  // behaviour), so older clients that don't send it still work.
+  el?: {
+    option?: number | string | null;
+  } | null;
 };
 
 export type CpmStandaloneSectionInput = {
@@ -976,7 +989,7 @@ function buildElSection(
   insuranceType: InsuranceTypeModel,
   wibaCalc: WibaResult
 ): SingleSectionResult {
-  const calc = calculateEl(wibaCalc.grossPremium);
+  const calc = calculateEl(wibaCalc.grossPremium, section.el?.option);
   const totals: SectionTotals = {
     basePremium: calc.grossPremium,
     phcfAmount: calc.phcfAmount,
@@ -987,9 +1000,9 @@ function buildElSection(
 
   const items: Prisma.QuotationCoverageItemCreateWithoutSectionInput[] = [
     {
-      insuredContent: "Employer's Liability (25% of WIBA Gross Premium)",
+      insuredContent: `Employer's Liability (${calc.elRatePercent}% of WIBA Gross Premium)`,
       sumInsured: calc.linkedWibaGrossPremium,
-      rate: toDecimal(25),
+      rate: toDecimal(calc.elRatePercent),
       calculationMethod: "PERCENTAGE",
       premium: calc.grossPremium,
       sortOrder: 0,
@@ -1003,6 +1016,11 @@ function buildElSection(
       elDetail: {
         create: {
           linkedWibaGrossPremium: calc.linkedWibaGrossPremium,
+          elOption: calc.elOption,
+          elRatePercent: toDecimal(calc.elRatePercent),
+          anyOnePersonLimit: calc.anyOnePersonLimit,
+          anyOneOccurrenceLimit: calc.anyOneOccurrenceLimit,
+          anyOneYearLimit: calc.anyOneYearLimit,
           grossPremium: calc.grossPremium,
           phcfAmount: calc.phcfAmount,
           itlAmount: calc.itlAmount,
@@ -2550,6 +2568,10 @@ export async function startFirstQuotationAction(
     // this try/catch only guards against a genuinely unexpected error (e.g.
     // local storage I/O).
     try {
+      // Lazy import — see the module-scope note above.
+      const { generateAndSyncQuotationExcel } = await import(
+        "@/lib/integrations/dropbox/quotationDropboxSync"
+      );
       await generateAndSyncQuotationExcel(result.id);
     } catch (syncErr) {
       console.error(`Dropbox sync failed for new quotation ${result.id}:`, syncErr);

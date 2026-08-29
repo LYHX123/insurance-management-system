@@ -775,7 +775,7 @@ async function importOneRow(
           vehicleValue: row.vehicleValue,
           // Phase 2B: taxClass intentionally omitted — the historical
           // BUSINESS RECORD(MOTOR) workbook has no column that reliably maps
-          // to Private/Commercial/SPV/Special Use (see motorImportParser.ts's
+          // to Private/Commercial/PSV/Special Use (see motorImportParser.ts's
           // EXPECTED_HEADERS), so every imported row leaves this null rather
           // than guessing from TYPE OF COVER or anything else. If a future
           // workbook revision adds a real, unambiguous source column, map it

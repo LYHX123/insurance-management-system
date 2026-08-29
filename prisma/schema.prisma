@@ -1085,8 +1085,22 @@ model ElSectionDetail {
   section   QuotationInsuranceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
   // Snapshot of the WIBA gross premium this EL was derived from at save
-  // time — el_gross_premium = linkedWibaGrossPremium x 25%.
+  // time — el_gross_premium = linkedWibaGrossPremium x elRatePercent%.
   linkedWibaGrossPremium Decimal @db.Decimal(16, 2)
+
+  // Phase 10 — selectable EL option tiers. elOption is the tier the user
+  // picked (1-4); elRatePercent and the three liability limits are the
+  // snapshotted values that tier resolves to (see EL_OPTIONS in
+  // insuranceCalculations/constants.ts — the one authoritative table).
+  // Every field is additive with a default equal to the original fixed
+  // Option 1 behaviour (25% / 2m / 10m / 20m), so every EL row saved before
+  // this feature existed reads back identically with no data backfill and
+  // no premium change.
+  elOption              Int     @default(1)
+  elRatePercent         Decimal @default(25) @db.Decimal(6, 2)
+  anyOnePersonLimit     Decimal @default(2000000) @db.Decimal(18, 2)
+  anyOneOccurrenceLimit Decimal @default(10000000) @db.Decimal(18, 2)
+  anyOneYearLimit       Decimal @default(20000000) @db.Decimal(18, 2)
 
   grossPremium    Decimal @default(0) @db.Decimal(16, 2)
   phcfAmount      Decimal @default(0) @db.Decimal(16, 2)
@@ -1896,7 +1910,11 @@ model PolicyRecord {
 enum MotorTaxClass {
   PRIVATE
   COMMERCIAL
-  SPV
+  // PSV = Public Service Vehicle. Renamed from "SPV" in Phase 10 (business
+  // correction) via `ALTER TYPE ... RENAME VALUE` — an in-place catalog
+  // rename, so any historical MotorPolicyDetail row that stored 'SPV' now
+  // reads back as 'PSV' with no data migration.
+  PSV
   SPECIAL_USE
 }
 

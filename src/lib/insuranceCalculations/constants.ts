@@ -9,10 +9,54 @@ export const PHCF_RATE = 0.25;
 export const ITL_RATE = 0.2;
 export const STAMP_DUTY = 40;
 
-// Employer's Liability gross premium is a fixed 25% of the linked WIBA
+// Employer's Liability gross premium is a percentage of the linked WIBA
 // section's gross premium (expressed in the same "percentage points"
 // convention as the rates above, i.e. used via percentOf(wibaGross, 25)).
+//
+// EL_PERCENT_OF_WIBA is the default/legacy rate (Option 1). It is still
+// exported so any EL row saved before the option tiers existed — which has
+// elRatePercent defaulted to 25 in the DB — and any caller that has not yet
+// been passed an explicit option resolves to exactly the original
+// behaviour. New code should go through EL_OPTIONS / resolveElOption below.
 export const EL_PERCENT_OF_WIBA = 25;
+
+// Phase 10 — the four selectable Employer's Liability option tiers. This is
+// the ONE authoritative table: the selected option number determines the
+// rate AND all three liability limits automatically — the user never types
+// a limit. Keep in sync with the {{el_*}} placeholders documented in
+// quotationTemplateEngine/config.ts's EMPLOYERS_LIABILITY section.
+export type ElOptionNumber = 1 | 2 | 3 | 4;
+
+export type ElOption = {
+  option: ElOptionNumber;
+  /** Percentage points of WIBA gross premium, same convention as EL_PERCENT_OF_WIBA (25 means 25%). */
+  ratePercent: number;
+  anyOnePersonLimit: number;
+  anyOneOccurrenceLimit: number;
+  anyOneYearLimit: number;
+};
+
+export const EL_OPTIONS: Record<ElOptionNumber, ElOption> = {
+  1: { option: 1, ratePercent: 25, anyOnePersonLimit: 2_000_000, anyOneOccurrenceLimit: 10_000_000, anyOneYearLimit: 20_000_000 },
+  2: { option: 2, ratePercent: 30, anyOnePersonLimit: 4_000_000, anyOneOccurrenceLimit: 15_000_000, anyOneYearLimit: 30_000_000 },
+  3: { option: 3, ratePercent: 35, anyOnePersonLimit: 6_000_000, anyOneOccurrenceLimit: 20_000_000, anyOneYearLimit: 40_000_000 },
+  4: { option: 4, ratePercent: 40, anyOnePersonLimit: 8_000_000, anyOneOccurrenceLimit: 25_000_000, anyOneYearLimit: 50_000_000 },
+};
+
+export const EL_OPTION_NUMBERS: ElOptionNumber[] = [1, 2, 3, 4];
+
+export const DEFAULT_EL_OPTION: ElOptionNumber = 1;
+
+/**
+ * Normalizes anything (a form string, a nullable DB value, undefined) into a
+ * valid EL option tier. Unknown / missing → Option 1, matching the DB
+ * default and the pre-Phase-10 fixed behaviour.
+ */
+export function resolveElOption(value: unknown): ElOption {
+  const n = typeof value === "number" ? value : parseInt(String(value ?? ""), 10);
+  if (n === 2 || n === 3 || n === 4) return EL_OPTIONS[n];
+  return EL_OPTIONS[DEFAULT_EL_OPTION];
+}
 
 // Marine Cover is the only section kind that does not use the fixed
 // KES 40 STAMP_DUTY above — its stamp duty is a percentage of the total

@@ -3,12 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
-import {
-  syncQuotationVersionToDropbox,
-  verifyBusinessFolder,
-  verifyQuotationVersion,
-  type QuotationSyncResult,
-} from "@/lib/integrations/dropbox/quotationDropboxSync";
+import type { QuotationSyncResult } from "@/lib/integrations/dropbox/quotationDropboxSync";
+
+// The value exports of quotationDropboxSync (and, through them, the whole
+// quotationTemplateEngine graph — ExcelJS, JSZip, fs template loading) are
+// imported dynamically inside each action, never at module scope: these
+// admin-only actions back the <QuotationDropboxStatus> widget on the
+// read-only /quotation/[id] detail page, and a static import would drag the
+// entire Excel-generation runtime into that page's server module graph just
+// to render a status badge. Only loaded when an admin actually clicks
+// retry / re-upload / verify.
+const dropboxSync = () => import("@/lib/integrations/dropbox/quotationDropboxSync");
 
 // ADMIN-only, per Phase 4 spec Part 10/14: retry/verify/re-upload are all
 // ADMIN-only regardless of UI visibility — each action independently
@@ -32,6 +37,7 @@ export async function retryQuotationDropboxSyncAction(versionId: string): Promis
   const session = await requireAdmin();
   if (!session) return { success: false, status: "ERROR", forbidden: true };
 
+  const { syncQuotationVersionToDropbox } = await dropboxSync();
   const result = await syncQuotationVersionToDropbox(versionId);
   await revalidateForVersion(versionId);
   return result;
@@ -45,6 +51,7 @@ export async function verifyBusinessFolderAction(quotationId: string): Promise<Q
   const session = await requireAdmin();
   if (!session) return { success: false, status: "ERROR", forbidden: true };
 
+  const { verifyBusinessFolder } = await dropboxSync();
   const result = await verifyBusinessFolder(quotationId);
   revalidatePath(`/quotation/${quotationId}`);
   return result;
@@ -54,6 +61,7 @@ export async function verifyQuotationVersionAction(versionId: string): Promise<Q
   const session = await requireAdmin();
   if (!session) return { success: false, status: "ERROR", forbidden: true };
 
+  const { verifyQuotationVersion } = await dropboxSync();
   const result = await verifyQuotationVersion(versionId);
   await revalidateForVersion(versionId);
   return result;

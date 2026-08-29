@@ -10,7 +10,7 @@ import type { MappedSection, PlaceholderValues } from "./mapQuotationData";
 import type { SectionConfig, SectionLayout } from "./types";
 import { resolveFinalRow } from "./removeUnusedSections";
 import { setBoldCellValue } from "./boldFont";
-import { EXCEL_RATE_NUM_FMT } from "./numberFormats";
+import { formatRatePercent } from "./formatRate";
 
 function copyRowFormatting(worksheet: ExcelJS.Worksheet, sourceRowNumber: number, targetRowNumber: number) {
   if (sourceRowNumber === targetRowNumber) return;
@@ -75,11 +75,23 @@ export function fillDynamicRows(
     for (const col of section.dynamicRow.columns) {
       const targetRow = worksheet.getRow(blockStart + (col.rowOffset ?? 0));
       const cell = targetRow.getCell(col.column);
-      // Forced unconditionally, same as replaceVariables.ts's static "rate"
-      // case — never trust copyRowFormatting's copied-from-template numFmt
-      // alone. See numberFormats.ts.
-      if (col.kind === "rate") cell.numFmt = EXCEL_RATE_NUM_FMT;
-      writeCellValue(cell, rows[i][col.name]);
+      const raw = rows[i][col.name];
+      if (col.kind === "rate" && raw !== null && raw !== undefined && raw !== "") {
+        // App convention: the mapped value is in percentage points (0.35 =
+        // 0.35%). Written as a pre-formatted string ("0.35%") for the same
+        // reason as replaceVariables.ts's static "rate" case — Excel's
+        // "0.###%" format renders a whole number as "1." (Phase 10 issue 3)
+        // and also leaks float artifacts (0.0034999999%). setBoldCellValue
+        // has already decoupled this cell's style, so forcing numFmt to text
+        // and preserving the numeric right-alignment is safe here.
+        setBoldCellValue(cell, formatRatePercent(Number(raw)));
+        cell.numFmt = "@";
+        if (!cell.alignment || !cell.alignment.horizontal) {
+          cell.alignment = { ...cell.alignment, horizontal: "right" };
+        }
+      } else {
+        writeCellValue(cell, raw);
+      }
       touchedRows.add(blockStart + (col.rowOffset ?? 0));
     }
 

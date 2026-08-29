@@ -333,6 +333,15 @@ function hydrateWibaDraft(sections: SectionRow[]): WibaDraft {
   };
 }
 
+// Phase 10 — restore the selected EL option tier (1-4) from a saved
+// quotation. A section with no elDetail (older row) or an unrecognised
+// value falls back to Option 1, the pre-Phase-10 fixed behaviour.
+function hydrateElOption(sections: SectionRow[]): number {
+  const detail = sections.find((s) => s.sectionKind === "EMPLOYERS_LIABILITY")?.elDetail;
+  const n = detail?.elOption;
+  return n === 2 || n === 3 || n === 4 ? n : 1;
+}
+
 function hydrateCpmDraft(sections: SectionRow[]): CpmDraft {
   const detail = sections.find((s) => s.sectionKind === "CPM_STANDALONE")?.cpmDetail;
   if (!detail) return emptyCpmDraft();
@@ -615,6 +624,7 @@ export function QuotationForm({
   const [elEnabled, setElEnabled] = useState(
     () => (quotation?.sections ?? []).some((s) => s.sectionKind === "EMPLOYERS_LIABILITY")
   );
+  const [elOption, setElOption] = useState<number>(() => hydrateElOption(quotation?.sections ?? []));
   const [cpmEnabled, setCpmEnabled] = useState(
     () => (quotation?.sections ?? []).some((s) => s.sectionKind === "CPM_STANDALONE")
   );
@@ -779,7 +789,10 @@ export function QuotationForm({
 
   const carPreview = useMemo(() => previewCarPackage(carDraft), [carDraft]);
   const wibaPreview = useMemo(() => previewWiba(wibaDraft), [wibaDraft]);
-  const elPreview = useMemo(() => previewEl(wibaPreview.grossPremium), [wibaPreview]);
+  const elPreview = useMemo(
+    () => previewEl(wibaPreview.grossPremium, elOption),
+    [wibaPreview, elOption]
+  );
   const cpmPreview = useMemo(() => previewCpmStandalone(cpmDraft), [cpmDraft]);
   const plPreview = useMemo(() => previewPublicLiability(plDraft), [plDraft]);
   const firePreview = useMemo(() => previewFire(fireDraft), [fireDraft]);
@@ -1204,6 +1217,7 @@ export function QuotationForm({
         sectionKind: "EMPLOYERS_LIABILITY",
         insuranceTypeId: elType.id,
         description: null,
+        el: { option: elOption },
       });
     }
 
@@ -1719,7 +1733,7 @@ export function QuotationForm({
 
       {elEnabled && (
         <CollapsibleCard title={t.quotations.elType}>
-          <ELSection wibaDraft={wibaDraft} />
+          <ELSection wibaDraft={wibaDraft} elOption={elOption} onOptionChange={setElOption} />
         </CollapsibleCard>
       )}
 

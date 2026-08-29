@@ -2,7 +2,11 @@
 // schema comment) — unlike MOTOR_COVER_TYPES, this is a real closed set with
 // no history of previously-unseen values, so it mirrors the Prisma enum
 // exactly rather than being an open, app-validated string list.
-export const MOTOR_TAX_CLASSES = ["PRIVATE", "COMMERCIAL", "SPV", "SPECIAL_USE"] as const;
+//
+// PSV = Public Service Vehicle. Renamed from "SPV" in Phase 10 via
+// `ALTER TYPE ... RENAME VALUE`, so no historical value mapping is needed —
+// any row that stored 'SPV' now reads back as 'PSV' at the DB level.
+export const MOTOR_TAX_CLASSES = ["PRIVATE", "COMMERCIAL", "PSV", "SPECIAL_USE"] as const;
 
 export type MotorTaxClass = (typeof MOTOR_TAX_CLASSES)[number];
 

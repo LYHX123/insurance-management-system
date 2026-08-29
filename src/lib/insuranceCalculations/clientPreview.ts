@@ -6,7 +6,8 @@
 // amount from scratch on submit; nothing computed here is trusted as-is.
 
 import {
-  EL_PERCENT_OF_WIBA,
+  resolveElOption,
+  DEFAULT_EL_OPTION,
   FIRE_EARTHQUAKE_LOADING_RATE,
   FIRE_FLOOD_LOADING_RATE,
   ITL_RATE,
@@ -142,14 +143,26 @@ export function previewWiba(input: {
   return { totalEmployeeCount, totalAnnualWages, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
 }
 
-export function previewEl(wibaGrossPremium: number) {
-  const grossPremium = round2((wibaGrossPremium * EL_PERCENT_OF_WIBA) / 100);
+export function previewEl(wibaGrossPremium: number, option: unknown = DEFAULT_EL_OPTION) {
+  const tier = resolveElOption(option);
+  const grossPremium = round2((wibaGrossPremium * tier.ratePercent) / 100);
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
   const stampDutyAmount = STAMP_DUTY;
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + stampDutyAmount);
 
-  return { grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
+  return {
+    elOption: tier.option,
+    elRatePercent: tier.ratePercent,
+    anyOnePersonLimit: tier.anyOnePersonLimit,
+    anyOneOccurrenceLimit: tier.anyOneOccurrenceLimit,
+    anyOneYearLimit: tier.anyOneYearLimit,
+    grossPremium,
+    phcfAmount,
+    itlAmount,
+    stampDutyAmount,
+    totalPremium,
+  };
 }
 
 export function previewCpmStandalone(input: {
@@ -410,7 +423,10 @@ export function previewGuarantee(input: { bondValue: string; rate: string }) {
   const grossPremium = round2((num(input.bondValue) * num(input.rate)) / 100);
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
-  const stampDutyAmount = STAMP_DUTY;
+  // Phase 10 — Bond products (Tender/Bid, Advance Payment, Performance) no
+  // longer attract Stamp Duty. Kept in the return shape as 0 so existing
+  // consumers/tests that read the key keep working.
+  const stampDutyAmount = 0;
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + stampDutyAmount);
 
   return { grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };
@@ -425,7 +441,8 @@ export function previewCustomsBond(input: { rows: { bondValue: string; rate: str
   const grossPremium = round2(rows.reduce((acc, row) => acc + row.premium, 0));
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
-  const stampDutyAmount = STAMP_DUTY;
+  // Phase 10 — Customs / Clearing Bond no longer attracts Stamp Duty.
+  const stampDutyAmount = 0;
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + stampDutyAmount);
 
   return { rows, grossPremium, phcfAmount, itlAmount, stampDutyAmount, totalPremium };

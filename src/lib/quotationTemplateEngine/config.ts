@@ -155,6 +155,17 @@ const EMPLOYERS_LIABILITY: SectionConfig = {
   startRow: 67,
   endRow: 80,
   staticVariables: [
+    // Phase 10 — EL option tiers. B70/B71/B72 used to be hardcoded literals
+    // (2m / 10m / 20m); they are now placeholders driven by the selected
+    // option. A74 is the option heading ("OPTION ({{el_rate_percent}}% of
+    // WIBA)"), C74 the rate cell ("{{el_rate_percent}}%") — both embed
+    // el_rate_percent inside literal text, so it is written as a plain
+    // formatted string, not a typed %-cell.
+    sv("el_any_one_person", "B70", "money", true),
+    sv("el_any_one_occurrence", "B71", "money", true),
+    sv("el_any_one_year", "B72", "money", true),
+    sv("el_rate_percent", "A74", "rate", true),
+    sv("el_rate_percent", "C74", "rate", true),
     sv("el_gross_premium", "D74", "money", true),
     sv("el_phcf", "D77", "money", true),
     sv("el_itl", "D78", "money", true),
@@ -163,7 +174,6 @@ const EMPLOYERS_LIABILITY: SectionConfig = {
   ],
   formulaCells: ["B74", "D76"],
   summaryTotalVariable: "el_total_premium",
-  notes: ["B70/B71/B72 (Any One Person/Occurrence/Year limits) are hardcoded literals in the template, not placeholders — never written."],
 };
 
 const CPM_STANDALONE: SectionConfig = {
@@ -186,11 +196,9 @@ const CPM_STANDALONE: SectionConfig = {
     //
     // C86/C88's template cells were never %-formatted (unlike every other
     // rate cell in the workbook), which used to make 0.75 render as the raw
-    // fraction "0.0075" instead of "0.75%". Fixed at the template level
-    // (numFmt "0.###%" like every other rate cell) as part of the rate-
-    // format standardization; replaceVariables.ts also now forces
-    // EXCEL_RATE_NUM_FMT unconditionally on every "rate" write, so no
-    // per-field override is needed here anymore.
+    // fraction "0.0075". As of Phase 10 every "rate" write goes through
+    // formatRatePercent (see formatRate.ts) and is written as a text string
+    // ("0.75%"), so the template cell's own number format is irrelevant.
     sv("cpm_sum_insured", "B86", "money", true),
     sv("cpm_rate", "C86", "rate", true),
     sv("cpm_basic_premium", "D86", "money", true),
@@ -415,10 +423,9 @@ const MARINE_COVER: SectionConfig = {
       { column: "B", name: "marine_incidental_loading", kind: "money", rowOffset: 1 },
       { column: "B", name: "marine_basic_sum_insured", kind: "money", rowOffset: 2 },
       // Template cell C222 was "0.0000%" (4 decimals), which used to print
-      // "0.2500%" instead of the required "0.25%" — fixed at the template
-      // level (numFmt "0.###%") as part of the rate-format standardization;
-      // fillDynamicRows.ts also forces EXCEL_RATE_NUM_FMT unconditionally on
-      // every "rate" column, so no per-field override is needed here anymore.
+      // "0.2500%" instead of "0.25%". As of Phase 10 fillDynamicRows.ts
+      // writes every "rate" column as a formatRatePercent text string
+      // ("0.25%"), so the template cell's own number format is irrelevant.
       { column: "C", name: "marine_rate", kind: "rate", rowOffset: 2 },
       { column: "D", name: "marine_line_premium", kind: "money", rowOffset: 2 },
     ],
@@ -642,7 +649,9 @@ const TENDER_SECURITY: SectionConfig = {
     sv("bond_gross_premium", "D406", "money", true),
     sv("bond_phcf", "D407", "money", true),
     sv("bond_itl", "D408", "money", true),
-    sv("bond_stamp_duty", "D409", "money", true),
+    // Phase 10 — Bond products no longer attract Stamp Duty. The template's
+    // "Stamp Duty" row (B409/D409) was cleared; the {{bond_stamp_duty}}
+    // placeholder no longer exists, so it is no longer mapped here.
     sv("bond_total_premium", "D410", "money", true),
   ],
   summaryTotalVariable: "bond_total_premium",
@@ -664,7 +673,8 @@ const PERFORMANCE_BOND: SectionConfig = {
     sv("guarantee_gross_premium", "D428", "money", true),
     sv("guarantee_phcf", "D429", "money", true),
     sv("guarantee_itl", "D430", "money", true),
-    sv("guarantee_stamp_duty", "D431", "money", true),
+    // Phase 10 — no Stamp Duty on Bond products; the template's Stamp Duty
+    // row (B431/D431) was cleared and {{guarantee_stamp_duty}} removed.
     sv("guarantee_total_premium", "D433", "money", true),
   ],
   summaryTotalVariable: "guarantee_total_premium",
@@ -686,7 +696,8 @@ const ADVANCE_PAYMENT_GUARANTEE: SectionConfig = {
     sv("guarantee_gross_premium", "D449", "money", true),
     sv("guarantee_phcf", "D450", "money", true),
     sv("guarantee_itl", "D451", "money", true),
-    sv("guarantee_stamp_duty", "D452", "money", true),
+    // Phase 10 — no Stamp Duty on Bond products; the template's Stamp Duty
+    // row (B452/D452) was cleared and {{guarantee_stamp_duty}} removed.
     sv("guarantee_total_premium", "D454", "money", true),
   ],
   summaryTotalVariable: "guarantee_total_premium",
@@ -704,7 +715,9 @@ const CUSTOMS_BOND: SectionConfig = {
     sv("custom_bond_gross_premium", "D470", "money", true),
     sv("custom_bond_phcf", "D471", "money", true),
     sv("custom_bond_itl", "D472", "money", true),
-    sv("custom_bond_stamp_duty", "D473", "money", true),
+    // Phase 10 — no Stamp Duty on Customs / Clearing Bond; the template's
+    // Stamp Duty row (B473/D473) was cleared and {{custom_bond_stamp_duty}}
+    // removed.
     sv("custom_bond_total_premium", "D474", "money", true),
   ],
   dynamicRow: {

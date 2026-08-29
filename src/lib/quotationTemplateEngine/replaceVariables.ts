@@ -24,7 +24,7 @@ import type { MappedSection, PlaceholderValues } from "./mapQuotationData";
 import type { SectionConfig, SectionLayout, StaticVariable } from "./types";
 import { resolveFinalCell } from "./removeUnusedSections";
 import { boldFont, setBoldCellValue } from "./boldFont";
-import { EXCEL_RATE_NUM_FMT } from "./numberFormats";
+import { formatRatePercent, trimNumberString } from "./formatRate";
 
 const PLACEHOLDER_REGEX = /\{\{[^}]*\}\}/g;
 
@@ -32,7 +32,9 @@ type TextSegment = { text: string; bold: boolean };
 
 function formatForText(value: PlaceholderValues[string], kind: StaticVariable["kind"]): string {
   if (value === null || value === undefined) return "";
-  if (kind === "rate") return typeof value === "number" ? String(value) : String(value);
+  // A rate embedded inside literal template text (e.g. "{{el_rate_percent}}%
+  // of WIBA") — emit just the trimmed number, the template supplies the "%".
+  if (kind === "rate") return trimNumberString(Number(value) || 0);
   return String(value);
 }
 
@@ -134,14 +136,20 @@ export function replaceVariables(
         case "integer":
           setBoldCellValue(cell, typeof value === "number" ? value : Number(value) || 0);
           break;
-        case "rate":
-          // App convention: 0.25 means 0.25%. The template cell is
-          // %-formatted, which needs the raw fraction to display correctly.
-          // numFmt is always forced here rather than trusting whatever the
-          // template cell already has — see numberFormats.ts.
-          cell.numFmt = EXCEL_RATE_NUM_FMT;
-          setBoldCellValue(cell, (typeof value === "number" ? value : Number(value) || 0) / 100);
+        case "rate": {
+          // App convention: 0.25 means 0.25%, 1 means 1%. Written as a
+          // pre-formatted string ("0.25%", "1%") rather than an Excel
+          // %-formatted number: the custom format "0.###%" renders a whole
+          // number as "1." in Microsoft Excel (Phase 10 issue 3). numFmt is
+          // forced to text and the numeric right-alignment is preserved.
+          const pct = typeof value === "number" ? value : Number(value) || 0;
+          setBoldCellValue(cell, formatRatePercent(pct));
+          cell.numFmt = "@";
+          if (!cell.alignment || !cell.alignment.horizontal) {
+            cell.alignment = { ...cell.alignment, horizontal: "right" };
+          }
           break;
+        }
         case "text":
         case "date":
           setBoldCellValue(cell, String(value));

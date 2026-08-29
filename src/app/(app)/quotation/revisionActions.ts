@@ -5,8 +5,17 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit } from "@/lib/permissions";
 import { deepCopyQuotationSections } from "@/lib/quotationRevisions/deepCopy";
-import { generateAndSyncQuotationExcel } from "@/lib/integrations/dropbox/quotationDropboxSync";
 import type { Prisma } from "@/generated/prisma/client";
+
+// NOTE: generateAndSyncQuotationExcel (and, through it, the whole
+// quotationTemplateEngine graph — ExcelJS, JSZip, fs template loading) is
+// imported dynamically inside createRevisionAction ONLY, never at module
+// scope. This file's server actions (createRevision / issue / accept /
+// cancel / compare / deleteDraft) are imported by the read-only
+// <QuotationCaseView> that renders /quotation/case/[caseId]; a static import
+// here would drag the entire Excel-generation runtime into that page's
+// server module graph even though opening a case detail page never
+// generates a workbook. Keep it lazy.
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string };
 
@@ -128,6 +137,11 @@ export async function createRevisionAction(
     // records PENDING/ERROR on the version itself); this try/catch only
     // guards against a genuinely unexpected error (e.g. local storage I/O).
     try {
+      // Lazy import — see the module-scope note above. Only loaded when a
+      // revision is actually created, never on case-detail page render.
+      const { generateAndSyncQuotationExcel } = await import(
+        "@/lib/integrations/dropbox/quotationDropboxSync"
+      );
       await generateAndSyncQuotationExcel(newRevisionId);
     } catch (syncErr) {
       console.error(`Dropbox sync failed for new revision ${newRevisionId}:`, syncErr);

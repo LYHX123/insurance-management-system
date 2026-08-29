@@ -18,6 +18,7 @@ const DETAIL_INCLUDE = {
       generatedPolicyRecords: { where: { deletedAt: null }, select: { id: true, recordNumber: true, category: true } },
       carDetail: true,
       wibaDetail: { include: { payrollRows: { orderBy: { sortOrder: "asc" as const } } } },
+      elDetail: true,
       cpmDetail: { include: { equipmentRows: { orderBy: { sortOrder: "asc" as const } } } },
       publicLiabilityDetail: true,
       fireDetail: true,
@@ -204,6 +205,19 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
               monthlyAllowance: r.monthlyAllowance?.toString() ?? null,
               monthlyOtherEarnings: r.monthlyOtherEarnings?.toString() ?? null,
             })),
+          }
+        : null,
+      elDetail: s.elDetail
+        ? {
+            // Phase 10 — the selected EL option tier, so the edit form can
+            // restore the selector. Rate/limits are derived from the option
+            // (see EL_OPTIONS), but the snapshotted values are surfaced too
+            // for display without recomputation.
+            elOption: s.elDetail.elOption,
+            elRatePercent: s.elDetail.elRatePercent.toString(),
+            anyOnePersonLimit: s.elDetail.anyOnePersonLimit.toString(),
+            anyOneOccurrenceLimit: s.elDetail.anyOneOccurrenceLimit.toString(),
+            anyOneYearLimit: s.elDetail.anyOneYearLimit.toString(),
           }
         : null,
       cpmDetail: s.cpmDetail

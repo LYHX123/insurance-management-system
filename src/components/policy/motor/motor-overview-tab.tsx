@@ -87,7 +87,7 @@ export function MotorOverviewTab({
   const taxClassLabel: Record<string, string> = {
     PRIVATE: t.policy.taxClassPrivate,
     COMMERCIAL: t.policy.taxClassCommercial,
-    SPV: t.policy.taxClassSpv,
+    PSV: t.policy.taxClassPsv,
     SPECIAL_USE: t.policy.taxClassSpecialUse,
   };
 

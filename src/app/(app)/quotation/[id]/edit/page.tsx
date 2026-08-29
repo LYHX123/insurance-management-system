@@ -26,6 +26,7 @@ export default async function EditQuotationPage({
             items: { orderBy: { sortOrder: "asc" } },
             carDetail: true,
             wibaDetail: { include: { payrollRows: { orderBy: { sortOrder: "asc" } } } },
+            elDetail: true,
             cpmDetail: { include: { equipmentRows: { orderBy: { sortOrder: "asc" } } } },
             publicLiabilityDetail: true,
             fireDetail: true,
@@ -170,6 +171,15 @@ export default async function EditQuotationPage({
               monthlyAllowance: r.monthlyAllowance?.toString() ?? null,
               monthlyOtherEarnings: r.monthlyOtherEarnings?.toString() ?? null,
             })),
+          }
+        : null,
+      elDetail: s.elDetail
+        ? {
+            elOption: s.elDetail.elOption,
+            elRatePercent: s.elDetail.elRatePercent.toString(),
+            anyOnePersonLimit: s.elDetail.anyOnePersonLimit.toString(),
+            anyOneOccurrenceLimit: s.elDetail.anyOneOccurrenceLimit.toString(),
+            anyOneYearLimit: s.elDetail.anyOneYearLimit.toString(),
           }
         : null,
       cpmDetail: s.cpmDetail

@@ -30,8 +30,9 @@ export type TemplateColumn = "A" | "B" | "C" | "D" | "E";
 
 // How a placeholder's value must be written into the cell:
 // - "money": raw numeric value, existing cell numFmt (thousand separators) preserved
-// - "rate": app convention is "0.25 means 0.25%" but the template cell is
-//   %-formatted, so the value written must be divided by 100 first
+// - "rate": app convention is "0.25 means 0.25%"; written as a pre-formatted
+//   text string via formatRatePercent ("0.25%", "1%") — see formatRate.ts
+//   (Phase 10 issue 3: Excel's "0.###%" format renders whole numbers as "1.")
 // - "integer": whole number, no formatting conversion
 // - "text": string, preserving embedded line breaks
 // - "date": a real Excel date (JS Date), not a formatted string

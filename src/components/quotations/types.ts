@@ -93,6 +93,16 @@ export type WibaSectionDetailRow = {
   payrollRows: WibaPayrollRowData[];
 };
 
+// Phase 10 — Employer's Liability option tier. elOption (1-4) is what the
+// edit form restores; the rate/limits are its snapshotted resolution.
+export type ElSectionDetailRow = {
+  elOption: number;
+  elRatePercent: string;
+  anyOnePersonLimit: string;
+  anyOneOccurrenceLimit: string;
+  anyOneYearLimit: string;
+};
+
 export type CpmEquipmentRowData = {
   equipmentName: string;
   quantity: number;
@@ -315,6 +325,7 @@ export type SectionRow = {
   items: CoverageItemRow[];
   carDetail: CarSectionDetailRow | null;
   wibaDetail: WibaSectionDetailRow | null;
+  elDetail: ElSectionDetailRow | null;
   cpmDetail: CpmSectionDetailRow | null;
   publicLiabilityDetail: PublicLiabilitySectionDetailRow | null;
   fireDetail: FireSectionDetailRow | null;
