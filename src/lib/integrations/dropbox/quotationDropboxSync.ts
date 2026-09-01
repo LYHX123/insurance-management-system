@@ -21,8 +21,16 @@ import {
   resolveInsuranceTypeCodeForNaming,
 } from "./quotationDropboxNaming";
 import { computeQuotationContentFingerprint } from "./quotationContentFingerprint";
-import { generateQuotationExcel, TemplateGenerationError } from "@/lib/quotationTemplateEngine";
 import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
+
+// The quotation Excel template engine (ExcelJS + JSZip at its core) is only
+// ever needed on the write path below — generateAndSyncQuotationExcel(),
+// reached exclusively from the excel-template route and background sync.
+// It is imported lazily at that call site so the read-only helpers this
+// module also exports (ensureQuotationCaseDropboxBusinessFile,
+// resolveSourceQuotationId, QUOTATION_SYNC_INCLUDE, …) — which Policy
+// detail pages pull in transitively via policyBusinessFile.ts — never drag
+// the whole Excel-generation runtime into a page's SSR module graph.
 
 const STALE_SYNCING_THRESHOLD_MS = 2 * 60 * 1000;
 const QUOTATION_SUBFOLDER_NAME = "Quotation";
@@ -123,6 +131,8 @@ export async function generateAndSyncQuotationExcel(quotationId: string): Promis
   // revision has nowhere to attach one).
   if (!quotation.quotationCaseId) return { success: false, error: "QUOTATION_HAS_NO_CASE" };
   const quotationCaseId = quotation.quotationCaseId;
+
+  const { generateQuotationExcel, TemplateGenerationError } = await import("@/lib/quotationTemplateEngine");
 
   let buffer: Buffer;
   try {

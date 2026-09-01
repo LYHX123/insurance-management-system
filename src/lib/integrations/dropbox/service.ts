@@ -5,12 +5,19 @@ import type { Dropbox } from "dropbox";
 import { prisma } from "@/lib/prisma";
 import { DROPBOX_INTEGRATION_ID, getDropboxEnv, type DropboxEnvConfig } from "./constants";
 import { encryptToken, decryptToken, DropboxTokenDecryptionError } from "./encryption";
-import { exchangeCodeForToken } from "./auth";
-import { createDropboxClient } from "./client";
 import { normalizeRootFolder, assertInsideRoot } from "./paths";
 import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from "./errors";
-import { getActiveClient } from "./migration/config";
 import type { DropboxIntegrationModel } from "@/generated/prisma/models";
+
+// ./auth, ./client and ./migration/config each statically `import { Dropbox }
+// from "dropbox"` — the ~1MB Dropbox SDK. They are only reached from the two
+// live-API functions below (getAuthenticatedDropboxClient /
+// completeOAuthConnection), never from getDropboxIntegrationRow() /
+// toIntegrationView(), which is all the render-time callers (Policy detail,
+// Quotation detail, Customer detail, Settings page) actually use. Importing
+// them lazily at their call sites keeps the SDK out of those pages' SSR
+// module graphs. Both call sites are already async, so this is a load-timing
+// change only — no behavior, error-handling or Dropbox-semantics change.
 import type { DropboxIntegrationView } from "./types";
 import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 
@@ -91,6 +98,7 @@ export async function getAuthenticatedDropboxClient(): Promise<GetAuthenticatedC
 
   const row = await getDropboxIntegrationRow();
   try {
+    const { getActiveClient } = await import("./migration/config");
     const refreshToken = decryptStoredRefreshToken(row, envResult.config);
     const active = await getActiveClient(envResult.config, refreshToken, row.rootFolder);
     if (!active.ok) {
@@ -160,6 +168,11 @@ export async function completeOAuthConnection(input: CompleteConnectionInput): P
   const envResult = getDropboxEnv();
   if (!envResult.ok) throw new DropboxIntegrationError("CONFIGURATION_MISSING", "Dropbox is not configured.");
   const env = envResult.config;
+
+  const [{ exchangeCodeForToken }, { createDropboxClient }] = await Promise.all([
+    import("./auth"),
+    import("./client"),
+  ]);
 
   const exchanged = await exchangeCodeForToken(env, input.code);
 

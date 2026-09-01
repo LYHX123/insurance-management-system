@@ -15,8 +15,14 @@ import {
 } from "../constants";
 import { encryptToken, decryptToken, DropboxTokenDecryptionError } from "../encryption";
 import { DropboxIntegrationError, mapDropboxError } from "../errors";
-import { createSourceClient, createNamespaceClient } from "./namespaceClient";
 import type { Dropbox } from "dropbox";
+
+// ./namespaceClient statically imports the ~1MB Dropbox SDK. Only the three
+// client-building functions below need it, and every caller of those is an
+// async admin-migration path. Loading it lazily at those call sites keeps
+// the SDK out of the module graph of render-time consumers that only use
+// this file's pure DB helpers (getNamespaceConfigRow / toMigrationNamespaceView),
+// e.g. the Settings page via migration/view.ts. Load-timing change only.
 import type { DropboxNamespaceConfigModel } from "@/generated/prisma/models";
 
 export async function getNamespaceConfigRow(): Promise<DropboxNamespaceConfigModel> {
@@ -85,6 +91,7 @@ async function getDecryptedRefreshToken(env: DropboxEnvConfig): Promise<string> 
 }
 
 export async function getMigrationSourceClient(env: DropboxEnvConfig): Promise<{ client: Dropbox; refreshToken: string }> {
+  const { createSourceClient } = await import("./namespaceClient");
   const refreshToken = await getDecryptedRefreshToken(env);
   return { client: createSourceClient(env, refreshToken), refreshToken };
 }
@@ -96,6 +103,7 @@ export async function getMigrationDestinationClient(env: DropboxEnvConfig): Prom
   if (!config.encryptedDestinationNamespaceId) {
     throw new DropboxIntegrationError("NAMESPACE_NOT_RESOLVED", "The destination Team Folder namespace has not been resolved yet. Run the diagnostic first.");
   }
+  const { createNamespaceClient } = await import("./namespaceClient");
   const refreshToken = await getDecryptedRefreshToken(env);
   let namespaceId: string;
   try {
@@ -194,6 +202,8 @@ export async function getActiveClient(
       message: "Dropbox storage migration is in progress. Business data has been saved, and Dropbox synchronization will resume automatically after migration.",
     };
   }
+
+  const { createSourceClient, createNamespaceClient } = await import("./namespaceClient");
 
   if (config.activeNamespaceMode === "HOME") {
     return { ok: true, client: createSourceClient(env, refreshToken), effectiveRootFolder: homeRootFolder };
