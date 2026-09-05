@@ -1860,6 +1860,16 @@ model PolicyRecord {
 
   remarks String?
 
+  // Phase 12A — optional free-text name of the contact / responsible person
+  // on the CUSTOMER side for this policy ("经办人" / "Contact Person"). NOT an
+  // internal staff member, and deliberately NOT a relation or a constrained
+  // reference to Customer.mainContactPerson / CustomerProject.contactPerson:
+  // users must be able to type whatever real customer-side name applies to
+  // this specific policy. Nullable, never backfilled — every policy that
+  // predates this field keeps it null ("—" in the UI). The column lives on
+  // the shared PolicyRecord, but the Phase 12A UI wires it for Motor only.
+  customerContactPerson String?
+
   createdById String
   createdAt   DateTime  @default(now())
   updatedById String?

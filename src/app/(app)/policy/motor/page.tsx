@@ -3,13 +3,14 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit, hasPermission } from "@/lib/permissions";
 import { computeBusinessStatus } from "@/lib/policy/status";
+import { buildMotorListFilterWhere } from "@/lib/policy/motorListFilters";
 import { MotorListTable } from "@/components/policy/motor/motor-list-table";
 import type { MotorListRow } from "@/components/policy/types";
 
 export default async function MotorPolicyListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string }>;
+  searchParams: Promise<{ customerId?: string; contact?: string; expiryFrom?: string; expiryTo?: string }>;
 }) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "policy.motor")) {
@@ -19,12 +20,15 @@ export default async function MotorPolicyListPage({
   // Phase 8.1 Part 4 — the "View All Motor Policies" entry point from
   // Customer Detail's Related Records tab filters at the database level,
   // never just in the browser: customerId here narrows the actual Prisma
-  // query.
-  const { customerId } = await searchParams;
+  // query. Phase 12A adds a free-text Contact Person match + an expiry-date
+  // range to the same server-side where clause (see buildMotorListFilterWhere)
+  // — none of these are applied by filtering the full dataset in the browser.
+  const { customerId, contact, expiryFrom, expiryTo } = await searchParams;
+  const filterWhere = buildMotorListFilterWhere({ contact, expiryFrom, expiryTo });
 
   const [records, receiptSums, paymentSums] = await Promise.all([
     prisma.policyRecord.findMany({
-      where: { category: "MOTOR", deletedAt: null, ...(customerId ? { customerId } : {}) },
+      where: { category: "MOTOR", deletedAt: null, ...(customerId ? { customerId } : {}), ...filterWhere },
       include: {
         customer: { select: { companyName: true } },
         motorDetail: { select: { insuranceType: true, registrationNumber: true } },
@@ -65,6 +69,7 @@ export default async function MotorPolicyListPage({
       clientBalance: (clientPremium - totalReceived).toFixed(2),
       insurerBalance: (insurerCost - totalPaid).toFixed(2),
       businessStatus: computeBusinessStatus(r.effectiveDate, r.expiryDate, r.businessStatus),
+      contactPerson: r.customerContactPerson,
     };
   });
 

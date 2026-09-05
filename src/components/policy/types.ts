@@ -73,6 +73,9 @@ export type MotorListRow = {
   clientBalance: string;
   businessStatus: PolicyBusinessStatus;
   insurerBalance: string;
+  // Phase 12A — free-text customer-side contact person ("经办人"), or null
+  // when none was entered.
+  contactPerson: string | null;
 };
 
 export type TransactionRow = {
@@ -112,6 +115,9 @@ export type MotorDetail = {
   sourceSheet: string | null;
   originalRowNumber: number | null;
   remarks: string | null;
+  // Phase 12A — free-text customer-side contact person ("经办人" / "Contact
+  // Person"), or null when none. Shown as "—" when null.
+  customerContactPerson: string | null;
 
   customerPremium: string;
   insurerCost: string;

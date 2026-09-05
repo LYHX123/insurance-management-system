@@ -1116,6 +1116,15 @@ const en = {
     allTypesOfCover: "All Types of Cover",
     allInsurers: "All Insurers",
     noRecords: "No Motor records found.",
+
+    // --- Phase 12A: Motor Contact Person + expiry-range filter ---
+    // "Contact Person" / "经办人" — a free-text customer-side contact name,
+    // NOT an internal staff member.
+    contactPerson: "Contact Person",
+    contactPersonOptional: "Contact Person (optional)",
+    contactPersonFilterPlaceholder: "Filter by contact person",
+    expiryFrom: "Expiry From",
+    expiryTo: "Expiry To",
     clientPremium: "Client Premium",
     clientBalance: "Client Balance",
     view: "View",

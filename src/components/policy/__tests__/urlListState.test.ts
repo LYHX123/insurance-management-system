@@ -77,8 +77,13 @@ describe.each(categories)("$name policy list — URL-persisted state (Phase 8.1 
   });
 
   it("page.tsx accepts a customerId searchParams and merges it into the Prisma where clause", () => {
-    expect(pageSource).toMatch(/searchParams:\s*Promise<\{\s*customerId\?:\s*string\s*\}>/);
-    expect(pageSource).toMatch(/const \{ customerId \} = await searchParams;/);
+    // Phase 12A: the Motor page additionally accepts handler/expiryFrom/
+    // expiryTo in the same searchParams object and destructure, so these
+    // assertions match a customerId key within the object rather than an
+    // exact single-key shape (the other three category pages still match
+    // too).
+    expect(pageSource).toMatch(/searchParams:\s*Promise<\{[^}]*customerId\?:\s*string/);
+    expect(pageSource).toMatch(/const \{[^}]*\bcustomerId\b[^}]*\} = await searchParams;/);
     expect(pageSource).toMatch(new RegExp(`category:\\s*"${prismaWhereCategory}"[\\s\\S]{0,40}customerId`));
   });
 });

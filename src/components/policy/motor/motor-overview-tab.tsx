@@ -72,6 +72,7 @@ export function MotorOverviewTab({
   const [vehicleMake, setVehicleMake] = useState(detail.vehicleMake ?? "");
   const [vehicleModel, setVehicleModel] = useState(detail.vehicleModel ?? "");
   const [insurerName, setInsurerName] = useState(detail.insurerName ?? "");
+  const [contactPerson, setContactPerson] = useState(detail.customerContactPerson ?? "");
   const [policyNumber, setPolicyNumber] = useState(detail.policyNumber ?? "");
   const [effectiveDate, setEffectiveDate] = useState(detail.effectiveDate.slice(0, 10));
   const [expiryDate, setExpiryDate] = useState(detail.expiryDate.slice(0, 10));
@@ -126,6 +127,7 @@ export function MotorOverviewTab({
       customerPremium,
       insurerCost,
       remarks: remarks || null,
+      customerContactPerson: contactPerson || null,
       cancelled,
     });
     setIsSubmitting(false);
@@ -181,6 +183,7 @@ export function MotorOverviewTab({
             {field(t.policy.taxClass, detail.taxClass ? taxClassLabel[detail.taxClass] : t.policy.notSpecified)}
             {field(t.policy.vehicleValue, detail.vehicleValue ? formatMoney(detail.vehicleValue) : "—")}
             {field(t.policy.insurer, detail.insurerName || "—")}
+            {field(t.policy.contactPerson, detail.customerContactPerson || "—")}
             {field(t.policy.policyNumber, detail.policyNumber || "—")}
             {field(t.policy.effectiveDate, dateFormatter.format(new Date(detail.effectiveDate)))}
             {field(t.policy.expiryDate, dateFormatter.format(new Date(detail.expiryDate)))}
@@ -377,6 +380,9 @@ export function MotorOverviewTab({
         {/* Row 8 */}
         <FormField label={t.policy.insurerCost}>
           <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
+        </FormField>
+        <FormField label={t.policy.contactPersonOptional}>
+          <Input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
         </FormField>
       </div>
 

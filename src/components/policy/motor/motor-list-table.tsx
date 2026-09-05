@@ -7,6 +7,7 @@ import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Badge } from "@/components/ui/badge";
@@ -37,13 +38,22 @@ const PAGE_SIZE = 25;
 // silently drop it from the URL (Phase 8.1 Part 4). customerFilter (by
 // customer NAME) is a separate, pre-existing client-side filter and is
 // deliberately left as-is.
+// Phase 12A: `contact` (free-text Contact Person / 经办人, case-insensitive
+// partial match), `expiryFrom` and `expiryTo` are applied server-side (see
+// policy/motor/page.tsx + buildMotorListFilterWhere) — they are tracked here
+// only so useUrlListState keeps them in the URL and drives the server
+// re-fetch on change. `contact` + the expiry range replace the former
+// single-date `expiryDate` exact-match key. Every other key below is still
+// the pre-existing client-side filter, unchanged.
 const MOTOR_LIST_DEFAULTS = {
   search: "",
   customer: "ALL",
   type: "ALL",
   insurer: "ALL",
   status: "ALL",
-  expiryDate: "",
+  contact: "",
+  expiryFrom: "",
+  expiryTo: "",
   outstandingClientOnly: "",
   outstandingInsurerOnly: "",
   page: "1",
@@ -59,7 +69,9 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
     type: typeFilter,
     insurer: insurerFilter,
     status: statusFilter,
-    expiryDate,
+    contact: contactFilter,
+    expiryFrom,
+    expiryTo,
     customerId,
   } = listState;
   const outstandingClientOnly = listState.outstandingClientOnly === "1";
@@ -102,7 +114,9 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
       const matchesType = typeFilter === "ALL" || r.insuranceType === typeFilter;
       const matchesInsurer = insurerFilter === "ALL" || r.insurerName === insurerFilter;
       const matchesStatus = statusFilter === "ALL" || r.businessStatus === statusFilter;
-      const matchesExpiryDate = !expiryDate || r.expiryDate.slice(0, 10) === expiryDate;
+      // Handler + Expiry range are filtered server-side (see
+      // policy/motor/page.tsx) — `records` is already narrowed by the time
+      // it reaches here, so there is nothing to re-check client-side.
       const matchesOutstanding = matchesOutstandingBalanceFilters({
         clientBalance: Number(r.clientBalance),
         insurerBalance: Number(r.insurerBalance),
@@ -115,7 +129,6 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
         matchesType &&
         matchesInsurer &&
         matchesStatus &&
-        matchesExpiryDate &&
         matchesOutstanding
       );
     });
@@ -126,7 +139,6 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
     typeFilter,
     insurerFilter,
     statusFilter,
-    expiryDate,
     outstandingClientOnly,
     outstandingInsurerOnly,
   ]);
@@ -225,9 +237,18 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
             <option key={s} value={s}>{statusLabel[s]}</option>
           ))}
         </Select>
+        <Input
+          value={contactFilter}
+          onChange={(e) => setListState({ contact: e.target.value, page: "1" })}
+          placeholder={t.policy.contactPersonFilterPlaceholder}
+          aria-label={t.policy.contactPerson}
+          className="w-auto max-w-[200px]"
+        />
         <PolicyExpiryDateFilter
-          value={expiryDate}
-          onChange={(value) => setListState({ expiryDate: value, page: "1" }, { immediate: true })}
+          fromValue={expiryFrom}
+          toValue={expiryTo}
+          onFromChange={(value) => setListState({ expiryFrom: value, page: "1" }, { immediate: true })}
+          onToChange={(value) => setListState({ expiryTo: value, page: "1" }, { immediate: true })}
         />
       </div>
 
@@ -243,42 +264,65 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
       />
 
       <TableWrap scroll>
-        <Table className="min-w-[1200px]">
+        {/* Phase 12A — explicit column widths + nowrap headers so every
+            header label (incl. the Chinese "保险公司" / "经办人") stays on one
+            line. Customer / Insurance Type get the extra room their longer
+            content needs; Actions stays compact. table-layout stays `auto`,
+            so these widths are proportional hints and long cell content
+            still widens the table into its horizontal scroll on small
+            screens. */}
+        <Table className="min-w-[1180px]">
+          <colgroup>
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "120px" }} />
+            <col style={{ width: "200px" }} />
+            <col style={{ width: "140px" }} />
+            <col style={{ width: "160px" }} />
+            <col style={{ width: "120px" }} />
+            <col style={{ width: "132px" }} />
+            <col style={{ width: "112px" }} />
+            <col style={{ width: "120px" }} />
+            <col style={{ width: "120px" }} />
+            <col style={{ width: "100px" }} />
+            <col style={{ width: "64px" }} />
+          </colgroup>
           <thead>
             <tr>
-              <th>{t.policy.recordNumber}</th>
-              <th>{t.policy.processingDate}</th>
-              <th>{t.policy.customer}</th>
-              <th>{t.policy.typeOfCover}</th>
-              <th>{t.policy.registrationNumber}</th>
-              <th>{t.policy.insurer}</th>
-              <th>{t.policy.expiryDate}</th>
-              <th>{t.policy.clientPremium}</th>
-              <th>{t.policy.clientBalance}</th>
-              <th>{t.common.status}</th>
-              <th>{t.common.actions}</th>
+              <th className="whitespace-nowrap">{t.policy.recordNumber}</th>
+              <th className="whitespace-nowrap">{t.policy.processingDate}</th>
+              <th className="whitespace-nowrap">{t.policy.customer}</th>
+              <th className="whitespace-nowrap">{t.policy.contactPerson}</th>
+              <th className="whitespace-nowrap">{t.policy.typeOfCover}</th>
+              <th className="whitespace-nowrap">{t.policy.registrationNumber}</th>
+              <th className="whitespace-nowrap">{t.policy.insurer}</th>
+              <th className="whitespace-nowrap">{t.policy.expiryDate}</th>
+              <th className="whitespace-nowrap">{t.policy.clientPremium}</th>
+              <th className="whitespace-nowrap">{t.policy.clientBalance}</th>
+              <th className="whitespace-nowrap">{t.common.status}</th>
+              <th className="whitespace-nowrap">{t.common.actions}</th>
             </tr>
           </thead>
           <tbody>
-            {pageRows.length === 0 && <TableEmpty colSpan={11}>{t.policy.noRecords}</TableEmpty>}
+            {pageRows.length === 0 && <TableEmpty colSpan={12}>{t.policy.noRecords}</TableEmpty>}
             {pageRows.map((r) => (
               <tr key={r.id}>
-                <td className="font-medium text-zinc-800">
+                <td className="font-medium whitespace-nowrap text-zinc-800">
                   <Link href={`/policy/motor/${r.id}`} className="text-emerald-700 hover:underline">
                     {r.recordNumber}
                   </Link>
                 </td>
-                <td className="text-zinc-500">{dateFormatter.format(new Date(r.processingDate))}</td>
+                <td className="whitespace-nowrap text-zinc-500">{dateFormatter.format(new Date(r.processingDate))}</td>
                 <td>{r.customerName}</td>
+                <td className="text-zinc-500">{r.contactPerson || "—"}</td>
                 <td className="text-zinc-500">{r.insuranceType}</td>
-                <td className="text-zinc-500">{r.registrationNumber}</td>
+                <td className="whitespace-nowrap text-zinc-500">{r.registrationNumber}</td>
                 <td className="text-zinc-500">{r.insurerName || "—"}</td>
-                <td className="text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
-                <td className="text-zinc-500">{formatMoney(r.clientPremium)}</td>
-                <td className={Number(r.clientBalance) > 0 ? "font-medium text-amber-700" : "text-zinc-500"}>
+                <td className="whitespace-nowrap text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
+                <td className="whitespace-nowrap text-zinc-500">{formatMoney(r.clientPremium)}</td>
+                <td className={`whitespace-nowrap ${Number(r.clientBalance) > 0 ? "font-medium text-amber-700" : "text-zinc-500"}`}>
                   {formatMoney(r.clientBalance)}
                 </td>
-                <td>
+                <td className="whitespace-nowrap">
                   <Badge tone={STATUS_TONE[r.businessStatus]}>{statusLabel[r.businessStatus]}</Badge>
                 </td>
                 <td>

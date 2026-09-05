@@ -1086,6 +1086,14 @@ const zh: Dictionary = {
     allTypesOfCover: "所有险种类型",
     allInsurers: "所有保险公司",
     noRecords: "未找到机动车记录。",
+
+    // --- Phase 12A: 机动车经办人 + 到期日范围筛选 ---
+    // “经办人” = 客户方的联系人/负责人（自由文本），不是本公司内部员工。
+    contactPerson: "经办人",
+    contactPersonOptional: "经办人（可选）",
+    contactPersonFilterPlaceholder: "按经办人筛选",
+    expiryFrom: "到期日从",
+    expiryTo: "到期日至",
     clientPremium: "客户保费",
     clientBalance: "客户余额",
     view: "查看",

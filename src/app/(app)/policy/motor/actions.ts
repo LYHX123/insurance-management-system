@@ -66,6 +66,13 @@ async function validateCustomerAndProject(
   return { ok: true };
 }
 
+// Phase 12A — the Contact Person ("经办人") is a plain free-text customer-side
+// name: trimmed, empty string collapses to null. No validation, no lookup,
+// no relation.
+function normalizeContactPerson(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export type CreateMotorRecordInput = {
   processingDate: string;
   customerId: string;
@@ -81,6 +88,8 @@ export type CreateMotorRecordInput = {
   customerPremium: number | string;
   insurerCost: number | string;
   remarks?: string | null;
+  // Phase 12A: optional free-text customer-side contact person ("经办人").
+  customerContactPerson?: string | null;
   // Phase 2A: set only when this record is created via the quotation
   // detail page's "Create Policy" action (see
   // src/app/(app)/quotation/[id]/page.tsx's "fromQuotationId" flow). Never
@@ -184,6 +193,7 @@ export async function createMotorRecordAction(
           commissionReceivedDate: null,
           source: "MANUAL",
           remarks: data.remarks?.trim() || null,
+          customerContactPerson: normalizeContactPerson(data.customerContactPerson),
           createdById: session.user.id,
           sourceQuotationId: sourceQuotation?.id ?? null,
           // Phase 2B: immutable audit snapshot, written only alongside a
@@ -274,6 +284,10 @@ export type UpdateMotorOverviewInput = {
   customerPremium: number | string;
   insurerCost: number | string;
   remarks?: string | null;
+  // Phase 12A: optional free-text customer-side contact person ("经办人"), or
+  // null/"" to clear. Only consulted on a real edit-save — the narrow
+  // "Cancel Policy" quick action (cancelled=true) never touches it.
+  customerContactPerson?: string | null;
   cancelled: boolean;
 };
 
@@ -313,6 +327,10 @@ export async function updateMotorOverviewAction(
   const expiryDate = new Date(data.expiryDate);
   if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
 
+  // Only changed on a real edit-save — never on the "Cancel Policy" quick
+  // action (which must not disturb it).
+  const contactPersonUpdate = data.cancelled ? undefined : normalizeContactPerson(data.customerContactPerson);
+
   const businessStatus = data.cancelled
     ? "CANCELLED"
     : computeBusinessStatus(effectiveDate, expiryDate, existing.businessStatus === "CANCELLED" ? "DRAFT" : existing.businessStatus);
@@ -338,6 +356,9 @@ export async function updateMotorOverviewAction(
           customerPremium: toDecimal(data.customerPremium),
           insurerCost: toDecimal(data.insurerCost),
           remarks: data.remarks?.trim() || null,
+          // undefined on the "Cancel Policy" quick action → Prisma leaves the
+          // column untouched; null clears it; a string sets it.
+          customerContactPerson: contactPersonUpdate,
           updatedById: session.user.id,
         },
       });

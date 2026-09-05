@@ -172,6 +172,7 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
     sourceSheet: record.sourceSheet,
     originalRowNumber: record.originalRowNumber,
     remarks: record.remarks,
+    customerContactPerson: record.customerContactPerson,
 
     customerPremium: record.customerPremium.toString(),
     insurerCost: record.insurerCost.toString(),

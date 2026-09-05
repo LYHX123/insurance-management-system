@@ -100,7 +100,9 @@ export function MotorDetailView({
         {tabButton("activity", t.policy.activityTab)}
       </div>
 
-      {tab === "overview" && <MotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />}
+      {tab === "overview" && (
+        <MotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />
+      )}
       {tab === "financial" && <MotorFinancialTab detail={detail} canEdit={canEdit} />}
       {tab === "documents" && (
         <div className="flex flex-col gap-4">

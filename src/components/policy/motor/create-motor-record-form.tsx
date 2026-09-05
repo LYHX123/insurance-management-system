@@ -91,6 +91,7 @@ export function CreateMotorRecordForm({
   const [taxClass, setTaxClass] = useState("");
   const [vehicleValue, setVehicleValue] = useState("");
   const [insurerName, setInsurerName] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(today());
   const [expiryDate, setExpiryDate] = useState("");
@@ -153,6 +154,7 @@ export function CreateMotorRecordForm({
       customerPremium,
       insurerCost,
       remarks: remarks || null,
+      customerContactPerson: contactPerson || null,
       sourceQuotationId: prefill?.quotationId ?? null,
     });
     setIsSubmitting(false);
@@ -257,19 +259,22 @@ export function CreateMotorRecordForm({
           <FormField label={t.policy.insurerOptional}>
             <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />
           </FormField>
-          <FormField label={t.policy.effectiveDate}>
-            <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
+          <FormField label={t.policy.contactPersonOptional}>
+            <Input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
           </FormField>
 
           {/* Row 6 */}
+          <FormField label={t.policy.effectiveDate}>
+            <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
+          </FormField>
           <FormField label={t.policy.expiryDate}>
             <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
           </FormField>
+
+          {/* Row 7 */}
           <FormField label={t.policy.clientPremium}>
             <MoneyInput value={customerPremium} onChange={setCustomerPremium} required />
           </FormField>
-
-          {/* Row 7 */}
           <FormField label={t.policy.insurerCost}>
             <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
           </FormField>
