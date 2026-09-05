@@ -1604,13 +1604,24 @@ const zh: Dictionary = {
     createInvoiceBlockedMissingNumber: "请先填写保单号后再创建发票。",
     createInvoiceBlockedAlreadyInvoiced: "该保单已存在有效发票。",
 
+    // --- Phase 12B：开票对象（Bill-To）覆盖 ---
+    insured: "被保险人",
+    insuredPin: "被保险人 PIN",
+    billTo: "开票对象",
+    billToPin: "开票对象 PIN",
+    billToCustomer: "开票客户",
+    billToIfDifferent: "开票对象（如与被保险人不同）",
+    billToSearchNoResults: "未找到客户",
+    billToDefaultsToInsuredHint: "留空则向被保险客户开票。",
+    billToDifferentHint: "本发票将开具给所选客户。保单仍与被保险人关联。",
+
     // --- 错误/校验 ---
     customerRequired: "请选择客户。",
-    customerNotFound: "未找到所选客户。",
     invoiceDateRequired: "请输入发票日期。",
     noPoliciesSelected: "请至少选择一份保单。",
     policyNotFound: "未找到一个或多个所选保单。",
-    policyCustomerMismatch: "所选保单必须属于同一客户。",
+    sameInsuredRequired: "所选保单必须属于同一个被保险客户。",
+    billToNotFound: "未找到所选开票客户。",
     policyNotEligible: "一个或多个所选保单已不再符合开票条件。",
     templateInvalid: "发票模板无效，请联系管理员。",
     generationFailed: "生成发票文件失败，请重试。",

@@ -1640,13 +1640,24 @@ const en = {
     createInvoiceBlockedMissingNumber: "Please add the policy number before creating an Invoice.",
     createInvoiceBlockedAlreadyInvoiced: "This Policy already has an issued Invoice.",
 
+    // --- Phase 12B: Bill-To customer override ---
+    insured: "Insured",
+    insuredPin: "Insured PIN",
+    billTo: "Bill To",
+    billToPin: "Bill To PIN",
+    billToCustomer: "Bill To Customer",
+    billToIfDifferent: "Bill To (if different from insured)",
+    billToSearchNoResults: "No customers found",
+    billToDefaultsToInsuredHint: "Leave blank to bill the insured customer.",
+    billToDifferentHint: "This invoice will be addressed to the selected customer. The policy stays linked to the insured.",
+
     // --- Errors / validation ---
     customerRequired: "Please select a customer.",
-    customerNotFound: "The selected customer could not be found.",
     invoiceDateRequired: "Please enter an invoice date.",
     noPoliciesSelected: "Please select at least one Policy.",
     policyNotFound: "One or more selected Policies could not be found.",
-    policyCustomerMismatch: "All selected Policies must belong to the same Customer.",
+    sameInsuredRequired: "The selected policies must belong to the same insured customer.",
+    billToNotFound: "Bill-to customer not found.",
     policyNotEligible: "One or more selected Policies are no longer eligible for invoicing.",
     templateInvalid: "The Invoice template is invalid. Please contact an administrator.",
     generationFailed: "Failed to generate the Invoice file. Please try again.",

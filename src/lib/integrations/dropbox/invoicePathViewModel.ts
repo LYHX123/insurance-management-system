@@ -32,6 +32,14 @@ export async function buildInvoiceDropboxViewModel(invoiceId: string): Promise<I
         invoiceNumber: true,
         generatedFileName: true,
         customer: { select: { customerNumber: true, companyName: true, dropboxFolder: true } },
+        // Phase 12B — for a single-policy invoice the business folder lives
+        // under the INSURED (policy) customer's Customers/ folder, never the
+        // Bill-To customer's, even when they differ (see spec §13 / the
+        // single-item branch in invoiceBusinessFile.ts). Load that customer
+        // so the PLANNED-path preview matches where the file actually goes.
+        items: {
+          select: { policyRecord: { select: { customer: { select: { customerNumber: true, companyName: true, dropboxFolder: true } } } } },
+        },
         dropboxSync: true,
       },
     }),
@@ -53,11 +61,19 @@ export async function buildInvoiceDropboxViewModel(invoiceId: string): Promise<I
     };
   }
 
-  const customerFolder = invoice.customer.dropboxFolder;
+  // Phase 12B — a single-policy invoice's business folder is anchored to the
+  // insured (policy) customer's folder, not the Bill-To customer's. For zero
+  // or 2+ policies (INVOICE_FALLBACK) there is no single policy customer, so
+  // the Bill-To customer is used, unchanged.
+  const anchorCustomer =
+    ref.source !== "INVOICE_FALLBACK" && invoice.items.length === 1
+      ? invoice.items[0].policyRecord.customer
+      : invoice.customer;
+  const customerFolder = anchorCustomer.dropboxFolder;
   const customerFolderPath =
     customerFolder?.syncStatus === "SYNCED" && customerFolder.displayPath
       ? customerFolder.displayPath
-      : safeJoinPlannedPath(integration.rootFolder, `Customers/${buildCustomerFolderName(invoice.customer)}`);
+      : safeJoinPlannedPath(integration.rootFolder, `Customers/${buildCustomerFolderName(anchorCustomer)}`);
 
   const businessFolderPlannedPath = customerFolderPath ? safeJoinPlannedPath(customerFolderPath, ref.businessFolderName) : null;
   const businessFolder = buildDropboxPathView({

@@ -37,9 +37,19 @@ export type InvoiceDetail = {
   invoiceNumber: string;
   invoiceDate: string;
   status: InvoiceStatus;
+  // Bill-To customer (Invoice.customer). customerName/customerPin keep
+  // meaning "the party billed" for every existing consumer.
   customerId: string;
   customerName: string;
   customerPin: string;
+  // Phase 12B — the insured party. When it differs from Bill-To,
+  // hasSeparateInsured is true and these hold the insured's name/PIN (from
+  // the immutable snapshot, falling back to the live insuredCustomer, then
+  // to Bill-To). For historical invoices and same-party invoices,
+  // hasSeparateInsured is false and insuredName/insuredPin are null.
+  hasSeparateInsured: boolean;
+  insuredName: string | null;
+  insuredPin: string | null;
   totalPremium: string;
   createdByName: string;
   createdAt: string;

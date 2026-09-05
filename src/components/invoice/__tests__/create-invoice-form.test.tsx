@@ -43,14 +43,20 @@ function makeRow(overrides: Partial<EligiblePolicyRow>): EligiblePolicyRow {
   };
 }
 
+const BILL_TO_OPTIONS = [
+  { id: "cust-1", companyName: "Acme Ltd", customerNumber: "CUST-0001", shortName: "ACME" },
+  { id: "cust-b", companyName: "Beta Holdings", customerNumber: "CUST-0002", shortName: "BETA" },
+];
+
 function renderForm(policies: EligiblePolicyRow[], defaultSelectedPolicyId: string) {
   return render(
     <LocaleProvider initialLocale="en">
       <CreateInvoiceForm
         blocked={null}
-        customerId="cust-1"
-        customerName="Acme Ltd"
-        customerPin="P000111222A"
+        insuredCustomerId="cust-1"
+        insuredCustomerName="Acme Ltd"
+        insuredCustomerPin="P000111222A"
+        billToCustomerOptions={BILL_TO_OPTIONS}
         policies={policies}
         defaultSelectedPolicyId={defaultSelectedPolicyId}
         sourcePolicy={{ id: defaultSelectedPolicyId, category: "NON_MOTOR" }}
@@ -66,7 +72,7 @@ beforeEach(() => {
 });
 
 describe("CreateInvoiceForm — Phase 5 quotation-case grouping", () => {
-  it("Case 1/14: a single, ungrouped Policy submits exactly itself", async () => {
+  it("Case 1/14: a single, ungrouped Policy submits exactly itself, billed to the insured by default", async () => {
     const car = makeRow({ id: "pol-car", recordNumber: "PN-CAR", policyClass: "CAR", clientPremium: "500000" });
     renderForm([car], "pol-car");
 
@@ -76,6 +82,27 @@ describe("CreateInvoiceForm — Phase 5 quotation-case grouping", () => {
     await waitFor(() => expect(createInvoiceActionMock).toHaveBeenCalledTimes(1));
 
     const payload = createInvoiceActionMock.mock.calls[0][0];
+    expect(payload.policyRecordIds).toEqual(["pol-car"]);
+    // Phase 12B — Bill-To defaults to the insured customer when untouched.
+    expect(payload.customerId).toBe("cust-1");
+  });
+
+  it("Phase 12B: choosing a different Bill-To customer submits that customer as customerId; the policy selection is unchanged", async () => {
+    const car = makeRow({ id: "pol-car", recordNumber: "PN-CAR", policyClass: "CAR", clientPremium: "500000" });
+    renderForm([car], "pol-car");
+
+    // The "Insured" is shown read-only.
+    expect(screen.getByText("Insured")).toBeInTheDocument();
+
+    const billToInput = screen.getByPlaceholderText("Acme Ltd");
+    fireEvent.change(billToInput, { target: { value: "Beta" } });
+    fireEvent.mouseDown(screen.getByText("Beta Holdings (CUST-0002)"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate Invoice" }));
+    await waitFor(() => expect(createInvoiceActionMock).toHaveBeenCalledTimes(1));
+
+    const payload = createInvoiceActionMock.mock.calls[0][0];
+    expect(payload.customerId).toBe("cust-b");
     expect(payload.policyRecordIds).toEqual(["pol-car"]);
   });
 

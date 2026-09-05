@@ -109,14 +109,41 @@ export function InvoiceDetailView({
             <dt className="text-secondary">{t.invoice.invoiceDate}</dt>
             <dd className="font-medium text-zinc-800">{dateFormatter.format(new Date(detail.invoiceDate))}</dd>
           </div>
-          <div>
-            <dt className="text-secondary">{t.invoice.customer}</dt>
-            <dd className="font-medium text-zinc-800">{detail.customerName}</dd>
-          </div>
-          <div>
-            <dt className="text-secondary">{t.invoice.customerPin}</dt>
-            <dd className="font-medium text-zinc-800">{detail.customerPin}</dd>
-          </div>
+          {detail.hasSeparateInsured ? (
+            <>
+              {/* Phase 12B — Bill-To and insured are different parties, so
+                  both are shown explicitly. */}
+              <div>
+                <dt className="text-secondary">{t.invoice.insured}</dt>
+                <dd className="font-medium text-zinc-800">{detail.insuredName}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.invoice.insuredPin}</dt>
+                <dd className="font-medium text-zinc-800">{detail.insuredPin}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.invoice.billTo}</dt>
+                <dd className="font-medium text-zinc-800">{detail.customerName}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.invoice.billToPin}</dt>
+                <dd className="font-medium text-zinc-800">{detail.customerPin}</dd>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Bill-To == insured (historical + same-party invoices) —
+                  shown once, exactly as before. */}
+              <div>
+                <dt className="text-secondary">{t.invoice.customer}</dt>
+                <dd className="font-medium text-zinc-800">{detail.customerName}</dd>
+              </div>
+              <div>
+                <dt className="text-secondary">{t.invoice.customerPin}</dt>
+                <dd className="font-medium text-zinc-800">{detail.customerPin}</dd>
+              </div>
+            </>
+          )}
           <div>
             <dt className="text-secondary">{t.invoice.policyCount}</dt>
             <dd className="font-medium text-zinc-800">{detail.items.length}</dd>

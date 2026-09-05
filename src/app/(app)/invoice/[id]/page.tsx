@@ -18,6 +18,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     where: { id },
     include: {
       customer: { select: { companyName: true, pinNumber: true } },
+      // Phase 12B — live insured customer (may be null: historical/same-party
+      // invoices, or its Customer row later removed → snapshot still holds).
+      insuredCustomer: { select: { companyName: true, pinNumber: true } },
       items: {
         orderBy: { itemNumber: "asc" },
         include: { policyRecord: { select: { recordNumber: true, category: true, sourceQuotationNumberSnapshot: true } } },
@@ -34,6 +37,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     : [];
   const userNameById = new Map(users.map((u) => [u.id, u.fullName || u.username]));
 
+  // Phase 12B — an invoice has a "separate insured" only when it actually
+  // recorded one at creation (insuredCustomerId or the name snapshot). NULL
+  // on every historical/same-party invoice → treat Bill-To as both.
+  const hasSeparateInsured = invoice.insuredCustomerId !== null || invoice.insuredNameSnapshot !== null;
+  const insuredName = hasSeparateInsured
+    ? invoice.insuredNameSnapshot ?? invoice.insuredCustomer?.companyName ?? invoice.customer.companyName
+    : null;
+  const insuredPin = hasSeparateInsured
+    ? invoice.insuredPinSnapshot ?? invoice.insuredCustomer?.pinNumber ?? invoice.customer.pinNumber
+    : null;
+
   const detail: InvoiceDetail = {
     id: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
@@ -42,6 +56,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     customerId: invoice.customerId,
     customerName: invoice.customer.companyName,
     customerPin: invoice.customer.pinNumber,
+    hasSeparateInsured,
+    insuredName,
+    insuredPin,
     totalPremium: invoice.totalPremium.toString(),
     createdByName: userNameById.get(invoice.createdById) ?? "—",
     createdAt: invoice.createdAt.toISOString(),

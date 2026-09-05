@@ -218,7 +218,11 @@ model Customer {
   quotations     Quotation[]
   quotationCases QuotationCase[]
   policyRecords  PolicyRecord[]
-  invoices       Invoice[]
+  invoices       Invoice[]        @relation("InvoiceBillToCustomer")
+  // Phase 12B — invoices where this Customer is the INSURED party but the
+  // invoice was billed to someone else (Invoice.customerId points elsewhere).
+  // Empty for every customer under the historical "Bill-To == insured" model.
+  insuredInvoices Invoice[]       @relation("InvoiceInsuredCustomer")
   motorClaims    MotorClaim[]
   nonMotorClaims NonMotorClaim[]
 
@@ -2530,10 +2534,31 @@ model Invoice {
   id            String        @id @default(cuid())
   invoiceNumber String        @unique
   invoiceDate   DateTime
+  // Bill-To customer — the party the tax invoice is addressed to (its name/
+  // PIN are what print on the Excel). Phase 12B: this MAY now differ from the
+  // insured/policy customer; the policy itself always stays linked to its own
+  // customer (PolicyRecord.customerId), unchanged. Relation renamed to
+  // "InvoiceBillToCustomer" only so the second (insured) relation below can
+  // coexist — no FK/constraint change (Prisma names FK constraints from the
+  // field, not the relation name).
   customerId    String
-  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer      Customer      @relation("InvoiceBillToCustomer", fields: [customerId], references: [id], onDelete: Restrict)
   status        InvoiceStatus @default(ISSUED)
   totalPremium  Decimal       @db.Decimal(16, 2)
+
+  // Phase 12B — insured-party snapshot. ALL THREE ARE NULL for every invoice
+  // created before this phase AND for every invoice where Bill-To IS the
+  // insured (the common case): NULL semantically means "Bill-To and insured
+  // are the same party". They are populated ONLY when an invoice is billed to
+  // a different customer than the insured — capturing who was actually
+  // insured, independently of any later Customer name/PIN edit. Never
+  // backfilled. insuredCustomer is onDelete: SetNull (the snapshot name/PIN
+  // still preserve the identity if that Customer row is ever removed) — same
+  // defensive-fallback reasoning as PolicyRecord.sourceQuotation.
+  insuredCustomerId   String?
+  insuredCustomer     Customer? @relation("InvoiceInsuredCustomer", fields: [insuredCustomerId], references: [id], onDelete: SetNull)
+  insuredNameSnapshot String?
+  insuredPinSnapshot  String?
 
   // Populated once the generated workbook is durably saved to
   // InvoiceDocumentStorage (see src/lib/invoiceDocuments/storage.ts) — both
@@ -2563,6 +2588,10 @@ model Invoice {
   @@index([customerId])
   @@index([status])
   @@index([invoiceDate])
+  // Phase 12B — supports "every invoice where Customer X was the insured
+  // party" reporting; only ever non-null on the minority of split-billing
+  // invoices, so the index stays tiny.
+  @@index([insuredCustomerId])
 }
 
 // One row per Policy included on an Invoice. Deliberately NOT a duplicate of

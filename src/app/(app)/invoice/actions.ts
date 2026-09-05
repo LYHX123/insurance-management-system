@@ -57,6 +57,9 @@ async function lockPolicyRecordsForInvoice(tx: Prisma.TransactionClient, policyR
 }
 
 export type CreateInvoiceInput = {
+  // Phase 12B — the BILL-TO customer (the party the invoice is addressed to).
+  // May differ from the insured/policy customer, which is always derived from
+  // the selected policies themselves, never from this field.
   customerId: string;
   policyRecordIds: string[];
   invoiceDate: string;
@@ -84,9 +87,13 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
   const session = await requireInvoicePermission();
   if (!session) return { success: false, error: "FORBIDDEN" };
 
+  // Phase 12B — input.customerId is now the BILL-TO customer. It must exist,
+  // but it is NOT compared against the policies' customer (that comparison
+  // was the old POLICY_CUSTOMER_MISMATCH rule — removed). The bill-to may be
+  // the insured customer or any other Customer.
   if (!input.customerId) return { success: false, error: "CUSTOMER_REQUIRED" };
-  const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
-  if (!customer) return { success: false, error: "CUSTOMER_NOT_FOUND" };
+  const billToCustomer = await prisma.customer.findUnique({ where: { id: input.customerId } });
+  if (!billToCustomer) return { success: false, error: "BILL_TO_NOT_FOUND" };
 
   const uniqueIds = Array.from(new Set(input.policyRecordIds));
   if (uniqueIds.length === 0) return { success: false, error: "NO_POLICIES_SELECTED" };
@@ -101,13 +108,20 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
   });
   if (records.length !== uniqueIds.length) return { success: false, error: "POLICY_NOT_FOUND" };
 
-  // Every selected Policy must belong to the same, selected Customer — the
-  // query parameter / client selection is never trusted on its own (see
-  // this phase's spec: "Do not trust the query parameter without server
-  // validation" / "Query-string manipulation cannot bypass rules").
-  if (records.some((r) => r.customerId !== input.customerId)) {
-    return { success: false, error: "POLICY_CUSTOMER_MISMATCH" };
+  // Phase 12B — the INSURED customer is derived from the selected policies
+  // themselves (never from input.customerId). All selected policies must
+  // share ONE insured customer — an invoice can never combine policies
+  // belonging to different insured customers. The bill-to customer plays no
+  // part in this grouping decision.
+  const insuredCustomerIds = Array.from(new Set(records.map((r) => r.customerId)));
+  if (insuredCustomerIds.length !== 1) {
+    return { success: false, error: "SAME_INSURED_REQUIRED" };
   }
+  const insuredCustomerId = insuredCustomerIds[0];
+  // POLICY_FOR_INVOICE_INCLUDE already selects the policy customer's
+  // companyName + pinNumber — the immutable identity snapshotted below.
+  const insuredCustomer = records[0].customer;
+  const billToIsInsured = input.customerId === insuredCustomerId;
 
   for (const record of records) {
     const eligibility = checkPolicyInvoiceEligibility(record);
@@ -129,8 +143,11 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
   let excelBuffer: Buffer;
   try {
     excelBuffer = await generateInvoiceExcelBuffer({
-      customerName: customer.companyName,
-      customerPin: customer.pinNumber,
+      // Phase 12B — the printed tax invoice is addressed to the BILL-TO
+      // customer. CUSTOMER_NAME / CUSTOMER_PIN placeholders keep meaning
+      // "the party this invoice is billed to", never the insured.
+      customerName: billToCustomer.companyName,
+      customerPin: billToCustomer.pinNumber,
       invoiceDate,
       items: items.map((i) => ({
         policyClass: i.policyClassSnapshot,
@@ -179,7 +196,15 @@ export async function createInvoiceAction(input: CreateInvoiceInput): Promise<Ac
         data: {
           invoiceNumber,
           invoiceDate,
+          // Bill-To customer.
           customerId: input.customerId,
+          // Phase 12B — insured snapshot. When bill-to IS the insured (the
+          // default / historical case) all three stay NULL, which means
+          // "same party" everywhere they are read. Only a genuine split
+          // (bill-to != insured) records the insured identity here.
+          insuredCustomerId: billToIsInsured ? null : insuredCustomerId,
+          insuredNameSnapshot: billToIsInsured ? null : insuredCustomer.companyName,
+          insuredPinSnapshot: billToIsInsured ? null : insuredCustomer.pinNumber,
           totalPremium,
           generatedFileName: fileName,
           generatedStoragePath: null,

@@ -9,9 +9,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { TableWrap, Table, TableEmpty } from "@/components/ui/table";
 import { formatMoney } from "@/components/ui/money-input";
 import { createInvoiceAction } from "@/app/(app)/invoice/actions";
+import { buildCustomerSearchOptions, type CustomerSearchSource } from "@/lib/customers/searchOptions";
 import type { EligiblePolicyRow } from "@/lib/invoice/eligibility";
 import type { PolicyCategory } from "@/generated/prisma/enums";
 
@@ -31,11 +33,11 @@ export type CreateInvoiceBlockedReason =
 
 const ERROR_KEY: Record<string, string> = {
   CUSTOMER_REQUIRED: "customerRequired",
-  CUSTOMER_NOT_FOUND: "customerNotFound",
+  BILL_TO_NOT_FOUND: "billToNotFound",
   NO_POLICIES_SELECTED: "noPoliciesSelected",
   INVOICE_DATE_REQUIRED: "invoiceDateRequired",
   POLICY_NOT_FOUND: "policyNotFound",
-  POLICY_CUSTOMER_MISMATCH: "policyCustomerMismatch",
+  SAME_INSURED_REQUIRED: "sameInsuredRequired",
   TEMPLATE_INVALID: "templateInvalid",
   GENERATION_FAILED: "generationFailed",
   CREATE_FAILED: "createFailed",
@@ -104,18 +106,24 @@ function defaultSelection(policies: EligiblePolicyRow[], sourcePolicyId: string)
 
 export function CreateInvoiceForm({
   blocked,
-  customerId,
-  customerName,
-  customerPin,
+  insuredCustomerId,
+  insuredCustomerName,
+  insuredCustomerPin,
+  billToCustomerOptions,
   policies,
   defaultSelectedPolicyId,
   sourcePolicy,
   sourcePolicyReturnTo,
 }: {
   blocked: { reason: CreateInvoiceBlockedReason; policyId: string; category: PolicyCategory | null; recordNumber: string | null } | null;
-  customerId: string;
-  customerName: string;
-  customerPin: string;
+  // Phase 12B — the insured/policy customer (fixed, derived from the source
+  // Policy). Displayed read-only; never editable here.
+  insuredCustomerId: string;
+  insuredCustomerName: string;
+  insuredCustomerPin: string;
+  // Active customers selectable as the Bill-To party. Defaults to the
+  // insured customer.
+  billToCustomerOptions: CustomerSearchSource[];
   policies: EligiblePolicyRow[];
   defaultSelectedPolicyId: string;
   // The Policy this invoice creation was launched from — Cancel and the
@@ -137,10 +145,15 @@ export function CreateInvoiceForm({
 
   const [selected, setSelected] = useState<Set<string>>(() => defaultSelection(policies, defaultSelectedPolicyId));
   const [invoiceDate, setInvoiceDate] = useState(today());
+  // Phase 12B — Bill-To customer. Defaults to the insured customer; the user
+  // may pick any other active Customer without touching the policy/insured.
+  const [billToCustomerId, setBillToCustomerId] = useState(insuredCustomerId);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const groups = useMemo(() => buildGroups(policies, defaultSelectedPolicyId), [policies, defaultSelectedPolicyId]);
+  const billToOptions = useMemo(() => buildCustomerSearchOptions(billToCustomerOptions), [billToCustomerOptions]);
+  const billToIsInsured = billToCustomerId === insuredCustomerId || billToCustomerId === "";
 
   const selectedPolicies = useMemo(() => policies.filter((p) => selected.has(p.id)), [policies, selected]);
   const totalPremium = useMemo(
@@ -173,9 +186,11 @@ export function CreateInvoiceForm({
     // Server Action re-validates every selected Policy's eligibility from
     // scratch under a row lock (Part 15 of this phase's spec) — the
     // default-selection/grouping above is a UX convenience only, never
-    // trusted as the authoritative check.
+    // trusted as the authoritative check. Phase 12B: `customerId` is the
+    // Bill-To customer; an empty selection falls back to the insured (same
+    // as leaving the picker untouched).
     const result = await createInvoiceAction({
-      customerId,
+      customerId: billToCustomerId || insuredCustomerId,
       policyRecordIds: [...selected],
       invoiceDate,
     });
@@ -218,14 +233,29 @@ export function CreateInvoiceForm({
       <Card>
         <dl className="form-grid">
           <div>
-            <dt className="text-secondary">{t.invoice.customer}</dt>
-            <dd className="font-medium text-zinc-800">{customerName}</dd>
+            <dt className="text-secondary">{t.invoice.insured}</dt>
+            <dd className="font-medium text-zinc-800">{insuredCustomerName}</dd>
           </div>
           <div>
-            <dt className="text-secondary">{t.invoice.customerPin}</dt>
-            <dd className="font-medium text-zinc-800">{customerPin}</dd>
+            <dt className="text-secondary">{t.invoice.insuredPin}</dt>
+            <dd className="font-medium text-zinc-800">{insuredCustomerPin}</dd>
           </div>
         </dl>
+
+        <div className="mt-4 max-w-md">
+          <label className="mb-1 block text-sm font-medium text-zinc-700">{t.invoice.billToIfDifferent}</label>
+          <SearchableSelect
+            value={billToIsInsured ? "" : billToCustomerId}
+            onChange={(id) => setBillToCustomerId(id || insuredCustomerId)}
+            options={billToOptions}
+            placeholder={insuredCustomerName}
+            noResultsLabel={t.invoice.billToSearchNoResults}
+          />
+          <p className="text-secondary mt-1 text-xs">
+            {billToIsInsured ? t.invoice.billToDefaultsToInsuredHint : t.invoice.billToDifferentHint}
+          </p>
+        </div>
+
         <div className="mt-4 max-w-xs">
           <label className="mb-1 block text-sm font-medium text-zinc-700">{t.invoice.invoiceDate}</label>
           <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />

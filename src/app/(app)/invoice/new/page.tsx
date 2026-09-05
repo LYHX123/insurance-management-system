@@ -63,9 +63,10 @@ export default async function NewInvoicePage({
     return (
       <CreateInvoiceForm
         blocked={{ reason: blockedReason!.reason, policyId: fromPolicyId, category: sourceCategory, recordNumber: sourceRecordNumber }}
-        customerId=""
-        customerName=""
-        customerPin=""
+        insuredCustomerId=""
+        insuredCustomerName=""
+        insuredCustomerPin=""
+        billToCustomerOptions={[]}
         policies={[]}
         defaultSelectedPolicyId=""
         sourcePolicyReturnTo={sourcePolicyReturnTo}
@@ -73,14 +74,27 @@ export default async function NewInvoicePage({
     );
   }
 
-  const eligiblePolicies = await getEligiblePoliciesForCustomer(sourcePolicy.customerId);
+  // Eligible policies are ALWAYS the insured/policy customer's — the Bill-To
+  // customer never affects which policies can be grouped onto one invoice
+  // (Phase 12B spec §10).
+  const [eligiblePolicies, billToCustomerOptions] = await Promise.all([
+    getEligiblePoliciesForCustomer(sourcePolicy.customerId),
+    // Bill-To picker — same "active customers" convention as the Policy
+    // create forms (reused via buildCustomerSearchOptions in the form).
+    prisma.customer.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { companyName: "asc" },
+      select: { id: true, companyName: true, customerNumber: true, shortName: true },
+    }),
+  ]);
 
   return (
     <CreateInvoiceForm
       blocked={null}
-      customerId={sourcePolicy.customerId}
-      customerName={sourcePolicy.customer.companyName}
-      customerPin={sourcePolicy.customer.pinNumber}
+      insuredCustomerId={sourcePolicy.customerId}
+      insuredCustomerName={sourcePolicy.customer.companyName}
+      insuredCustomerPin={sourcePolicy.customer.pinNumber}
+      billToCustomerOptions={billToCustomerOptions}
       policies={eligiblePolicies}
       defaultSelectedPolicyId={sourcePolicy.id}
       sourcePolicy={{ id: sourcePolicy.id, category: sourcePolicy.category }}
