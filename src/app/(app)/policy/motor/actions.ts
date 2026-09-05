@@ -9,6 +9,12 @@ import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
 import { isMotorTaxClass, type MotorTaxClass } from "@/lib/policy/motorTaxClasses";
+import {
+  isComprehensiveMotorCover,
+  isMotorValuationStatus,
+  DEFAULT_MOTOR_VALUATION_STATUS,
+  type MotorValuationStatus,
+} from "@/lib/policy/motorValuation";
 import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
 import { claimIdempotencyKey, fulfillIdempotencyClaim } from "@/lib/idempotency/claim";
 import type { PolicyCategory } from "@/generated/prisma/enums";
@@ -73,6 +79,25 @@ function normalizeContactPerson(value: string | null | undefined): string | null
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+// Phase 12C — resolve the valuation fields for a Motor detail write. The
+// workflow applies ONLY to COMPREHENSIVE cover:
+//   - non-Comprehensive  -> both NULL (no valuation state, ever)
+//   - Comprehensive      -> a valid status (defaulting to NOT_ARRANGED), and
+//     the assessed value only when a real number was supplied.
+// Backwards status transitions are allowed (spec §5) — no ordering check.
+function resolveMotorValuation(
+  insuranceType: string,
+  rawStatus: string | null | undefined,
+  rawAssessedValue: number | string | null | undefined
+): { valuationStatus: MotorValuationStatus | null; assessedVehicleValue: DecimalInput | null } {
+  if (!isComprehensiveMotorCover(insuranceType)) {
+    return { valuationStatus: null, assessedVehicleValue: null };
+  }
+  const valuationStatus = isMotorValuationStatus(rawStatus) ? rawStatus : DEFAULT_MOTOR_VALUATION_STATUS;
+  const assessedVehicleValue = isBlank(rawAssessedValue) ? null : (rawAssessedValue as DecimalInput);
+  return { valuationStatus, assessedVehicleValue };
+}
+
 export type CreateMotorRecordInput = {
   processingDate: string;
   customerId: string;
@@ -90,6 +115,11 @@ export type CreateMotorRecordInput = {
   remarks?: string | null;
   // Phase 12A: optional free-text customer-side contact person ("经办人").
   customerContactPerson?: string | null;
+  // Phase 12C: vehicle-valuation workflow. Consulted only when insuranceType
+  // is COMPREHENSIVE — a blank/invalid status then defaults to NOT_ARRANGED;
+  // for any other cover type both are forced to null.
+  valuationStatus?: string | null;
+  assessedVehicleValue?: number | string | null;
   // Phase 2A: set only when this record is created via the quotation
   // detail page's "Create Policy" action (see
   // src/app/(app)/quotation/[id]/page.tsx's "fromQuotationId" flow). Never
@@ -134,6 +164,8 @@ export async function createMotorRecordAction(
   const effectiveDate = new Date(data.effectiveDate);
   const expiryDate = new Date(data.expiryDate);
   if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
+
+  const valuation = resolveMotorValuation(data.insuranceType, data.valuationStatus, data.assessedVehicleValue);
 
   // Phase 2A: resolve the source quotation (if any) before the transaction —
   // a broken/unknown reference is never fatal to record creation, it's just
@@ -213,6 +245,11 @@ export async function createMotorRecordAction(
               taxClass: data.taxClass as MotorTaxClass,
               vehicleValue: isBlank(data.vehicleValue) ? null : toDecimal(data.vehicleValue as number | string),
               policyNumber: data.policyNumber?.trim() || null,
+              // Phase 12C — NOT_ARRANGED by default for a new Comprehensive
+              // policy; null for every other cover type.
+              valuationStatus: valuation.valuationStatus,
+              assessedVehicleValue:
+                valuation.assessedVehicleValue === null ? null : toDecimal(valuation.assessedVehicleValue),
             },
           },
         },
@@ -288,6 +325,13 @@ export type UpdateMotorOverviewInput = {
   // null/"" to clear. Only consulted on a real edit-save — the narrow
   // "Cancel Policy" quick action (cancelled=true) never touches it.
   customerContactPerson?: string | null;
+  // Phase 12C: vehicle-valuation workflow (Comprehensive only). Only
+  // consulted on a real edit-save; the "Cancel Policy" quick action never
+  // touches it. Editing insuranceType away from Comprehensive here clears
+  // both fields; editing it to Comprehensive defaults the status to
+  // NOT_ARRANGED. Backwards status changes are allowed.
+  valuationStatus?: string | null;
+  assessedVehicleValue?: number | string | null;
   cancelled: boolean;
 };
 
@@ -330,6 +374,9 @@ export async function updateMotorOverviewAction(
   // Only changed on a real edit-save — never on the "Cancel Policy" quick
   // action (which must not disturb it).
   const contactPersonUpdate = data.cancelled ? undefined : normalizeContactPerson(data.customerContactPerson);
+  const valuationUpdate = data.cancelled
+    ? null
+    : resolveMotorValuation(data.insuranceType, data.valuationStatus, data.assessedVehicleValue);
 
   const businessStatus = data.cancelled
     ? "CANCELLED"
@@ -376,6 +423,14 @@ export async function updateMotorOverviewAction(
           policyNumber: data.policyNumber?.trim() || null,
           vehicleMake: data.vehicleMake?.trim() || null,
           vehicleModel: data.vehicleModel?.trim() || null,
+          // Phase 12C — undefined on the "Cancel Policy" quick action (never
+          // disturbed); otherwise recomputed from the just-edited cover type.
+          valuationStatus: valuationUpdate ? valuationUpdate.valuationStatus : undefined,
+          assessedVehicleValue: valuationUpdate
+            ? valuationUpdate.assessedVehicleValue === null
+              ? null
+              : toDecimal(valuationUpdate.assessedVehicleValue)
+            : undefined,
         },
       });
       await recordPolicyActivity(tx, {

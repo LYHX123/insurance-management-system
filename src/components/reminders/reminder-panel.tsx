@@ -26,6 +26,14 @@ const INITIAL_VISIBLE_COUNT = 10;
 
 function reminderMessage(t: Dictionary, item: ReminderItem): string {
   if (item.category.startsWith("policy.")) {
+    // Phase 12C — Motor Comprehensive with a valuation still pending: swap in
+    // the "temporary cover, valuation outstanding" wording (registration
+    // number included, per spec §9).
+    if (item.valuationPending) {
+      const reg = item.extra ?? item.recordNumber ?? "";
+      if (item.severity === "expired") return t.reminders.valuationPendingExpired(reg);
+      return t.reminders.valuationPendingExpiry(reg, item.days);
+    }
     if (item.severity === "expired") return t.reminders.expiredDaysAgo(Math.abs(item.days));
     if (item.severity === "due_today") return t.reminders.expiresToday;
     return t.reminders.expiresInDays(item.days);

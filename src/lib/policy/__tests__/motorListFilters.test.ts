@@ -60,6 +60,24 @@ describe("buildMotorListFilterWhere — Expiry date range", () => {
   });
 });
 
+describe("buildMotorListFilterWhere — Valuation Status (Phase 12C)", () => {
+  it("no / ALL / invalid value -> no motorDetail condition", () => {
+    expect(buildMotorListFilterWhere({}).motorDetail).toBeUndefined();
+    expect(buildMotorListFilterWhere({ valuationStatus: "" }).motorDetail).toBeUndefined();
+    expect(buildMotorListFilterWhere({ valuationStatus: "ALL" }).motorDetail).toBeUndefined();
+    expect(buildMotorListFilterWhere({ valuationStatus: "bogus" }).motorDetail).toBeUndefined();
+  });
+
+  it("C12: a valid status filters motorDetail.valuationStatus (implicitly Comprehensive-only)", () => {
+    expect(buildMotorListFilterWhere({ valuationStatus: "NOT_ARRANGED" }).motorDetail).toEqual({
+      valuationStatus: "NOT_ARRANGED",
+    });
+    expect(buildMotorListFilterWhere({ valuationStatus: "IN_PROGRESS" }).motorDetail).toEqual({
+      valuationStatus: "IN_PROGRESS",
+    });
+  });
+});
+
 describe("buildMotorListFilterWhere — composition", () => {
   it("Contact Person + expiry range compose as AND on one where object", () => {
     expect(
@@ -69,6 +87,24 @@ describe("buildMotorListFilterWhere — composition", () => {
       expiryDate: {
         gte: new Date("2026-09-01T00:00:00.000Z"),
         lte: new Date("2026-12-31T23:59:59.999Z"),
+      },
+    });
+  });
+
+  it("C13/C14/C15: Valuation Status + Contact Person + expiry range all compose as AND", () => {
+    expect(
+      buildMotorListFilterWhere({
+        valuationStatus: "IN_PROGRESS",
+        contact: "john",
+        expiryFrom: "2026-09-01",
+        expiryTo: "2026-09-30",
+      })
+    ).toEqual({
+      motorDetail: { valuationStatus: "IN_PROGRESS" },
+      customerContactPerson: { contains: "john", mode: "insensitive" },
+      expiryDate: {
+        gte: new Date("2026-09-01T00:00:00.000Z"),
+        lte: new Date("2026-09-30T23:59:59.999Z"),
       },
     });
   });

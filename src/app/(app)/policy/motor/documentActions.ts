@@ -157,6 +157,7 @@ function documentTypeSummaryLabel(type: PolicyDocumentType): string {
     RECEIPT: "Receipt",
     ENDORSEMENT: "Endorsement",
     CANCELLATION: "Cancellation",
+    VALUATION_REPORT: "Valuation Report",
     OTHER: "Document",
   };
   return labels[type];

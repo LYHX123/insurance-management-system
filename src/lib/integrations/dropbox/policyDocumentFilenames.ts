@@ -21,6 +21,11 @@ const MANAGED_TYPE_BASE_NAME: Partial<Record<PolicyDocumentType, string>> = {
   [PolicyDocumentType.DEBIT_NOTE]: "Debit Note",
   [PolicyDocumentType.RECEIPT]: "Receipt",
   [PolicyDocumentType.CANCELLATION]: "Cancellation",
+  // Phase 12C — fixed name, same treatment as the other managed types (the
+  // extension still comes from the actual upload, so a non-PDF upload keeps
+  // its own extension). Never a separate Dropbox folder — filed under the
+  // existing "Policy" folder like every other policy document.
+  [PolicyDocumentType.VALUATION_REPORT]: "Valuation Report",
 };
 
 const ENDORSEMENT_BASE_NAME = "Endorsement";

@@ -1932,6 +1932,18 @@ enum MotorTaxClass {
   SPECIAL_USE
 }
 
+// Phase 12C — the vehicle-valuation workflow that applies ONLY to Motor
+// COMPREHENSIVE cover (Kenya: a valuation is irrelevant to Third Party /
+// COMESA / etc). Completely independent of PolicyBusinessStatus — a policy
+// can be ACTIVE with valuation NOT_ARRANGED at the same time. NULL on
+// MotorPolicyDetail.valuationStatus means "workflow does not apply"
+// (non-Comprehensive, or a historical record that predates this field).
+enum MotorValuationStatus {
+  NOT_ARRANGED
+  IN_PROGRESS
+  COMPLETED
+}
+
 // One detail model per category, same pattern as QuotationInsuranceSection's
 // *SectionDetail models. insuranceType is a plain string (not an enum) —
 // Phase 1A's inspection found exactly six clean, real values in the
@@ -1966,6 +1978,19 @@ model MotorPolicyDetail {
   // forward — the DB-level nullability only exists for the legacy rows that
   // predate this field).
   taxClass           MotorTaxClass?
+
+  // Phase 12C — vehicle-valuation workflow. Applies ONLY to COMPREHENSIVE
+  // cover. NULL = workflow does not apply (non-Comprehensive, or a record
+  // that predates this field — never backfilled, never inferred from
+  // insuranceType). A new Comprehensive policy defaults to NOT_ARRANGED.
+  // Kept completely separate from PolicyRecord.businessStatus (see the
+  // MotorValuationStatus enum's own doc comment).
+  valuationStatus MotorValuationStatus?
+  // The vehicle value stated in the third-party valuation report — kept
+  // distinct from `vehicleValue`, which stays the CURRENT operative / final
+  // insured value the user maintains by hand. Nullable; only ever set for a
+  // Comprehensive policy once its valuation report figure is known.
+  assessedVehicleValue Decimal? @db.Decimal(18, 2)
 
   @@index([registrationNumber])
   @@index([insuranceType])
@@ -2329,6 +2354,11 @@ enum PolicyDocumentType {
   RECEIPT
   ENDORSEMENT
   CANCELLATION
+  // Phase 12C — the third-party vehicle valuation report (Motor Comprehensive
+  // only in practice, but the enum is category-agnostic like every other
+  // value here). Reuses the existing PolicyDocument system + the existing
+  // policy Dropbox folder; standardized Dropbox name "Valuation Report".
+  VALUATION_REPORT
   OTHER
 }
 

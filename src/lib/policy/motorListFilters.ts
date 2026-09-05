@@ -1,9 +1,11 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { isMotorValuationStatus } from "@/lib/policy/motorValuation";
 
-// Phase 12A — pure builder for the database-level Motor list filters added
-// this phase (Contact Person + Expiry date range). Kept as a standalone pure
-// function (no prisma/auth import) so it is unit-testable in isolation and
-// so the list page's own `where` stays a plain merge of small fragments.
+// Phase 12A/12C — pure builder for the database-level Motor list filters
+// (Contact Person + Expiry date range + Valuation Status). Kept as a
+// standalone pure function (no prisma/auth import) so it is unit-testable in
+// isolation and so the list page's own `where` stays a plain merge of small
+// fragments.
 //
 // Contact Person: PolicyRecord.customerContactPerson is a free-text
 // customer-side contact name. The filter is a case-insensitive substring
@@ -26,6 +28,8 @@ export type MotorListFilterParams = {
   expiryFrom?: string | null;
   /** Raw `?expiryTo=` value: "" | "YYYY-MM-DD". */
   expiryTo?: string | null;
+  /** Raw `?valuationStatus=` value: "" | "ALL" | a MotorValuationStatus. */
+  valuationStatus?: string | null;
 };
 
 export function buildMotorListFilterWhere(params: MotorListFilterParams): Prisma.PolicyRecordWhereInput {
@@ -34,6 +38,15 @@ export function buildMotorListFilterWhere(params: MotorListFilterParams): Prisma
   const contact = params.contact?.trim();
   if (contact) {
     where.customerContactPerson = { contains: contact, mode: "insensitive" };
+  }
+
+  // Phase 12C — filters to Motor detail rows with exactly this valuation
+  // status. Only Comprehensive policies ever carry one, so this implicitly
+  // restricts to Comprehensive (a non-Comprehensive row has null and can
+  // never match). Never touches PolicyBusinessStatus.
+  const valuationStatus = params.valuationStatus?.trim();
+  if (valuationStatus && isMotorValuationStatus(valuationStatus)) {
+    where.motorDetail = { valuationStatus };
   }
 
   const expiryFrom = params.expiryFrom?.trim();

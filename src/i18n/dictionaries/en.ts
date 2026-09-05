@@ -1125,6 +1125,23 @@ const en = {
     contactPersonFilterPlaceholder: "Filter by contact person",
     expiryFrom: "Expiry From",
     expiryTo: "Expiry To",
+
+    // --- Phase 12C: Motor Comprehensive vehicle valuation ---
+    vehicleValuation: "Vehicle Valuation",
+    valuationStatus: "Valuation Status",
+    valuationColumn: "Valuation",
+    allValuationStatuses: "All Valuation Statuses",
+    // Selector option labels (longer form).
+    valuationNotArranged: "Not Arranged",
+    valuationInProgress: "Valuation In Progress",
+    valuationCompleted: "Valuation Completed",
+    // Badge labels (short form) for the list column + detail page.
+    valuationBadgeNotArranged: "Not Arranged",
+    valuationBadgeInProgress: "In Progress",
+    valuationBadgeCompleted: "Completed",
+    assessedVehicleValue: "Assessed Vehicle Value",
+    assessedVehicleValueOptional: "Assessed Vehicle Value (optional)",
+    docTypeValuationReport: "Valuation Report",
     clientPremium: "Client Premium",
     clientBalance: "Client Balance",
     view: "View",
@@ -2280,6 +2297,12 @@ const en = {
     expiredDaysAgo: (days: number) => `Expired ${days} day${days === 1 ? "" : "s"} ago`,
     expiresToday: "Expires today",
     expiresInDays: (days: number) => `Expires in ${days} day${days === 1 ? "" : "s"}`,
+    // Phase 12C — Motor Comprehensive, valuation still pending near expiry.
+    valuationPendingExpiry: (reg: string, days: number) =>
+      days <= 0
+        ? `Vehicle valuation pending — ${reg} — policy expires today`
+        : `Vehicle valuation pending — ${reg} — policy expires in ${days} day${days === 1 ? "" : "s"}`,
+    valuationPendingExpired: (reg: string) => `Vehicle valuation pending — ${reg} — policy expired`,
     noProgressForDays: (days: number) => `No progress for ${days} day${days === 1 ? "" : "s"}`,
     noClaimUpdateForDays: (days: number) => `No update for ${days} day${days === 1 ? "" : "s"}`,
     categoryLabels: {

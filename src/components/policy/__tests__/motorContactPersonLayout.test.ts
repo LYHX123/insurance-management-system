@@ -52,7 +52,8 @@ describe("Motor list header layout (Phase 12A section 2)", () => {
   it("every Motor list <th> is whitespace-nowrap", () => {
     const headerBlock = motorTable.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
     const ths = headerBlock.match(/<th\b[^>]*>/g) ?? [];
-    expect(ths.length).toBe(12);
+    // 12 through Phase 12A/12B; Phase 12C adds the Valuation column -> 13.
+    expect(ths.length).toBe(13);
     for (const th of ths) expect(th).toMatch(/whitespace-nowrap/);
   });
 

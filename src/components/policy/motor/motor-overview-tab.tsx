@@ -19,6 +19,8 @@ import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
 import { updateMotorOverviewAction, deleteMotorPolicyAction } from "@/app/(app)/policy/motor/actions";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
+import { MOTOR_VALUATION_STATUSES, isComprehensiveMotorCover } from "@/lib/policy/motorValuation";
+import { MotorValuationBadge } from "@/components/policy/motor/motor-valuation-badge";
 import type { MotorDetail, CustomerOption } from "@/components/policy/types";
 
 const ERROR_KEY: Record<string, string> = {
@@ -69,6 +71,10 @@ export function MotorOverviewTab({
   // Policy" action below tolerates this staying blank.
   const [taxClass, setTaxClass] = useState(detail.taxClass ?? "");
   const [vehicleValue, setVehicleValue] = useState(detail.vehicleValue ?? "");
+  // Phase 12C — for a Comprehensive record with no status yet (historical),
+  // the edit form defaults the selector to NOT_ARRANGED.
+  const [valuationStatus, setValuationStatus] = useState<string>(detail.valuationStatus ?? "NOT_ARRANGED");
+  const [assessedVehicleValue, setAssessedVehicleValue] = useState(detail.assessedVehicleValue ?? "");
   const [vehicleMake, setVehicleMake] = useState(detail.vehicleMake ?? "");
   const [vehicleModel, setVehicleModel] = useState(detail.vehicleModel ?? "");
   const [insurerName, setInsurerName] = useState(detail.insurerName ?? "");
@@ -91,6 +97,18 @@ export function MotorOverviewTab({
     PSV: t.policy.taxClassPsv,
     SPECIAL_USE: t.policy.taxClassSpecialUse,
   };
+
+  const valuationStatusLabel: Record<string, string> = {
+    NOT_ARRANGED: t.policy.valuationNotArranged,
+    IN_PROGRESS: t.policy.valuationInProgress,
+    COMPLETED: t.policy.valuationCompleted,
+  };
+
+  // Phase 12C — read-only block keys off the SAVED cover type; the edit
+  // section keys off the currently-selected one (so it appears/disappears
+  // live as the user changes Type of Cover).
+  const showValuationRead = isComprehensiveMotorCover(detail.insuranceType);
+  const showValuationEdit = isComprehensiveMotorCover(insuranceType);
 
   const field = (label: string, value: React.ReactNode) => (
     <div>
@@ -128,6 +146,8 @@ export function MotorOverviewTab({
       insurerCost,
       remarks: remarks || null,
       customerContactPerson: contactPerson || null,
+      valuationStatus: showValuationEdit ? valuationStatus : null,
+      assessedVehicleValue: showValuationEdit ? assessedVehicleValue || null : null,
       cancelled,
     });
     setIsSubmitting(false);
@@ -196,6 +216,29 @@ export function MotorOverviewTab({
             </div>
           )}
         </Card>
+
+        {/* Phase 12C — Vehicle Valuation card: COMPREHENSIVE cover only. */}
+        {showValuationRead && (
+          <Card>
+            <h2 className="section-title mb-4">{t.policy.vehicleValuation}</h2>
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-secondary">{t.policy.valuationStatus}</dt>
+                <dd className="mt-1">
+                  {detail.valuationStatus ? (
+                    <MotorValuationBadge status={detail.valuationStatus} />
+                  ) : (
+                    <span className="font-medium text-zinc-800">{t.policy.notSpecified}</span>
+                  )}
+                </dd>
+              </div>
+              {field(
+                t.policy.assessedVehicleValue,
+                detail.assessedVehicleValue ? formatMoney(detail.assessedVehicleValue) : "—"
+              )}
+            </dl>
+          </Card>
+        )}
 
         <Card>
           <h2 className="section-title mb-4">{t.policy.sourceQuotationTitle}</h2>
@@ -385,6 +428,25 @@ export function MotorOverviewTab({
           <Input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
         </FormField>
       </div>
+
+      {/* Phase 12C — Vehicle Valuation: COMPREHENSIVE cover only. */}
+      {showValuationEdit && (
+        <div className="mt-6 border-t border-zinc-100 pt-4">
+          <h3 className="section-title mb-3">{t.policy.vehicleValuation}</h3>
+          <div className="form-grid">
+            <FormField label={t.policy.valuationStatus}>
+              <Select value={valuationStatus} onChange={(e) => setValuationStatus(e.target.value)}>
+                {MOTOR_VALUATION_STATUSES.map((s) => (
+                  <option key={s} value={s}>{valuationStatusLabel[s]}</option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField label={t.policy.assessedVehicleValueOptional}>
+              <MoneyInput value={assessedVehicleValue} onChange={setAssessedVehicleValue} />
+            </FormField>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4">
         <FormField label={t.policy.remarks}>

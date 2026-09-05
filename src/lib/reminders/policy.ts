@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { computeBusinessStatus } from "@/lib/policy/status";
+import { isValuationPending } from "@/lib/policy/motorValuation";
 import { daysRemaining, toValidDate } from "./datetime";
 import type { ReminderItem, ReminderCategory, ReminderSeverity } from "./types";
 import type { PolicyCategory } from "@/generated/prisma/enums";
@@ -51,7 +52,7 @@ async function getRemindersForCategory(
       businessStatus: true,
       customer: { select: { companyName: true } },
       project: { select: { projectName: true } },
-      motorDetail: { select: { registrationNumber: true } },
+      motorDetail: { select: { registrationNumber: true, insuranceType: true, valuationStatus: true } },
     },
     orderBy: { expiryDate: "asc" },
   });
@@ -73,6 +74,13 @@ async function getRemindersForCategory(
     const days = daysRemaining(expiryDate, timeZone, now);
     if (days > thresholdDays) continue;
 
+    // Phase 12C — Motor COMPREHENSIVE only: a still-tracked valuation
+    // (NOT_ARRANGED / IN_PROGRESS) near expiry gets the "temporary cover,
+    // valuation pending" wording. COMPLETED (or non-Comprehensive, or a
+    // historical null) falls back to the normal expiry reminder.
+    const valuationPending =
+      category === "MOTOR" && isValuationPending(record.motorDetail?.insuranceType, record.motorDetail?.valuationStatus);
+
     items.push({
       id: `policy:${record.id}`,
       category: CATEGORY_PERMISSION[category],
@@ -85,6 +93,7 @@ async function getRemindersForCategory(
       referenceDate: expiryDate.toISOString(),
       targetUrl: `/policy/${CATEGORY_SLUG[category]}/${record.id}`,
       permissionKey: CATEGORY_PERMISSION[category],
+      ...(valuationPending ? { valuationPending: true } : {}),
     });
   }
 

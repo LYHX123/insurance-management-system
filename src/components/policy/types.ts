@@ -4,6 +4,11 @@ export type PolicyRecordSource = "MANUAL" | "HISTORICAL_IMPORT";
 export type PolicyBalanceVerification = "VERIFIED" | "UNVERIFIED";
 export type PolicyBalanceWarningReason = "BROKEN_SOURCE_FORMULA" | "BLANK_SOURCE_BALANCE" | "OTHER_UNREADABLE_BALANCE";
 export type MotorTaxClass = "PRIVATE" | "COMMERCIAL" | "PSV" | "SPECIAL_USE";
+// Phase 12C — mirrors the MotorValuationStatus Prisma enum / the app-level
+// list in src/lib/policy/motorValuation.ts. Kept as a local literal union so
+// this client-safe types file stays import-free (same convention as
+// MotorTaxClass above).
+export type MotorValuationStatus = "NOT_ARRANGED" | "IN_PROGRESS" | "COMPLETED";
 export type BondType = "TENDER_BOND" | "PERFORMANCE_BOND" | "ADVANCE_PAYMENT_GUARANTEE" | "CUSTOM_BOND";
 export type WorkPermitType = "CLASS_D" | "CLASS_G" | "SPECIAL_PASS" | "DEPENDANT_PASS" | "OTHER";
 
@@ -29,6 +34,7 @@ export type PolicyDocumentType =
   | "RECEIPT"
   | "ENDORSEMENT"
   | "CANCELLATION"
+  | "VALUATION_REPORT"
   | "OTHER";
 
 export type PolicyActivityActionType =
@@ -76,6 +82,10 @@ export type MotorListRow = {
   // Phase 12A — free-text customer-side contact person ("经办人"), or null
   // when none was entered.
   contactPerson: string | null;
+  // Phase 12C — vehicle valuation status. Non-null only for a Comprehensive
+  // policy whose valuation is being tracked; the list shows a badge for
+  // non-null, "—" otherwise (incl. every non-Comprehensive row).
+  valuationStatus: MotorValuationStatus | null;
 };
 
 export type TransactionRow = {
@@ -118,6 +128,12 @@ export type MotorDetail = {
   // Phase 12A — free-text customer-side contact person ("经办人" / "Contact
   // Person"), or null when none. Shown as "—" when null.
   customerContactPerson: string | null;
+  // Phase 12C — vehicle valuation (Comprehensive only). valuationStatus is
+  // null for non-Comprehensive and for a Comprehensive record that predates
+  // the field. assessedVehicleValue is the third-party report's figure,
+  // distinct from vehicleValue (the operative insured value).
+  valuationStatus: MotorValuationStatus | null;
+  assessedVehicleValue: string | null;
 
   customerPremium: string;
   insurerCost: string;

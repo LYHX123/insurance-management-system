@@ -17,6 +17,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { createMotorRecordAction } from "@/app/(app)/policy/motor/actions";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
+import { MOTOR_VALUATION_STATUSES, isComprehensiveMotorCover } from "@/lib/policy/motorValuation";
 import { buildCustomerSearchOptions } from "@/lib/customers/searchOptions";
 import type { CustomerOption } from "@/components/policy/types";
 
@@ -90,6 +91,11 @@ export function CreateMotorRecordForm({
   // user must choose, for both manual and quotation-linked creation alike.
   const [taxClass, setTaxClass] = useState("");
   const [vehicleValue, setVehicleValue] = useState("");
+  // Phase 12C — only submitted for COMPREHENSIVE cover (section hidden
+  // otherwise). Default NOT_ARRANGED matches the real flow where the policy
+  // is created before the customer's contact details reach the valuer.
+  const [valuationStatus, setValuationStatus] = useState("NOT_ARRANGED");
+  const [assessedVehicleValue, setAssessedVehicleValue] = useState("");
   const [insurerName, setInsurerName] = useState("");
   const [contactPerson, setContactPerson] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
@@ -112,6 +118,13 @@ export function CreateMotorRecordForm({
   // customerSearchOptions, factored into a shared builder (see this phase's
   // spec, Part A.1).
   const customerSearchOptions = useMemo(() => buildCustomerSearchOptions(customers), [customers]);
+  const showValuation = isComprehensiveMotorCover(insuranceType);
+
+  const valuationStatusLabel: Record<string, string> = {
+    NOT_ARRANGED: t.policy.valuationNotArranged,
+    IN_PROGRESS: t.policy.valuationInProgress,
+    COMPLETED: t.policy.valuationCompleted,
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,6 +168,8 @@ export function CreateMotorRecordForm({
       insurerCost,
       remarks: remarks || null,
       customerContactPerson: contactPerson || null,
+      valuationStatus: showValuation ? valuationStatus : null,
+      assessedVehicleValue: showValuation ? assessedVehicleValue || null : null,
       sourceQuotationId: prefill?.quotationId ?? null,
     });
     setIsSubmitting(false);
@@ -279,6 +294,25 @@ export function CreateMotorRecordForm({
             <MoneyInput value={insurerCost} onChange={setInsurerCost} required />
           </FormField>
         </div>
+
+        {/* Phase 12C — Vehicle Valuation: COMPREHENSIVE cover only. */}
+        {showValuation && (
+          <div className="mt-6 border-t border-zinc-100 pt-4">
+            <h3 className="section-title mb-3">{t.policy.vehicleValuation}</h3>
+            <div className="form-grid">
+              <FormField label={t.policy.valuationStatus}>
+                <Select value={valuationStatus} onChange={(e) => setValuationStatus(e.target.value)}>
+                  {MOTOR_VALUATION_STATUSES.map((s) => (
+                    <option key={s} value={s}>{valuationStatusLabel[s]}</option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField label={t.policy.assessedVehicleValueOptional}>
+                <MoneyInput value={assessedVehicleValue} onChange={setAssessedVehicleValue} />
+              </FormField>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4">
           <FormField label={t.policy.remarks}>

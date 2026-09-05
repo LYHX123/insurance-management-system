@@ -1094,6 +1094,21 @@ const zh: Dictionary = {
     contactPersonFilterPlaceholder: "按经办人筛选",
     expiryFrom: "到期日从",
     expiryTo: "到期日至",
+
+    // --- Phase 12C: 机动车综合险车辆评估 ---
+    vehicleValuation: "车辆评估",
+    valuationStatus: "车辆评估状态",
+    valuationColumn: "车辆评估",
+    allValuationStatuses: "全部评估状态",
+    valuationNotArranged: "未安排车检",
+    valuationInProgress: "车辆评估中",
+    valuationCompleted: "评估完成",
+    valuationBadgeNotArranged: "未安排",
+    valuationBadgeInProgress: "评估中",
+    valuationBadgeCompleted: "已完成",
+    assessedVehicleValue: "评估车值",
+    assessedVehicleValueOptional: "评估车值（可选）",
+    docTypeValuationReport: "车辆评估报告",
     clientPremium: "客户保费",
     clientBalance: "客户余额",
     view: "查看",
@@ -2230,6 +2245,12 @@ const zh: Dictionary = {
     expiredDaysAgo: (days: number) => `已过期 ${days} 天`,
     expiresToday: "今天到期",
     expiresInDays: (days: number) => `${days} 天后到期`,
+    // Phase 12C — 机动车综合险，临时保单车辆评估未完成且临近到期。
+    valuationPendingExpiry: (reg: string, days: number) =>
+      days <= 0
+        ? `车辆评估未完成 — ${reg} — 临时保单今天到期`
+        : `车辆评估未完成 — ${reg} — 临时保单还有 ${days} 天到期`,
+    valuationPendingExpired: (reg: string) => `车辆评估未完成 — ${reg} — 临时保单已到期`,
     noProgressForDays: (days: number) => `已 ${days} 天无进展`,
     noClaimUpdateForDays: (days: number) => `已 ${days} 天无更新`,
     categoryLabels: {

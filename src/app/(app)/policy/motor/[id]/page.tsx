@@ -161,6 +161,8 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
     registrationNumber: record.motorDetail.registrationNumber,
     taxClass: record.motorDetail.taxClass,
     vehicleValue: record.motorDetail.vehicleValue?.toString() ?? null,
+    valuationStatus: record.motorDetail.valuationStatus,
+    assessedVehicleValue: record.motorDetail.assessedVehicleValue?.toString() ?? null,
     vehicleMake: record.motorDetail.vehicleMake,
     vehicleModel: record.motorDetail.vehicleModel,
     insurerName: record.insurerName,

@@ -21,6 +21,8 @@ import {
   matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { MOTOR_VALUATION_STATUSES, isComprehensiveMotorCover } from "@/lib/policy/motorValuation";
+import { MotorValuationBadge } from "@/components/policy/motor/motor-valuation-badge";
 import type { MotorListRow, PolicyBusinessStatus } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -54,6 +56,7 @@ const MOTOR_LIST_DEFAULTS = {
   contact: "",
   expiryFrom: "",
   expiryTo: "",
+  valuationStatus: "ALL",
   outstandingClientOnly: "",
   outstandingInsurerOnly: "",
   page: "1",
@@ -72,6 +75,7 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
     contact: contactFilter,
     expiryFrom,
     expiryTo,
+    valuationStatus: valuationFilter,
     customerId,
   } = listState;
   const outstandingClientOnly = listState.outstandingClientOnly === "1";
@@ -84,6 +88,12 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
     EXPIRED: t.policy.statusExpired,
     CANCELLED: t.policy.statusCancelled,
     RENEWED: t.policy.statusRenewed,
+  };
+
+  const valuationFilterLabel: Record<string, string> = {
+    NOT_ARRANGED: t.policy.valuationNotArranged,
+    IN_PROGRESS: t.policy.valuationInProgress,
+    COMPLETED: t.policy.valuationCompleted,
   };
 
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -244,6 +254,17 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
           aria-label={t.policy.contactPerson}
           className="w-auto max-w-[200px]"
         />
+        <Select
+          value={valuationFilter}
+          onChange={(e) => setListState({ valuationStatus: e.target.value, page: "1" }, { immediate: true })}
+          className="w-auto max-w-[180px]"
+          aria-label={t.policy.valuationStatus}
+        >
+          <option value="ALL">{t.policy.allValuationStatuses}</option>
+          {MOTOR_VALUATION_STATUSES.map((s) => (
+            <option key={s} value={s}>{valuationFilterLabel[s]}</option>
+          ))}
+        </Select>
         <PolicyExpiryDateFilter
           fromValue={expiryFrom}
           toValue={expiryTo}
@@ -271,13 +292,14 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
             so these widths are proportional hints and long cell content
             still widens the table into its horizontal scroll on small
             screens. */}
-        <Table className="min-w-[1180px]">
+        <Table className="min-w-[1290px]">
           <colgroup>
             <col style={{ width: "104px" }} />
             <col style={{ width: "120px" }} />
             <col style={{ width: "200px" }} />
             <col style={{ width: "140px" }} />
             <col style={{ width: "160px" }} />
+            <col style={{ width: "112px" }} />
             <col style={{ width: "120px" }} />
             <col style={{ width: "132px" }} />
             <col style={{ width: "112px" }} />
@@ -293,6 +315,7 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
               <th className="whitespace-nowrap">{t.policy.customer}</th>
               <th className="whitespace-nowrap">{t.policy.contactPerson}</th>
               <th className="whitespace-nowrap">{t.policy.typeOfCover}</th>
+              <th className="whitespace-nowrap">{t.policy.valuationColumn}</th>
               <th className="whitespace-nowrap">{t.policy.registrationNumber}</th>
               <th className="whitespace-nowrap">{t.policy.insurer}</th>
               <th className="whitespace-nowrap">{t.policy.expiryDate}</th>
@@ -303,7 +326,7 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
             </tr>
           </thead>
           <tbody>
-            {pageRows.length === 0 && <TableEmpty colSpan={12}>{t.policy.noRecords}</TableEmpty>}
+            {pageRows.length === 0 && <TableEmpty colSpan={13}>{t.policy.noRecords}</TableEmpty>}
             {pageRows.map((r) => (
               <tr key={r.id}>
                 <td className="font-medium whitespace-nowrap text-zinc-800">
@@ -315,6 +338,13 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
                 <td>{r.customerName}</td>
                 <td className="text-zinc-500">{r.contactPerson || "—"}</td>
                 <td className="text-zinc-500">{r.insuranceType}</td>
+                <td className="whitespace-nowrap">
+                  {r.valuationStatus && isComprehensiveMotorCover(r.insuranceType) ? (
+                    <MotorValuationBadge status={r.valuationStatus} />
+                  ) : (
+                    <span className="text-zinc-500">—</span>
+                  )}
+                </td>
                 <td className="whitespace-nowrap text-zinc-500">{r.registrationNumber}</td>
                 <td className="text-zinc-500">{r.insurerName || "—"}</td>
                 <td className="whitespace-nowrap text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>

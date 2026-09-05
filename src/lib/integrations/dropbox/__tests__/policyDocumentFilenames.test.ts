@@ -23,6 +23,34 @@ describe("buildStandardizedPolicyDocumentFilename — managed document types (Ph
     expect(name).toBe("Certificate.pdf");
   });
 
+  // Phase 12C
+  it("C21: PolicyDocumentType includes VALUATION_REPORT", () => {
+    expect(Object.values(PolicyDocumentType)).toContain("VALUATION_REPORT");
+  });
+
+  it("C22: Valuation Report PDF -> 'Valuation Report.pdf' (managed fixed name)", () => {
+    expect(
+      buildStandardizedPolicyDocumentFilename({
+        documentType: PolicyDocumentType.VALUATION_REPORT,
+        originalFileName: "some upload 998877.pdf",
+        existingStandardizedNamesLower: noExisting,
+      })
+    ).toBe("Valuation Report.pdf");
+  });
+
+  it("a non-PDF Valuation Report keeps its own extension (no invented conversion)", () => {
+    expect(
+      buildStandardizedPolicyDocumentFilename({
+        documentType: PolicyDocumentType.VALUATION_REPORT,
+        originalFileName: "report.docx",
+        existingStandardizedNamesLower: noExisting,
+      })
+    ).toBe("Valuation Report.docx");
+    expect(
+      isPlausibleStandardizedPolicyFilename("Valuation Report.pdf", PolicyDocumentType.VALUATION_REPORT, "x.pdf")
+    ).toBe(true);
+  });
+
   it("Sticker image preserves its own extension", () => {
     const name = buildStandardizedPolicyDocumentFilename({
       documentType: PolicyDocumentType.STICKER,

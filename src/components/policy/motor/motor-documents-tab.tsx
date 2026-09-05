@@ -54,6 +54,7 @@ export function MotorDocumentsTab({
     RECEIPT: t.policy.docTypeReceipt,
     ENDORSEMENT: t.policy.docTypeEndorsement,
     CANCELLATION: t.policy.docTypeCancellation,
+    VALUATION_REPORT: t.policy.docTypeValuationReport,
     OTHER: t.policy.docTypeOther,
   };
 

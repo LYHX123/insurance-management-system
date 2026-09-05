@@ -34,4 +34,11 @@ export type ReminderItem = {
   referenceDate: string; // ISO — expiryDate for Policy, latest activity date for Task/Claim
   targetUrl: string;
   permissionKey: PermissionKey;
+  // Phase 12C — true only for a Motor COMPREHENSIVE policy near expiry whose
+  // vehicle valuation is still being tracked (NOT_ARRANGED / IN_PROGRESS).
+  // Switches the reminder text to the "temporary cover, valuation pending"
+  // wording; disappears once valuation is COMPLETED (the normal expiry
+  // reminder then continues from the updated expiry date). Absent/false for
+  // every other reminder.
+  valuationPending?: boolean;
 };

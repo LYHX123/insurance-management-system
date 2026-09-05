@@ -10,7 +10,7 @@ import type { MotorListRow } from "@/components/policy/types";
 export default async function MotorPolicyListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string; contact?: string; expiryFrom?: string; expiryTo?: string }>;
+  searchParams: Promise<{ customerId?: string; contact?: string; expiryFrom?: string; expiryTo?: string; valuationStatus?: string }>;
 }) {
   const session = await auth();
   if (!session?.user || !hasPermission(session.user, "policy.motor")) {
@@ -23,15 +23,15 @@ export default async function MotorPolicyListPage({
   // query. Phase 12A adds a free-text Contact Person match + an expiry-date
   // range to the same server-side where clause (see buildMotorListFilterWhere)
   // — none of these are applied by filtering the full dataset in the browser.
-  const { customerId, contact, expiryFrom, expiryTo } = await searchParams;
-  const filterWhere = buildMotorListFilterWhere({ contact, expiryFrom, expiryTo });
+  const { customerId, contact, expiryFrom, expiryTo, valuationStatus } = await searchParams;
+  const filterWhere = buildMotorListFilterWhere({ contact, expiryFrom, expiryTo, valuationStatus });
 
   const [records, receiptSums, paymentSums] = await Promise.all([
     prisma.policyRecord.findMany({
       where: { category: "MOTOR", deletedAt: null, ...(customerId ? { customerId } : {}), ...filterWhere },
       include: {
         customer: { select: { companyName: true } },
-        motorDetail: { select: { insuranceType: true, registrationNumber: true } },
+        motorDetail: { select: { insuranceType: true, registrationNumber: true, valuationStatus: true } },
       },
       orderBy: { processingDate: "desc" },
     }),
@@ -70,6 +70,7 @@ export default async function MotorPolicyListPage({
       insurerBalance: (insurerCost - totalPaid).toFixed(2),
       businessStatus: computeBusinessStatus(r.effectiveDate, r.expiryDate, r.businessStatus),
       contactPerson: r.customerContactPerson,
+      valuationStatus: r.motorDetail?.valuationStatus ?? null,
     };
   });
 
