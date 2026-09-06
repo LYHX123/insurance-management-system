@@ -11,6 +11,7 @@ import { MotorFinancialTab } from "@/components/policy/motor/motor-financial-tab
 import { MotorDocumentsTab } from "@/components/policy/motor/motor-documents-tab";
 import { MotorActivityTab } from "@/components/policy/motor/motor-activity-tab";
 import { PolicyDropboxSection } from "@/components/policy/policy-dropbox-section";
+import { PolicyRenewalCard, type PolicyRenewalView } from "@/components/policy/policy-renewal-card";
 import type { MotorDetail, PolicyBusinessStatus, CustomerOption, PolicyDropboxSectionView } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -30,12 +31,14 @@ export function MotorDetailView({
   isAdmin,
   canEdit,
   dropbox,
+  renewal,
 }: {
   detail: MotorDetail;
   customers: CustomerOption[];
   isAdmin: boolean;
   canEdit: boolean;
   dropbox: PolicyDropboxSectionView;
+  renewal: PolicyRenewalView;
 }) {
   const { t } = useLocale();
   const router = useRouter();
@@ -101,7 +104,10 @@ export function MotorDetailView({
       </div>
 
       {tab === "overview" && (
-        <MotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />
+        <>
+          <MotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />
+          <PolicyRenewalCard policyRecordId={detail.id} category="MOTOR" canEdit={canEdit} renewal={renewal} />
+        </>
       )}
       {tab === "financial" && <MotorFinancialTab detail={detail} canEdit={canEdit} />}
       {tab === "documents" && (

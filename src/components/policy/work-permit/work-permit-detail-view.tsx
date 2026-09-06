@@ -13,6 +13,7 @@ import { WorkPermitFinancialTab } from "@/components/policy/work-permit/work-per
 import { MotorDocumentsTab } from "@/components/policy/motor/motor-documents-tab";
 import { MotorActivityTab } from "@/components/policy/motor/motor-activity-tab";
 import { PolicyDropboxSection } from "@/components/policy/policy-dropbox-section";
+import { PolicyRenewalCard, type PolicyRenewalView } from "@/components/policy/policy-renewal-card";
 import type { WorkPermitDetail, PolicyBusinessStatus, CustomerOption, PolicyDropboxSectionView } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -32,12 +33,14 @@ export function WorkPermitDetailView({
   isAdmin,
   canEdit,
   dropbox,
+  renewal,
 }: {
   detail: WorkPermitDetail;
   customers: CustomerOption[];
   isAdmin: boolean;
   canEdit: boolean;
   dropbox: PolicyDropboxSectionView;
+  renewal: PolicyRenewalView;
 }) {
   const { t } = useLocale();
   const router = useRouter();
@@ -100,7 +103,12 @@ export function WorkPermitDetailView({
         {tabButton("activity", t.policy.activityTab)}
       </div>
 
-      {tab === "overview" && <WorkPermitOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />}
+      {tab === "overview" && (
+        <>
+          <WorkPermitOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />
+          <PolicyRenewalCard policyRecordId={detail.id} category="WORK_PERMIT" canEdit={canEdit} renewal={renewal} />
+        </>
+      )}
       {tab === "financial" && <WorkPermitFinancialTab detail={detail} canEdit={canEdit} />}
       {tab === "documents" && (
         <div className="flex flex-col gap-4">

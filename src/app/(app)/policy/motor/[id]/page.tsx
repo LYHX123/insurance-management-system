@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit, hasPermission, isAdmin } from "@/lib/permissions";
+import { loadRenewalView } from "@/app/(app)/policy/renewal/loadRenewalView";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { ensurePolicyCreatedActivityBackfilled } from "@/lib/policy/activity";
@@ -244,6 +245,8 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
     },
   });
 
+  const renewalView = await loadRenewalView(record);
+
   return (
     <MotorDetailView
       detail={detail}
@@ -251,6 +254,7 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
       isAdmin={isAdmin(session.user)}
       canEdit={canEdit(session.user, "policy.motor")}
       dropbox={dropboxViewModel}
+      renewal={renewalView}
     />
   );
 }

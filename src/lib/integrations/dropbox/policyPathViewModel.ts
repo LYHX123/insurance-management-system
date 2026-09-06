@@ -8,6 +8,7 @@ import { resolvePolicyBusinessFileRefReadOnly, type PolicyBusinessFileRef } from
 import { buildCustomerFolderName } from "./customer-folder-names";
 import { buildStandardizedPolicyDocumentFilename } from "./policyDocumentFilenames";
 import { POLICY_SUBFOLDER_NAME } from "./policyDocumentSync";
+import { renewalYearSegment } from "@/lib/policy/renewal";
 import { buildDropboxPathView, safeJoinPlannedPath, type DropboxPathView, type DropboxPathSyncStatus } from "./pathDisplay";
 import type { PolicyDocumentType } from "@/generated/prisma/enums";
 
@@ -25,7 +26,11 @@ export async function buildPolicyDropboxViewModel(policyRecordId: string): Promi
     getDropboxIntegrationRow(),
     prisma.policyRecord.findUnique({
       where: { id: policyRecordId },
-      select: { customer: { select: { customerNumber: true, companyName: true, dropboxFolder: true } } },
+      select: {
+        renewalIndex: true,
+        effectiveDate: true,
+        customer: { select: { customerNumber: true, companyName: true, dropboxFolder: true } },
+      },
     }),
     resolvePolicyBusinessFileRefReadOnly(policyRecordId),
   ]);
@@ -61,7 +66,14 @@ export async function buildPolicyDropboxViewModel(policyRecordId: string): Promi
   const policyFolderActualPath = syncedDoc?.dropboxSync?.dropboxDisplayPath
     ? parentDropboxPath(syncedDoc.dropboxSync.dropboxDisplayPath)
     : null;
-  const policyFolderPlannedPath = businessFolder.path ? safeJoinPlannedPath(businessFolder.path, POLICY_SUBFOLDER_NAME) : null;
+  // Phase 12D — a renewal period's documents live under "Policy/<year>/".
+  const policyFolderSegments =
+    policy.renewalIndex >= 1
+      ? [POLICY_SUBFOLDER_NAME, renewalYearSegment(policy.effectiveDate)]
+      : [POLICY_SUBFOLDER_NAME];
+  const policyFolderPlannedPath = businessFolder.path
+    ? policyFolderSegments.reduce<string | null>((acc, seg) => (acc ? safeJoinPlannedPath(acc, seg) : null), businessFolder.path)
+    : null;
   const policyFolderSyncStatus: DropboxPathSyncStatus = syncedDoc
     ? "SYNCED"
     : businessFolder.state === "not_connected"

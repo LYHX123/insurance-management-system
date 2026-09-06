@@ -23,6 +23,7 @@ import {
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import { MOTOR_VALUATION_STATUSES, isComprehensiveMotorCover } from "@/lib/policy/motorValuation";
 import { MotorValuationBadge } from "@/components/policy/motor/motor-valuation-badge";
+import { RenewalBadge } from "@/components/policy/renewal-badge";
 import type { MotorListRow, PolicyBusinessStatus } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -333,6 +334,11 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
                   <Link href={`/policy/motor/${r.id}`} className="text-emerald-700 hover:underline">
                     {r.recordNumber}
                   </Link>
+                  {(r.renewalIndex >= 1 || r.renewalDecision === "RENEWED" || r.renewalDecision === "NOT_RENEWED") && (
+                    <div className="mt-0.5">
+                      <RenewalBadge renewalIndex={r.renewalIndex} renewalDecision={r.renewalDecision} />
+                    </div>
+                  )}
                 </td>
                 <td className="whitespace-nowrap text-zinc-500">{dateFormatter.format(new Date(r.processingDate))}</td>
                 <td>{r.customerName}</td>

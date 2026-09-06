@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit, hasPermission, isAdmin } from "@/lib/permissions";
+import { loadRenewalView } from "@/app/(app)/policy/renewal/loadRenewalView";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
 import { pickRelatedInvoiceForDisplay } from "@/lib/invoice/eligibility";
@@ -183,6 +184,8 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
     },
   });
 
+  const renewalView = await loadRenewalView(record);
+
   return (
     <BondDetailView
       detail={detail}
@@ -190,6 +193,7 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
       isAdmin={isAdmin(session.user)}
       canEdit={canEdit(session.user, "policy.bond")}
       dropbox={dropboxViewModel}
+      renewal={renewalView}
     />
   );
 }

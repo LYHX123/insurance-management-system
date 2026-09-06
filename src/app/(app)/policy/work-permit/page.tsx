@@ -66,6 +66,8 @@ export default async function WorkPermitPolicyListPage({
         clientBalance: (clientPremium - totalReceived).toFixed(2),
         insurerBalance: (agentCost - totalPaid).toFixed(2),
         businessStatus: computeBusinessStatus(r.effectiveDate, r.expiryDate, r.businessStatus),
+      renewalIndex: r.renewalIndex,
+      renewalDecision: r.renewalDecision,
       };
     });
 

@@ -206,6 +206,14 @@ export async function ensurePolicyDropboxBusinessFile(policyRecordId: string): P
   });
   if (!policy) return { ok: false, error: "POLICY_NOT_FOUND" };
 
+  // Phase 12D — a renewal period NEVER gets its own business folder: it
+  // reuses the ROOT policy's existing folder (whatever that resolves to),
+  // so the whole renewal chain lives under one folder for the same
+  // insurance transaction. renewalIndex 0 keeps current behaviour.
+  if (policy.renewalIndex >= 1 && policy.rootPolicyId && policy.rootPolicyId !== policyRecordId) {
+    return ensurePolicyDropboxBusinessFile(policy.rootPolicyId);
+  }
+
   const quotationCaseId = policy.sourceQuotation?.quotationCaseId ?? null;
 
   if (quotationCaseId) {
@@ -234,6 +242,12 @@ export async function resolvePolicyBusinessFileRefReadOnly(policyRecordId: strin
     include: POLICY_BUSINESS_FILE_INCLUDE,
   });
   if (!policy) return null;
+
+  // Phase 12D — see ensurePolicyDropboxBusinessFile: a renewal resolves
+  // through the root policy's folder.
+  if (policy.renewalIndex >= 1 && policy.rootPolicyId && policy.rootPolicyId !== policyRecordId) {
+    return resolvePolicyBusinessFileRefReadOnly(policy.rootPolicyId);
+  }
 
   const quotationCaseId = policy.sourceQuotation?.quotationCaseId ?? null;
   if (quotationCaseId) {

@@ -69,6 +69,8 @@ export default async function MotorPolicyListPage({
       clientBalance: (clientPremium - totalReceived).toFixed(2),
       insurerBalance: (insurerCost - totalPaid).toFixed(2),
       businessStatus: computeBusinessStatus(r.effectiveDate, r.expiryDate, r.businessStatus),
+      renewalIndex: r.renewalIndex,
+      renewalDecision: r.renewalDecision,
       contactPerson: r.customerContactPerson,
       valuationStatus: r.motorDetail?.valuationStatus ?? null,
     };

@@ -49,7 +49,9 @@ export type PolicyActivityActionType =
   | "BALANCE_VERIFIED"
   | "HISTORICAL_POLICY_IMPORTED"
   | "INVOICE_ISSUED"
-  | "INVOICE_CANCELLED";
+  | "INVOICE_CANCELLED"
+  | "POLICY_RENEWED"
+  | "POLICY_NOT_RENEWED";
 
 export type CustomerOption = {
   id: string;
@@ -86,6 +88,9 @@ export type MotorListRow = {
   // policy whose valuation is being tracked; the list shows a badge for
   // non-null, "—" otherwise (incl. every non-Comprehensive row).
   valuationStatus: MotorValuationStatus | null;
+  // Phase 12D — renewal-chain position/decision (compact list badge).
+  renewalIndex: number;
+  renewalDecision: import("@/generated/prisma/enums").PolicyRenewalDecision | null;
 };
 
 export type TransactionRow = {
@@ -199,6 +204,9 @@ export type NonMotorListRow = {
   clientBalance: string;
   insurerBalance: string;
   businessStatus: PolicyBusinessStatus;
+  // Phase 12D — renewal-chain position/decision (compact list badge).
+  renewalIndex: number;
+  renewalDecision: import("@/generated/prisma/enums").PolicyRenewalDecision | null;
 };
 
 // Mirrors MotorDetail's shape, minus every Motor-specific field
@@ -266,6 +274,9 @@ export type BondListRow = {
   clientBalance: string;
   insurerBalance: string;
   businessStatus: PolicyBusinessStatus;
+  // Phase 12D — renewal-chain position/decision (compact list badge).
+  renewalIndex: number;
+  renewalDecision: import("@/generated/prisma/enums").PolicyRenewalDecision | null;
 };
 
 // Mirrors NonMotorDetail's shape, minus insuranceType/policyNumber (moved to
@@ -330,6 +341,9 @@ export type WorkPermitListRow = {
   clientBalance: string;
   insurerBalance: string;
   businessStatus: PolicyBusinessStatus;
+  // Phase 12D — renewal-chain position/decision (compact list badge).
+  renewalIndex: number;
+  renewalDecision: import("@/generated/prisma/enums").PolicyRenewalDecision | null;
 };
 
 // Mirrors NonMotorDetail's shape with permitType/agent/permitNumber in place

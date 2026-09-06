@@ -13,6 +13,7 @@ import { ensurePolicyDropboxBusinessFile, resolvePolicyBusinessFileRefReadOnly, 
 import { joinDropboxPath, assertInsideRoot } from "./paths";
 import { DropboxIntegrationError, mapDropboxError, type DropboxErrorCode } from "./errors";
 import { buildStandardizedPolicyDocumentFilename, isPlausibleStandardizedPolicyFilename } from "./policyDocumentFilenames";
+import { renewalYearSegment } from "@/lib/policy/renewal";
 import type { PolicyDocumentType } from "@/generated/prisma/enums";
 import { withRateLimitBackoff, INTERACTIVE_BACKOFF } from "./rateLimitRetry";
 
@@ -39,6 +40,10 @@ type DocumentForSync = {
     id: string;
     recordNumber: string;
     customerId: string;
+    // Phase 12D — a renewal period (renewalIndex >= 1) files under
+    // "Policy/<renewalYear>/" of the SAME root business folder.
+    renewalIndex: number;
+    effectiveDate: Date;
     customer: { dropboxFolder: { syncStatus: string; dropboxFolderId: string | null; displayPath: string | null } | null };
   };
   dropboxSync: {
@@ -173,7 +178,16 @@ export async function syncPolicyDocumentToDropbox(policyDocumentId: string): Pro
   const document = (await prisma.policyDocument.findUnique({
     where: { id: policyDocumentId },
     include: {
-      policyRecord: { select: { id: true, recordNumber: true, customerId: true, customer: { include: { dropboxFolder: true } } } },
+      policyRecord: {
+        select: {
+          id: true,
+          recordNumber: true,
+          customerId: true,
+          renewalIndex: true,
+          effectiveDate: true,
+          customer: { include: { dropboxFolder: true } },
+        },
+      },
       dropboxSync: true,
     },
   })) as DocumentForSync | null;
@@ -253,11 +267,30 @@ export async function syncPolicyDocumentToDropbox(policyDocumentId: string): Pro
     } else if (existingSubfolder.tag !== "folder") {
       return failResult(policyDocumentId, "CONFLICT", "BUSINESS_FOLDER_CONFLICT", "A file exists where the Policy subfolder should be.");
     }
+    // Phase 12D — a renewal period (renewalIndex >= 1) files one level
+    // deeper: "Policy/<renewalYear>/". The root business folder + the
+    // "Policy" folder above are untouched, so the original period's files
+    // never move.
+    if (document.policyRecord.renewalIndex >= 1) {
+      const yearFolderPath = joinDropboxPath(policyFolderPath, renewalYearSegment(document.policyRecord.effectiveDate));
+      assertInsideRoot(yearFolderPath, auth.row.rootFolder);
+      const existingYear = await tryGetMetadata(auth.client, yearFolderPath);
+      if (!existingYear) {
+        await withRateLimitBackoff(() => auth.client.filesCreateFolderV2({ path: yearFolderPath, autorename: false }));
+      } else if (existingYear.tag !== "folder") {
+        return failResult(policyDocumentId, "CONFLICT", "BUSINESS_FOLDER_CONFLICT", "A file exists where the renewal year subfolder should be.");
+      }
+      policyFolderPath = yearFolderPath;
+    }
   } catch (err) {
     if (err instanceof DropboxIntegrationError && err.code === "ROOT_PATH_INVALID") {
       return failResult(policyDocumentId, "ERROR", "DROPBOX_FILE_OUTSIDE_ROOT", err.message);
     }
-    const recheckPath = `${businessFolder.path}/${POLICY_SUBFOLDER_NAME}`;
+    const recheckBase = `${businessFolder.path}/${POLICY_SUBFOLDER_NAME}`;
+    const recheckPath =
+      document.policyRecord.renewalIndex >= 1
+        ? `${recheckBase}/${renewalYearSegment(document.policyRecord.effectiveDate)}`
+        : recheckBase;
     const recheck = await tryGetMetadata(auth.client, recheckPath).catch(() => null);
     if (!recheck) {
       const mapped = err instanceof DropboxIntegrationError ? err : mapDropboxError(err);

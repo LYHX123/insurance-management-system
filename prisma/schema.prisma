@@ -1697,6 +1697,17 @@ enum PolicyRecordSource {
   HISTORICAL_IMPORT
 }
 
+// Phase 12D — the renewal outcome for one PolicyRecord (one policy PERIOD).
+// A completely separate concept from PolicyBusinessStatus (which stays
+// purely date/business-state driven). NULL on an existing row means "no
+// decision recorded yet" and is treated as PENDING for display — existing
+// rows are never backfilled.
+enum PolicyRenewalDecision {
+  PENDING
+  RENEWED
+  NOT_RENEWED
+}
+
 enum PolicyPaymentStatus {
   UNPAID
   PARTIALLY_PAID
@@ -1874,6 +1885,33 @@ model PolicyRecord {
   // the shared PolicyRecord, but the Phase 12A UI wires it for Motor only.
   customerContactPerson String?
 
+  // Phase 12D — Policy Renewal Chain. A renewal is a brand-new, fully
+  // independent PolicyRecord for the next period; the previous record is
+  // NEVER overwritten. All fields are additive/nullable/defaulted so every
+  // existing row reads back as an un-renewed original (renewedFromId null,
+  // rootPolicyId null, renewalIndex 0, renewalDecision null).
+  //
+  //   original     : renewedFromId null,  rootPolicyId null,      renewalIndex 0
+  //   1st renewal  : renewedFromId orig,  rootPolicyId orig,      renewalIndex 1
+  //   2nd renewal  : renewedFromId r1,    rootPolicyId orig,      renewalIndex 2
+  //
+  // renewedFromId is @unique — one successor per period, so a double-click /
+  // race can only ever create ONE renewal (the loser hits the unique
+  // constraint and is reported as POLICY_ALREADY_RENEWED). onDelete: Restrict
+  // on both self-relations so a chain is never silently broken by a delete.
+  renewedFromId String?       @unique
+  renewedFrom   PolicyRecord? @relation("PolicyRenewal", fields: [renewedFromId], references: [id], onDelete: Restrict)
+  renewedBy     PolicyRecord? @relation("PolicyRenewal")
+
+  // The chain root (the original policy). NULL on the original itself — its
+  // own id IS the root. Never backfilled onto existing rows.
+  rootPolicyId        String?
+  rootPolicy          PolicyRecord?  @relation("PolicyRenewalChain", fields: [rootPolicyId], references: [id], onDelete: Restrict)
+  renewalChainMembers PolicyRecord[] @relation("PolicyRenewalChain")
+
+  renewalIndex    Int                    @default(0)
+  renewalDecision PolicyRenewalDecision?
+
   createdById String
   createdAt   DateTime  @default(now())
   updatedById String?
@@ -1915,6 +1953,8 @@ model PolicyRecord {
   @@index([sourceQuotationId])
   @@index([sourceQuotationSectionId])
   @@index([sourceCustomsBondItemId])
+  @@index([rootPolicyId])
+  @@index([renewalDecision])
 }
 
 // Fixed, small, closed classification (unlike insuranceType below, which is
@@ -2512,6 +2552,12 @@ enum PolicyActivityActionType {
   // src/app/(app)/invoice/actions.ts.
   INVOICE_ISSUED
   INVOICE_CANCELLED
+  // Phase 12D — renewal-chain lifecycle. POLICY_RENEWED is logged on BOTH
+  // the previous period ("Policy renewed to PN…") and the new one ("Renewed
+  // from PN…"). POLICY_NOT_RENEWED covers the "Do Not Renew" decision and
+  // its reopening.
+  POLICY_RENEWED
+  POLICY_NOT_RENEWED
 }
 
 model PolicyActivity {

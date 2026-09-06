@@ -20,6 +20,7 @@ import {
   matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { RenewalBadge } from "@/components/policy/renewal-badge";
 import type { BondListRow, BondType, PolicyBusinessStatus } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -259,6 +260,11 @@ export function BondListTable({ records, canEdit }: { records: BondListRow[]; ca
                   <Link href={`/policy/bond/${r.id}`} className="text-emerald-700 hover:underline">
                     {r.recordNumber}
                   </Link>
+                  {(r.renewalIndex >= 1 || r.renewalDecision === "RENEWED" || r.renewalDecision === "NOT_RENEWED") && (
+                    <div className="mt-0.5">
+                      <RenewalBadge renewalIndex={r.renewalIndex} renewalDecision={r.renewalDecision} />
+                    </div>
+                  )}
                 </td>
                 <td className="text-zinc-500">{dateFormatter.format(new Date(r.processingDate))}</td>
                 <td>{r.customerName}</td>

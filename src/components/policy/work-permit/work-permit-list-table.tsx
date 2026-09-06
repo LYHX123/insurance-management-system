@@ -20,6 +20,7 @@ import {
   matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { RenewalBadge } from "@/components/policy/renewal-badge";
 import type { WorkPermitListRow, WorkPermitType, PolicyBusinessStatus } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -227,6 +228,11 @@ export function WorkPermitListTable({ records, canEdit }: { records: WorkPermitL
                   <Link href={`/policy/work-permit/${r.id}`} className="text-emerald-700 hover:underline">
                     {r.recordNumber}
                   </Link>
+                  {(r.renewalIndex >= 1 || r.renewalDecision === "RENEWED" || r.renewalDecision === "NOT_RENEWED") && (
+                    <div className="mt-0.5">
+                      <RenewalBadge renewalIndex={r.renewalIndex} renewalDecision={r.renewalDecision} />
+                    </div>
+                  )}
                 </td>
                 <td className="text-zinc-500">{dateFormatter.format(new Date(r.processingDate))}</td>
                 <td>{r.customerName}</td>

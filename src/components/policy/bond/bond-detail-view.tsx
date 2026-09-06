@@ -14,6 +14,7 @@ import { BondFinancialTab } from "@/components/policy/bond/bond-financial-tab";
 import { MotorDocumentsTab } from "@/components/policy/motor/motor-documents-tab";
 import { MotorActivityTab } from "@/components/policy/motor/motor-activity-tab";
 import { PolicyDropboxSection } from "@/components/policy/policy-dropbox-section";
+import { PolicyRenewalCard, type PolicyRenewalView } from "@/components/policy/policy-renewal-card";
 import type { BondDetail, PolicyBusinessStatus, CustomerOption, PolicyDropboxSectionView } from "@/components/policy/types";
 
 const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
@@ -33,12 +34,14 @@ export function BondDetailView({
   isAdmin,
   canEdit,
   dropbox,
+  renewal,
 }: {
   detail: BondDetail;
   customers: CustomerOption[];
   isAdmin: boolean;
   canEdit: boolean;
   dropbox: PolicyDropboxSectionView;
+  renewal: PolicyRenewalView;
 }) {
   const { t } = useLocale();
   const router = useRouter();
@@ -101,7 +104,12 @@ export function BondDetailView({
         {tabButton("activity", t.policy.activityTab)}
       </div>
 
-      {tab === "overview" && <BondOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />}
+      {tab === "overview" && (
+        <>
+          <BondOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />
+          <PolicyRenewalCard policyRecordId={detail.id} category="BOND" canEdit={canEdit} renewal={renewal} />
+        </>
+      )}
       {tab === "financial" && <BondFinancialTab detail={detail} canEdit={canEdit} />}
       {tab === "documents" && (
         <div className="flex flex-col gap-4">

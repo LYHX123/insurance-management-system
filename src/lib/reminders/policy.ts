@@ -42,7 +42,17 @@ async function getRemindersForCategory(
     where: {
       category,
       deletedAt: null,
+      // A period that has been RENEWED is already excluded by its RENEWED
+      // businessStatus (set explicitly by renewPolicyAction, sticky in
+      // computeBusinessStatus). Phase 12D also drops any period whose owner
+      // explicitly chose NOT to renew — that decision ends the reminder for
+      // that policy. NULL / PENDING (the un-decided latest period) still
+      // reminds. Prisma's `not` includes NULL rows.
       businessStatus: { notIn: ["CANCELLED", "RENEWED"] },
+      // Keep NULL (never decided — existing rows) and PENDING; only drop an
+      // explicit NOT_RENEWED. A bare `not` does not match NULL rows in
+      // Prisma, hence the explicit OR.
+      OR: [{ renewalDecision: null }, { renewalDecision: { not: "NOT_RENEWED" } }],
     },
     select: {
       id: true,
