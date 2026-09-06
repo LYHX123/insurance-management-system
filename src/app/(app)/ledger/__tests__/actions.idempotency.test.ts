@@ -55,6 +55,11 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
         where.id === "cat-1" ? { id: "cat-1", name: "Office Supplies", transactionType: "EXPENSE", isActive: true } : null
       ),
+      // Phase 12E: validateCategoryForEntry loads the category tree for a new
+      // selection (depth / leaf / inactive-ancestor checks).
+      findMany: vi.fn(async () => [
+        { id: "cat-1", name: "Office Supplies", transactionType: "EXPENSE", isActive: true, parentId: null, sortOrder: 0 },
+      ]),
     },
     $transaction: vi.fn((cb: (tx: ReturnType<typeof buildTx>) => Promise<unknown>) => {
       const run = txQueue.then(

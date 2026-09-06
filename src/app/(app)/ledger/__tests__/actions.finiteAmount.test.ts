@@ -12,6 +12,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const categoryFindUniqueMock = vi.fn();
+const categoryFindManyMock = vi.fn();
 const manualEntryCreateMock = vi.fn();
 const manualEntryFindUniqueMock = vi.fn();
 const manualEntryUpdateMock = vi.fn();
@@ -27,6 +28,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     ledgerCategory: {
       findUnique: (...args: unknown[]) => categoryFindUniqueMock(...args),
+      findMany: (...args: unknown[]) => categoryFindManyMock(...args),
     },
     ledgerManualEntry: {
       create: (...args: unknown[]) => manualEntryCreateMock(...args),
@@ -57,6 +59,10 @@ function setSession(permissions: string[], role = "Staff") {
 }
 
 const validCategory = { id: "cat-1", name: "Office Supplies", transactionType: "EXPENSE", isActive: true };
+// Phase 12E: validateCategoryForEntry loads the whole (tiny) category tree
+// to check depth / leaf / inactive-ancestor. One active root leaf is enough
+// for these amount-validation tests.
+const categoryTreeRows = [{ id: "cat-1", name: "Office Supplies", transactionType: "EXPENSE", isActive: true, parentId: null, sortOrder: 0 }];
 
 describe("Ledger Manual Entry actions — H5 finite-amount validation", () => {
   beforeEach(() => {
@@ -64,6 +70,7 @@ describe("Ledger Manual Entry actions — H5 finite-amount validation", () => {
     idempotencyClaims = new Set();
     setSession(["ledger.manual_record.edit"]);
     categoryFindUniqueMock.mockResolvedValue(validCategory);
+    categoryFindManyMock.mockResolvedValue(categoryTreeRows);
     manualEntryCreateMock.mockResolvedValue({ id: "entry-1" });
     manualEntryFindUniqueMock.mockResolvedValue({ id: "entry-1", cancelledAt: null, categoryId: "cat-1" });
     manualEntryUpdateMock.mockResolvedValue({ id: "entry-1" });

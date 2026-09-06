@@ -1,10 +1,23 @@
 export type LedgerTransactionType = "INCOME" | "EXPENSE";
 
+// Phase 12E — a category node plus the derived tree facts the UI needs
+// (path/depth/leaf) so components never re-walk the tree themselves.
 export type LedgerCategoryOption = {
   id: string;
   name: string;
   transactionType: LedgerTransactionType;
   isActive: boolean;
+  parentId: string | null;
+  sortOrder: number;
+  // Depth 1 = root, 2 = child, 3 = grandchild.
+  depth: number;
+  // "Premium Income › Motor Premium" (leaf-inclusive, transactionType-free).
+  path: string;
+  // No children — the only categories selectable for a new manual entry.
+  isLeaf: boolean;
+  // True when this category or any ancestor is inactive — the whole subtree
+  // is then hidden from the new-entry picker.
+  effectivelyInactive: boolean;
 };
 
 export type ManualEntryRow = {
@@ -13,9 +26,11 @@ export type ManualEntryRow = {
   transactionType: LedgerTransactionType;
   categoryId: string;
   categoryName: string;
+  categoryPath: string;
   categoryIsActive: boolean;
   amount: string;
   paymentMethod: string | null;
+  counterpartyName: string | null;
   referenceNumber: string | null;
   description: string | null;
   createdById: string;

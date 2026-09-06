@@ -19,6 +19,8 @@ import { formatMoney } from "@/components/ui/money-input";
 import { cancelManualEntryAction } from "@/app/(app)/ledger/actions";
 import { ManualEntryModal } from "@/components/ledger/manual-entry-modal";
 import { ManageCategoriesModal } from "@/components/ledger/manage-categories-modal";
+import { descendantFilterIds } from "@/lib/ledger/categoryView";
+import { displayPaymentMethod } from "@/components/ledger/paymentMethodLabels";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
 import type { ManualEntryRow, LedgerCategoryOption, LedgerTransactionType } from "@/components/ledger/types";
 
@@ -29,6 +31,7 @@ const MANUAL_LEDGER_LIST_DEFAULTS = {
   search: "",
   type: "ALL",
   categoryId: "ALL",
+  counterparty: "",
   createdById: "ALL",
   dateFrom: "",
   dateTo: "",
@@ -75,6 +78,7 @@ export function ManualLedgerTable({
     search,
     type: typeFilter,
     categoryId: categoryFilter,
+    counterparty: counterpartyFilter,
     createdById: createdByFilter,
     dateFrom,
     dateTo,
@@ -97,24 +101,47 @@ export function ManualLedgerTable({
     [records]
   );
 
+  const counterpartyOptions = useMemo(
+    () => [...new Set(records.map((r) => r.counterpartyName).filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b)),
+    [records]
+  );
+
+  // A hierarchical Category filter: picking any node (branch or leaf) matches
+  // that node + its whole subtree.
+  const categoryFilterIds = useMemo(
+    () => (categoryFilter === "ALL" ? null : new Set(descendantFilterIds(categories, categoryFilter))),
+    [categories, categoryFilter]
+  );
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
+    const cpTerm = counterpartyFilter.trim().toLowerCase();
     return records.filter((r) => {
       const matchesTerm =
         !term ||
-        r.categoryName.toLowerCase().includes(term) ||
+        r.categoryPath.toLowerCase().includes(term) ||
+        (r.counterpartyName?.toLowerCase().includes(term) ?? false) ||
         (r.description?.toLowerCase().includes(term) ?? false) ||
         (r.referenceNumber?.toLowerCase().includes(term) ?? false) ||
         (r.paymentMethod?.toLowerCase().includes(term) ?? false);
       const matchesType = typeFilter === "ALL" || r.transactionType === typeFilter;
-      const matchesCategory = categoryFilter === "ALL" || r.categoryId === categoryFilter;
+      const matchesCategory = !categoryFilterIds || categoryFilterIds.has(r.categoryId);
+      const matchesCounterparty = !cpTerm || (r.counterpartyName?.toLowerCase().includes(cpTerm) ?? false);
       const matchesCreatedBy = createdByFilter === "ALL" || r.createdById === createdByFilter;
       const dateOnly = r.transactionDate.slice(0, 10);
       const matchesFrom = !dateFrom || dateOnly >= dateFrom;
       const matchesTo = !dateTo || dateOnly <= dateTo;
-      return matchesTerm && matchesType && matchesCategory && matchesCreatedBy && matchesFrom && matchesTo;
+      return (
+        matchesTerm &&
+        matchesType &&
+        matchesCategory &&
+        matchesCounterparty &&
+        matchesCreatedBy &&
+        matchesFrom &&
+        matchesTo
+      );
     });
-  }, [records, search, typeFilter, categoryFilter, createdByFilter, dateFrom, dateTo]);
+  }, [records, search, typeFilter, categoryFilterIds, counterpartyFilter, createdByFilter, dateFrom, dateTo]);
 
   const summary = useMemo(() => {
     let income = 0;
@@ -144,11 +171,12 @@ export function ManualLedgerTable({
     if (search.trim()) params.set("search", search.trim());
     if (typeFilter !== "ALL") params.set("type", typeFilter);
     if (categoryFilter !== "ALL") params.set("categoryId", categoryFilter);
+    if (counterpartyFilter.trim()) params.set("counterparty", counterpartyFilter.trim());
     if (createdByFilter !== "ALL") params.set("createdById", createdByFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
     return `/api/ledger/manual/export?${params.toString()}`;
-  }, [search, typeFilter, categoryFilter, createdByFilter, dateFrom, dateTo]);
+  }, [search, typeFilter, categoryFilter, counterpartyFilter, createdByFilter, dateFrom, dateTo]);
 
   return (
     <div className="flex flex-col gap-section">
@@ -209,15 +237,22 @@ export function ManualLedgerTable({
         <Select
           value={categoryFilter}
           onChange={(e) => setListState({ categoryId: e.target.value, page: "1" }, { immediate: true })}
-          className="w-auto max-w-[200px]"
+          className="w-auto max-w-[240px]"
         >
           <option value="ALL">{t.ledger.allCategories}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name} ({typeLabel[c.transactionType]}){!c.isActive ? ` — ${t.ledger.inactive}` : ""}
+              {`${"   ".repeat(Math.max(0, c.depth - 1))}${c.name} (${typeLabel[c.transactionType]})`}
+              {!c.isActive || c.effectivelyInactive ? ` — ${t.ledger.inactive}` : ""}
             </option>
           ))}
         </Select>
+        <Input
+          value={counterpartyFilter}
+          onChange={(e) => setListState({ counterparty: e.target.value, page: "1" })}
+          placeholder={t.ledger.counterparty}
+          className="w-auto max-w-[180px]"
+        />
         {creators.length > 1 && (
           <Select
             value={createdByFilter}
@@ -251,22 +286,23 @@ export function ManualLedgerTable({
       </div>
 
       <TableWrap scroll>
-        <Table className="min-w-[1100px]">
+        <Table className="min-w-[1200px]">
           <thead>
             <tr>
               <th>{t.ledger.date}</th>
               <th>{t.ledger.type}</th>
               <th>{t.ledger.category}</th>
-              <th>{t.ledger.description}</th>
+              <th>{t.ledger.counterparty}</th>
+              <th>{t.ledger.amount}</th>
               <th>{t.ledger.paymentMethod}</th>
               <th>{t.ledger.referenceNumber}</th>
-              <th>{t.ledger.amount}</th>
+              <th>{t.ledger.description}</th>
               <th>{t.ledger.createdBy}</th>
               <th>{t.common.actions}</th>
             </tr>
           </thead>
           <tbody>
-            {pageRows.length === 0 && <TableEmpty colSpan={9}>{t.ledger.noManualRecords}</TableEmpty>}
+            {pageRows.length === 0 && <TableEmpty colSpan={10}>{t.ledger.noManualRecords}</TableEmpty>}
             {pageRows.map((r) => (
               <tr key={r.id}>
                 <td className="text-zinc-500">{dateFormatter.format(new Date(r.transactionDate))}</td>
@@ -274,15 +310,16 @@ export function ManualLedgerTable({
                   <Badge tone={TYPE_TONE[r.transactionType]}>{typeLabel[r.transactionType]}</Badge>
                 </td>
                 <td>
-                  {r.categoryName}
+                  {r.categoryPath}
                   {!r.categoryIsActive && <span className="ml-1 text-xs text-zinc-400">({t.ledger.inactive})</span>}
                 </td>
-                <td className="text-zinc-500">{r.description || "—"}</td>
-                <td className="text-zinc-500">{r.paymentMethod || "—"}</td>
-                <td className="text-zinc-500">{r.referenceNumber || "—"}</td>
+                <td className="text-zinc-500">{r.counterpartyName || "—"}</td>
                 <td className={r.transactionType === "INCOME" ? "font-medium text-emerald-700" : "font-medium text-red-600"}>
                   {formatMoney(r.amount)}
                 </td>
+                <td className="text-zinc-500">{displayPaymentMethod(r.paymentMethod, t.ledger) || "—"}</td>
+                <td className="text-zinc-500">{r.referenceNumber || "—"}</td>
+                <td className="text-zinc-500">{r.description || "—"}</td>
                 <td className="text-zinc-500">{r.createdByName}</td>
                 <td>
                   <div className="flex items-center justify-end gap-1.5">
@@ -309,6 +346,7 @@ export function ManualLedgerTable({
       {(newEntryType || editingEntry) && (
         <ManualEntryModal
           categories={categories}
+          counterpartyOptions={counterpartyOptions}
           entry={editingEntry}
           fixedType={editingEntry?.transactionType ?? newEntryType!}
           onClose={() => {

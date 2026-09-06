@@ -11,7 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { createManualEntryAction, updateManualEntryAction, createLedgerCategoryAction } from "@/app/(app)/ledger/actions";
+import { categorySelectItems } from "@/lib/ledger/categoryView";
+import { isManualLedgerPaymentMethod } from "@/lib/ledger/paymentMethods";
+import { manualLedgerPaymentMethodOptions } from "@/components/ledger/paymentMethodLabels";
 import type { ManualEntryRow, LedgerCategoryOption, LedgerTransactionType } from "@/components/ledger/types";
+
+const COUNTERPARTY_DATALIST_ID = "ledger-counterparty-options";
 
 const ERROR_KEY: Record<string, string> = {
   DATE_REQUIRED: "dateRequired",
@@ -20,7 +25,9 @@ const ERROR_KEY: Record<string, string> = {
   CATEGORY_NOT_FOUND: "categoryNotFound",
   CATEGORY_TYPE_MISMATCH: "categoryTypeMismatch",
   CATEGORY_INACTIVE: "categoryInactive",
+  CATEGORY_NOT_LEAF: "categoryLeafRequired",
   AMOUNT_INVALID: "amountInvalid",
+  PAYMENT_METHOD_INVALID: "paymentMethodInvalid",
   ENTRY_NOT_FOUND: "entryNotFound",
   CREATE_FAILED: "createFailed",
   UPDATE_FAILED: "updateFailed",
@@ -32,12 +39,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export function ManualEntryModal({
   categories,
+  counterpartyOptions,
   entry,
   fixedType,
   onClose,
   onSuccess,
 }: {
   categories: LedgerCategoryOption[];
+  counterpartyOptions: string[];
   entry: ManualEntryRow | null;
   fixedType: LedgerTransactionType;
   onClose: () => void;
@@ -45,12 +54,6 @@ export function ManualEntryModal({
 }) {
   const { t } = useLocale();
   const isEditing = !!entry;
-  // The transaction type is fixed for the lifetime of this modal instance:
-  // chosen by the New Income / New Expense button for creation, or carried
-  // over unchanged from the record being edited. There is no in-form way to
-  // change it — this mirrors the existing immutable-category-type design
-  // (see ledger/actions.ts) and this phase's spec ("Do not allow switching
-  // an existing record between Income and Expense").
   const transactionType: LedgerTransactionType = entry?.transactionType ?? fixedType;
 
   const [localCategories, setLocalCategories] = useState(categories);
@@ -58,6 +61,7 @@ export function ManualEntryModal({
   const [categoryId, setCategoryId] = useState(entry?.categoryId ?? "");
   const [amount, setAmount] = useState(entry?.amount ?? "");
   const [paymentMethod, setPaymentMethod] = useState(entry?.paymentMethod ?? "");
+  const [counterpartyName, setCounterpartyName] = useState(entry?.counterpartyName ?? "");
   const [referenceNumber, setReferenceNumber] = useState(entry?.referenceNumber ?? "");
   const [description, setDescription] = useState(entry?.description ?? "");
 
@@ -68,16 +72,25 @@ export function ManualEntryModal({
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Production Readiness Audit V1, finding H6: only meaningful for the
-  // create path (see createManualEntryAction's own doc comment on why
-  // update doesn't need one) — still generated unconditionally per
-  // modal-open since that's cheap and keeps this hook unconditional.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  const availableCategories = useMemo(
-    () => localCategories.filter((c) => c.transactionType === transactionType && (c.isActive || c.id === entry?.categoryId)),
+  // Tree-ordered category options. The entry's current category stays
+  // selectable on edit even if it is now a branch / inactive.
+  const categoryItems = useMemo(
+    () => categorySelectItems(localCategories, transactionType, entry?.categoryId ?? null),
     [localCategories, transactionType, entry]
   );
+  const selectedCategoryPath = useMemo(
+    () => localCategories.find((c) => c.id === categoryId)?.path ?? "",
+    [localCategories, categoryId]
+  );
+
+  const paymentMethodOptions = useMemo(() => manualLedgerPaymentMethodOptions(t.ledger), [t]);
+  // A pre-12E entry may carry a value outside the four standard tokens. Keep
+  // it selectable/visible so the row stays editable; it is only replaced if
+  // the user actively picks a standard option.
+  const legacyPaymentMethod =
+    entry && entry.paymentMethod && !isManualLedgerPaymentMethod(entry.paymentMethod) ? entry.paymentMethod : null;
 
   const title = isEditing
     ? transactionType === "INCOME"
@@ -95,13 +108,29 @@ export function ManualEntryModal({
       return;
     }
     setIsCreatingCategory(true);
-    const result = await createLedgerCategoryAction({ name, transactionType });
+    // Quick-create always adds a ROOT leaf of the current type — deeper tree
+    // editing lives in Manage Categories.
+    const result = await createLedgerCategoryAction({ name, transactionType, parentId: null });
     setIsCreatingCategory(false);
     if (!result.success) {
       setQuickCreateError(t.ledger[(ERROR_KEY[result.error] ?? "genericError") as keyof typeof t.ledger]);
       return;
     }
-    setLocalCategories((prev) => [...prev, { id: result.id, name: result.name, transactionType: result.transactionType, isActive: true }]);
+    setLocalCategories((prev) => [
+      ...prev,
+      {
+        id: result.id,
+        name: result.name,
+        transactionType: result.transactionType,
+        isActive: true,
+        parentId: result.parentId,
+        sortOrder: result.sortOrder,
+        depth: 1,
+        path: result.name,
+        isLeaf: true,
+        effectivelyInactive: false,
+      },
+    ]);
     setCategoryId(result.id);
     setNewCategoryName("");
     setShowQuickCreate(false);
@@ -111,18 +140,9 @@ export function ManualEntryModal({
     e.preventDefault();
     setError(null);
 
-    if (!transactionDate) {
-      setError(t.ledger.dateRequired);
-      return;
-    }
-    if (!categoryId) {
-      setError(t.ledger.categoryRequired);
-      return;
-    }
-    if (!amount || Number(amount) <= 0) {
-      setError(t.ledger.amountInvalid);
-      return;
-    }
+    if (!transactionDate) return setError(t.ledger.dateRequired);
+    if (!categoryId) return setError(t.ledger.categoryRequired);
+    if (!amount || Number(amount) <= 0) return setError(t.ledger.amountInvalid);
 
     setIsSubmitting(true);
     const payload = {
@@ -131,6 +151,7 @@ export function ManualEntryModal({
       categoryId,
       amount,
       paymentMethod: paymentMethod || null,
+      counterpartyName: counterpartyName.trim() || null,
       referenceNumber: referenceNumber || null,
       description: description || null,
     };
@@ -156,10 +177,14 @@ export function ManualEntryModal({
         <FormField label={t.ledger.category}>
           <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required>
             <option value="">{t.ledger.selectCategory}</option>
-            {availableCategories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+            {categoryItems.map((c) => (
+              <option key={c.id} value={c.id} disabled={!c.selectable}>
+                {c.label}
+              </option>
             ))}
           </Select>
+          {selectedCategoryPath && <p className="mt-1 text-xs text-secondary">{selectedCategoryPath}</p>}
+          <p className="mt-1 text-xs text-zinc-400">{t.ledger.categoryLeafRequired}</p>
           <button
             type="button"
             onClick={() => setShowQuickCreate((v) => !v)}
@@ -185,12 +210,38 @@ export function ManualEntryModal({
         )}
         {quickCreateError && <p className="text-sm text-red-600">{quickCreateError}</p>}
 
+        <FormField label={t.ledger.counterparty}>
+          <Input
+            value={counterpartyName}
+            onChange={(e) => setCounterpartyName(e.target.value)}
+            list={COUNTERPARTY_DATALIST_ID}
+            placeholder={t.ledger.counterpartyPlaceholder}
+          />
+          <datalist id={COUNTERPARTY_DATALIST_ID}>
+            {counterpartyOptions.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+        </FormField>
+
         <FormField label={t.ledger.amount}>
           <MoneyInput value={amount} onChange={setAmount} required />
         </FormField>
 
-        <FormField label={t.ledger.paymentMethodOptional}>
-          <Input value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} />
+        <FormField label={t.ledger.paymentMethod}>
+          <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+            <option value="">{t.ledger.selectPaymentMethod}</option>
+            {paymentMethodOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+            {legacyPaymentMethod && (
+              <option value={legacyPaymentMethod}>
+                {t.ledger.legacyPaymentMethod}: {legacyPaymentMethod}
+              </option>
+            )}
+          </Select>
         </FormField>
 
         <FormField label={t.ledger.referenceNumberOptional}>

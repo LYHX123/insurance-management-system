@@ -1,127 +1,271 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Check, X as XIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Check, X as XIcon, ChevronUp, ChevronDown, Pencil, Trash2 } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { createLedgerCategoryAction, updateLedgerCategoryAction } from "@/app/(app)/ledger/actions";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  createLedgerCategoryAction,
+  updateLedgerCategoryAction,
+  reorderLedgerCategoryAction,
+  deleteLedgerCategoryAction,
+} from "@/app/(app)/ledger/actions";
+import { MAX_LEDGER_CATEGORY_DEPTH } from "@/lib/ledger/categoryTree";
 import type { LedgerCategoryOption, LedgerTransactionType } from "@/components/ledger/types";
 
 const ERROR_KEY: Record<string, string> = {
   CATEGORY_NAME_REQUIRED: "categoryNameRequired",
   CATEGORY_DUPLICATE: "categoryDuplicate",
   CATEGORY_NOT_FOUND: "categoryNotFound",
+  PARENT_NOT_FOUND: "categoryNotFound",
+  MAX_DEPTH_REACHED: "categoryMaxDepth",
+  CATEGORY_SELF_PARENT: "categoryCycle",
+  CATEGORY_CYCLE: "categoryCycle",
+  CATEGORY_TYPE_MISMATCH: "categoryTypeMismatch",
+  CATEGORY_HAS_CHILDREN: "categoryHasChildren",
+  CATEGORY_IN_USE: "categoryInUse",
   TYPE_REQUIRED: "genericError",
   FORBIDDEN: "forbidden",
 };
 
-function CategoryColumn({
-  title,
+function CategoryTree({
   type,
+  title,
   categories,
-  onCreate,
-  onRename,
-  onToggleActive,
-  busyId,
+  onChanged,
 }: {
-  title: string;
   type: LedgerTransactionType;
+  title: string;
   categories: LedgerCategoryOption[];
-  onCreate: (type: LedgerTransactionType, name: string) => Promise<string | null>;
-  onRename: (id: string, name: string) => Promise<string | null>;
-  onToggleActive: (category: LedgerCategoryOption) => Promise<string | null>;
-  busyId: string | null;
+  onChanged: () => void;
 }) {
   const { t } = useLocale();
-  const [newName, setNewName] = useState("");
-  const [createError, setCreateError] = useState<string | null>(null);
+  const translateError = (code: string) => t.ledger[(ERROR_KEY[code] ?? "genericError") as keyof typeof t.ledger] as string;
+
+  const nodes = useMemo(() => categories.filter((c) => c.transactionType === type), [categories, type]);
+  const roots = useMemo(() => nodes.filter((c) => c.parentId === null), [nodes]);
+
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [addChildFor, setAddChildFor] = useState<string | "ROOT" | null>(null);
+  const [addChildName, setAddChildName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [renameError, setRenameError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<LedgerCategoryOption | null>(null);
 
-  const handleCreate = async () => {
-    setCreateError(null);
-    const err = await onCreate(type, newName);
-    if (err) {
-      setCreateError(err);
-      return;
+  const siblingsOf = (parentId: string | null) => nodes.filter((c) => c.parentId === parentId);
+
+  const run = async (fn: () => Promise<{ success: boolean; error?: string }>, id: string) => {
+    setError(null);
+    setBusyId(id);
+    const result = await fn();
+    setBusyId(null);
+    if (!result.success) {
+      setError(translateError(result.error ?? "genericError"));
+      return false;
     }
-    setNewName("");
+    onChanged();
+    return true;
   };
 
-  const startRename = (c: LedgerCategoryOption) => {
-    setRenamingId(c.id);
-    setRenameValue(c.name);
-    setRenameError(null);
-  };
-
-  const confirmRename = async (id: string) => {
-    const err = await onRename(id, renameValue);
-    if (err) {
-      setRenameError(err);
+  const handleAddChild = async (parentId: string | null) => {
+    const name = addChildName.trim();
+    if (!name) {
+      setError(t.ledger.categoryNameRequired);
       return;
     }
-    setRenamingId(null);
+    const ok = await run(
+      () =>
+        createLedgerCategoryAction(
+          parentId === null ? { name, transactionType: type, parentId: null } : { name, parentId }
+        ),
+      parentId ?? "ROOT"
+    );
+    if (ok) {
+      setAddChildName("");
+      setAddChildFor(null);
+    }
+  };
+
+  const handleRename = async (id: string) => {
+    const name = renameValue.trim();
+    if (!name) {
+      setError(t.ledger.categoryNameRequired);
+      return;
+    }
+    const ok = await run(() => updateLedgerCategoryAction(id, { name }), id);
+    if (ok) setRenamingId(null);
+  };
+
+  const renderNode = (node: LedgerCategoryOption) => {
+    const children = siblingsOf(node.id);
+    const siblings = siblingsOf(node.parentId);
+    const pos = siblings.findIndex((s) => s.id === node.id);
+    const canAddChild = node.depth < MAX_LEDGER_CATEGORY_DEPTH;
+
+    return (
+      <div key={node.id}>
+        <div
+          className="flex min-h-[48px] flex-wrap items-center justify-between gap-2 border-b border-zinc-100 py-2"
+          style={{ paddingLeft: `${(node.depth - 1) * 20}px` }}
+        >
+          {renamingId === node.id ? (
+            <>
+              <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className="min-w-0 flex-1" />
+              <div className="flex flex-shrink-0 items-center gap-1">
+                <IconButton title={t.common.save} onClick={() => handleRename(node.id)} disabled={busyId === node.id}>
+                  <Check size={16} />
+                </IconButton>
+                <IconButton title={t.common.cancel} onClick={() => setRenamingId(null)}>
+                  <XIcon size={16} />
+                </IconButton>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="min-w-0 truncate text-sm text-zinc-800" title={node.path}>
+                  {node.name}
+                </span>
+                {!node.isActive && <Badge tone="neutral">{t.ledger.inactive}</Badge>}
+              </div>
+              <div className="flex flex-shrink-0 flex-wrap items-center gap-1">
+                <IconButton
+                  title={t.common.moveUp}
+                  onClick={() => run(() => reorderLedgerCategoryAction(node.id, "UP"), node.id)}
+                  disabled={busyId !== null || pos <= 0}
+                >
+                  <ChevronUp size={16} />
+                </IconButton>
+                <IconButton
+                  title={t.common.moveDown}
+                  onClick={() => run(() => reorderLedgerCategoryAction(node.id, "DOWN"), node.id)}
+                  disabled={busyId !== null || pos === siblings.length - 1}
+                >
+                  <ChevronDown size={16} />
+                </IconButton>
+                {canAddChild && (
+                  <IconButton
+                    title={t.ledger.addChild}
+                    onClick={() => {
+                      setAddChildFor(node.id);
+                      setAddChildName("");
+                      setError(null);
+                    }}
+                    disabled={busyId !== null}
+                  >
+                    <Plus size={16} />
+                  </IconButton>
+                )}
+                <IconButton
+                  title={t.common.edit}
+                  onClick={() => {
+                    setRenamingId(node.id);
+                    setRenameValue(node.name);
+                    setError(null);
+                  }}
+                  disabled={busyId !== null}
+                >
+                  <Pencil size={16} />
+                </IconButton>
+                <Button
+                  type="button"
+                  variant={node.isActive ? "destructive" : "secondary"}
+                  onClick={() => run(() => updateLedgerCategoryAction(node.id, { isActive: !node.isActive }), node.id)}
+                  disabled={busyId !== null}
+                >
+                  {node.isActive ? t.ledger.deactivate : t.ledger.reactivate}
+                </Button>
+                <IconButton title={t.common.delete} onClick={() => setDeleting(node)} disabled={busyId !== null}>
+                  <Trash2 size={16} />
+                </IconButton>
+              </div>
+            </>
+          )}
+        </div>
+
+        {addChildFor === node.id && (
+          <div className="flex items-center gap-2 py-2" style={{ paddingLeft: `${node.depth * 20}px` }}>
+            <Input
+              value={addChildName}
+              onChange={(e) => setAddChildName(e.target.value)}
+              placeholder={t.ledger.categoryName}
+              className="flex-1"
+            />
+            <Button type="button" onClick={() => handleAddChild(node.id)} disabled={busyId !== null}>
+              {t.common.add}
+            </Button>
+            <IconButton title={t.common.cancel} onClick={() => setAddChildFor(null)}>
+              <XIcon size={16} />
+            </IconButton>
+          </div>
+        )}
+
+        {children.map(renderNode)}
+      </div>
+    );
   };
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold text-zinc-700">{title}</h3>
-      <div className="flex items-center gap-2">
-        <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t.ledger.categoryName} className="flex-1" />
-        <Button type="button" variant="secondary" onClick={handleCreate} disabled={busyId !== null}>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-zinc-700">{title}</h3>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            setAddChildFor("ROOT");
+            setAddChildName("");
+            setError(null);
+          }}
+          disabled={busyId !== null}
+        >
           <Plus size={16} />
+          {t.ledger.addRootCategory}
         </Button>
       </div>
-      {createError && <p className="text-xs text-red-600">{createError}</p>}
 
-      <ul className="flex flex-col divide-y divide-zinc-100 rounded-control border border-zinc-200">
-        {categories.length === 0 && <li className="p-3 text-sm text-secondary">{t.ledger.noCategoriesYet}</li>}
-        {categories.map((c) => (
-          <li key={c.id} className="flex min-h-[52px] flex-wrap items-center justify-between gap-2 p-3">
-            {renamingId === c.id ? (
-              <>
-                <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className="min-w-0 flex-1" />
-                <div className="flex flex-shrink-0 items-center gap-1">
-                  <IconButton title={t.common.save} onClick={() => confirmRename(c.id)} disabled={busyId === c.id}>
-                    <Check size={16} />
-                  </IconButton>
-                  <IconButton title={t.common.cancel} onClick={() => setRenamingId(null)}>
-                    <XIcon size={16} />
-                  </IconButton>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="min-w-0 truncate text-sm text-zinc-800" title={c.name}>
-                    {c.name}
-                  </span>
-                  <Badge tone={c.isActive ? "success" : "neutral"}>{c.isActive ? t.ledger.active : t.ledger.inactive}</Badge>
-                </div>
-                <div className="flex flex-shrink-0 items-center gap-2">
-                  <Button type="button" variant="secondary" onClick={() => startRename(c)} disabled={busyId !== null}>
-                    {t.ledger.rename}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={c.isActive ? "destructive" : "secondary"}
-                    onClick={() => onToggleActive(c)}
-                    disabled={busyId !== null}
-                  >
-                    {c.isActive ? t.ledger.deactivate : t.ledger.reactivate}
-                  </Button>
-                </div>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-      {renameError && <p className="text-xs text-red-600">{renameError}</p>}
+      {addChildFor === "ROOT" && (
+        <div className="flex items-center gap-2">
+          <Input
+            value={addChildName}
+            onChange={(e) => setAddChildName(e.target.value)}
+            placeholder={t.ledger.categoryName}
+            className="flex-1"
+          />
+          <Button type="button" onClick={() => handleAddChild(null)} disabled={busyId !== null}>
+            {t.common.add}
+          </Button>
+          <IconButton title={t.common.cancel} onClick={() => setAddChildFor(null)}>
+            <XIcon size={16} />
+          </IconButton>
+        </div>
+      )}
+
+      <div className="rounded-control border border-zinc-200 px-3">
+        {roots.length === 0 && <p className="py-3 text-sm text-secondary">{t.ledger.noCategoriesYet}</p>}
+        {roots.map(renderNode)}
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {deleting && (
+        <ConfirmDialog
+          title={t.ledger.deleteCategoryConfirmTitle}
+          message={t.ledger.deleteCategoryConfirmMessage}
+          isSubmitting={busyId === deleting.id}
+          onConfirm={async () => {
+            const ok = await run(() => deleteLedgerCategoryAction(deleting.id), deleting.id);
+            if (ok) setDeleting(null);
+          }}
+          onClose={() => setDeleting(null)}
+        />
+      )}
     </div>
   );
 }
@@ -136,75 +280,24 @@ export function ManageCategoriesModal({
   onChanged: () => void;
 }) {
   const { t } = useLocale();
-  const [localCategories, setLocalCategories] = useState(categories);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [touched, setTouched] = useState(false);
 
-  const translateError = (code: string) => t.ledger[(ERROR_KEY[code] ?? "genericError") as keyof typeof t.ledger];
-
-  const handleCreate = async (type: LedgerTransactionType, name: string): Promise<string | null> => {
-    const trimmed = name.trim();
-    if (!trimmed) return t.ledger.categoryNameRequired;
-    setBusyId("__creating__");
-    const result = await createLedgerCategoryAction({ name: trimmed, transactionType: type });
-    setBusyId(null);
-    if (!result.success) return translateError(result.error);
-    setLocalCategories((prev) => [...prev, { id: result.id, name: result.name, transactionType: result.transactionType, isActive: true }]);
-    setHasChanges(true);
-    return null;
-  };
-
-  const handleRename = async (id: string, name: string): Promise<string | null> => {
-    const trimmed = name.trim();
-    if (!trimmed) return t.ledger.categoryNameRequired;
-    setBusyId(id);
-    const result = await updateLedgerCategoryAction(id, { name: trimmed });
-    setBusyId(null);
-    if (!result.success) return translateError(result.error);
-    setLocalCategories((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
-    setHasChanges(true);
-    return null;
-  };
-
-  const handleToggleActive = async (category: LedgerCategoryOption): Promise<string | null> => {
-    setBusyId(category.id);
-    const result = await updateLedgerCategoryAction(category.id, { isActive: !category.isActive });
-    setBusyId(null);
-    if (!result.success) return translateError(result.error);
-    setLocalCategories((prev) => prev.map((c) => (c.id === category.id ? { ...c, isActive: !c.isActive } : c)));
-    setHasChanges(true);
-    return null;
+  const handleChanged = () => {
+    setTouched(true);
+    onChanged();
   };
 
   const handleClose = () => {
-    if (hasChanges) onChanged();
+    if (touched) onChanged();
     onClose();
   };
 
-  const incomeCategories = localCategories.filter((c) => c.transactionType === "INCOME");
-  const expenseCategories = localCategories.filter((c) => c.transactionType === "EXPENSE");
-
   return (
     <Modal title={t.ledger.manageCategories} onClose={handleClose} width="lg">
+      <p className="mb-4 text-xs text-secondary">{t.ledger.categoryHierarchyHint}</p>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <CategoryColumn
-          title={t.ledger.incomeCategory}
-          type="INCOME"
-          categories={incomeCategories}
-          onCreate={handleCreate}
-          onRename={handleRename}
-          onToggleActive={handleToggleActive}
-          busyId={busyId}
-        />
-        <CategoryColumn
-          title={t.ledger.expenseCategory}
-          type="EXPENSE"
-          categories={expenseCategories}
-          onCreate={handleCreate}
-          onRename={handleRename}
-          onToggleActive={handleToggleActive}
-          busyId={busyId}
-        />
+        <CategoryTree type="INCOME" title={t.ledger.incomeCategory} categories={categories} onChanged={handleChanged} />
+        <CategoryTree type="EXPENSE" title={t.ledger.expenseCategory} categories={categories} onChanged={handleChanged} />
       </div>
       <div className="mt-6 flex justify-end">
         <Button type="button" variant="secondary" onClick={handleClose}>

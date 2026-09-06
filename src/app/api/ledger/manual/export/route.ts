@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
+import { buildCategoryOptions, descendantFilterIds } from "@/lib/ledger/categoryView";
+import { isManualLedgerPaymentMethod, MANUAL_LEDGER_PAYMENT_METHOD_EXPORT_LABEL } from "@/lib/ledger/paymentMethods";
+
+// The user-readable Payment Method for the spreadsheet: a standard token maps
+// to its business label; a legacy / non-standard value is written verbatim.
+function paymentMethodForExport(value: string | null): string {
+  if (!value) return "";
+  return isManualLedgerPaymentMethod(value) ? MANUAL_LEDGER_PAYMENT_METHOD_EXPORT_LABEL[value] : value;
+}
 
 const MONEY_FORMAT = '_ * #,##0.00_ ;_ * -#,##0.00_ ;_ * "-"??_ ;_ @_ ';
 
@@ -28,15 +37,25 @@ export async function GET(req: NextRequest) {
   const search = params.get("search")?.trim().toLowerCase() ?? "";
   const type = params.get("type");
   const categoryId = params.get("categoryId");
+  const counterparty = params.get("counterparty")?.trim().toLowerCase() ?? "";
   const createdById = params.get("createdById");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
+
+  // Category filter is hierarchical: a selected node matches itself + every
+  // descendant (same rule as the on-screen list).
+  const categoryRows = await prisma.ledgerCategory.findMany({
+    select: { id: true, name: true, transactionType: true, isActive: true, parentId: true, sortOrder: true },
+  });
+  const categoryOptions = buildCategoryOptions(categoryRows);
+  const categoryPathById = new Map(categoryOptions.map((c) => [c.id, c.path]));
+  const categoryIdFilter = categoryId ? descendantFilterIds(categoryOptions, categoryId) : null;
 
   const entries = await prisma.ledgerManualEntry.findMany({
     where: {
       cancelledAt: null,
       ...(type === "INCOME" || type === "EXPENSE" ? { transactionType: type } : {}),
-      ...(categoryId ? { categoryId } : {}),
+      ...(categoryIdFilter ? { categoryId: { in: categoryIdFilter } } : {}),
       ...(createdById ? { createdById } : {}),
     },
     include: { category: { select: { name: true } } },
@@ -53,10 +72,13 @@ export async function GET(req: NextRequest) {
     const dateOnly = e.transactionDate.toISOString().slice(0, 10);
     if (dateFrom && dateOnly < dateFrom) return false;
     if (dateTo && dateOnly > dateTo) return false;
+    if (counterparty && !(e.counterpartyName?.toLowerCase().includes(counterparty) ?? false)) return false;
     if (!search) return true;
     const createdByName = (userNameById.get(e.createdById) ?? "").toLowerCase();
+    const path = (categoryPathById.get(e.categoryId) ?? e.category.name).toLowerCase();
     return (
-      e.category.name.toLowerCase().includes(search) ||
+      path.includes(search) ||
+      (e.counterpartyName?.toLowerCase().includes(search) ?? false) ||
       (e.description?.toLowerCase().includes(search) ?? false) ||
       (e.referenceNumber?.toLowerCase().includes(search) ?? false) ||
       (e.paymentMethod?.toLowerCase().includes(search) ?? false) ||
@@ -71,6 +93,8 @@ export async function GET(req: NextRequest) {
     { header: "Date", key: "date", width: 14 },
     { header: "Type", key: "type", width: 12 },
     { header: "Category", key: "category", width: 22 },
+    { header: "Category Path", key: "categoryPath", width: 34 },
+    { header: "Counterparty", key: "counterparty", width: 24 },
     { header: "Description", key: "description", width: 32 },
     { header: "Payment Method", key: "paymentMethod", width: 18 },
     { header: "Reference Number", key: "referenceNumber", width: 20 },
@@ -92,8 +116,10 @@ export async function GET(req: NextRequest) {
       date: e.transactionDate.toISOString().slice(0, 10),
       type: e.transactionType === "INCOME" ? "Income" : "Expense",
       category: e.category.name,
+      categoryPath: categoryPathById.get(e.categoryId) ?? e.category.name,
+      counterparty: e.counterpartyName ?? "",
       description: e.description ?? "",
-      paymentMethod: e.paymentMethod ?? "",
+      paymentMethod: paymentMethodForExport(e.paymentMethod),
       referenceNumber: e.referenceNumber ?? "",
       amount,
       createdBy: userNameById.get(e.createdById) ?? "—",

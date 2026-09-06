@@ -5,6 +5,9 @@ const en = {
     delete: "Delete",
     edit: "Edit",
     create: "Create",
+    add: "Add",
+    moveUp: "Move Up",
+    moveDown: "Move Down",
     confirm: "Confirm",
     actions: "Actions",
     search: "Search",
@@ -1822,6 +1825,38 @@ const en = {
     confirmDeactivateCategoryMessage: "Deactivated categories stay on historical records but can no longer be selected for new entries.",
     confirmReactivateCategoryTitle: "Reactivate Category",
     confirmReactivateCategoryMessage: "This category will become available for new entries again.",
+
+    // --- Phase 12E — hierarchical categories ---
+    categoryHierarchy: "Category Hierarchy",
+    categoryHierarchyHint: "Categories can be nested up to 3 levels. Only categories with no sub-categories can be used on entries.",
+    parentCategory: "Parent Category",
+    rootCategory: "Root Category",
+    addRootCategory: "Add Root Category",
+    addChild: "Add Child",
+    categoryLevel: "Category Level",
+    categoryPath: "Category Path",
+    sortOrder: "Sort Order",
+    categoryLeafRequired: "Choose a category that has no sub-categories.",
+    categoryMaxDepth: "Maximum category depth (3 levels) reached.",
+    categoryHasChildren: "Cannot delete a category that has sub-categories.",
+    categoryInUse: "Cannot delete a category that is used by ledger entries.",
+    categoryCycle: "A category cannot be moved beneath itself.",
+    deleteCategoryConfirmTitle: "Delete Category",
+    deleteCategoryConfirmMessage: "This permanently deletes the category. It is only allowed when the category has no sub-categories and no ledger entries.",
+
+    // --- Phase 12E — counterparty ---
+    counterparty: "Counterparty",
+    counterpartyPlaceholder: "e.g. IAA Insurance, KPLC, landlord",
+    noCounterparty: "No Counterparty",
+
+    // --- Phase 12E — payment method ---
+    selectPaymentMethod: "Select Payment Method",
+    legacyPaymentMethod: "Legacy Payment Method",
+    paymentMethodInvalid: "Please choose one of the standard payment methods.",
+    paymentMethodMpesa: "MPESA",
+    paymentMethodBankTransfer: "Bank Transfer",
+    paymentMethodCheque: "Cheque",
+    paymentMethodCash: "Cash",
 
     genericError: "Something went wrong. Please try again.",
     forbidden: "You do not have permission to perform this action.",

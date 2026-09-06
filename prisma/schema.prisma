@@ -2822,6 +2822,20 @@ model LedgerCategory {
   transactionType LedgerTransactionType
   isActive        Boolean               @default(true)
 
+  // Phase 12E — self-referencing hierarchy, max depth 3 (Level 1 root →
+  // Level 2 → Level 3). Roots have parentId = NULL. Depth and cycle
+  // validation live in the server actions / src/lib/ledger/categoryTree.ts,
+  // never a DB CHECK constraint. onDelete: Restrict — a parent can never be
+  // deleted out from under its children (deleteLedgerCategoryAction blocks
+  // it earlier with a friendly error, and never cascades).
+  parentId String?
+  parent   LedgerCategory?  @relation("LedgerCategoryTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  children LedgerCategory[] @relation("LedgerCategoryTree")
+
+  // Sibling display order for the Manage Categories tree (Up/Down controls).
+  // Ties break by name in the read queries.
+  sortOrder Int @default(0)
+
   // Plain unenforced id string, this project's existing convention for a
   // single user reference (see e.g. PolicyActivity.performedById).
   createdById String
@@ -2830,11 +2844,21 @@ model LedgerCategory {
 
   manualEntries LedgerManualEntry[]
 
-  // The same name may exist once under INCOME and once under EXPENSE (see
-  // this phase's spec) — never a bare unique on name alone.
-  @@unique([name, transactionType])
+  // Phase 12E — sibling-scoped uniqueness: within one parent a name may
+  // appear once per transactionType, but the same name may repeat under
+  // different parents. PostgreSQL treats NULL as distinct, so this @@unique
+  // alone would NOT stop two ROOT categories sharing a name — root
+  // uniqueness is additionally enforced by a partial unique index
+  // (LedgerCategory_root_name_transactionType_key, WHERE "parentId" IS
+  // NULL) added in the phase12e_ledger_category_tree_counterparty migration,
+  // and by an explicit pre-insert check in createLedgerCategoryAction. The
+  // partial index is not expressible in the Prisma schema; the migration
+  // file is its source of truth and later migrate-diff output must retain
+  // it (see the migration's header comment).
+  @@unique([parentId, name, transactionType])
   @@index([transactionType])
   @@index([isActive])
+  @@index([parentId])
 }
 
 // User-entered daily non-business income/expense — never a source for or
@@ -2849,7 +2873,16 @@ model LedgerManualEntry {
   category        LedgerCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   amount          Decimal @db.Decimal(16, 2)
+  // Phase 12E — for NEW/edited rows the app only ever writes one of the four
+  // canonical values (MPESA / BANK_TRANSFER / CHEQUE / CASH — see
+  // src/lib/ledger/paymentMethods.ts). Kept as a plain nullable String, not
+  // an enum: pre-12E rows may hold any free-text value and must keep
+  // rendering/editing unchanged (no backfill, no mass-update).
   paymentMethod   String?
+  // Phase 12E — free-text trading party (insurer, landlord, KPLC, bank,
+  // valuer, supplier, customer…). Trimmed on save; empty string persists as
+  // NULL. No master table.
+  counterpartyName String?
   referenceNumber String?
   description     String?
 
