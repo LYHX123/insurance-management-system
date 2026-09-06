@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { Eye, Plus } from "lucide-react";
+import { ExportExcelButton } from "@/components/ui/export-excel-button";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,10 @@ import { formatMoney } from "@/components/ui/money-input";
 import {
   PolicyExpiryDateFilter,
   PolicyOutstandingBalanceCheckboxes,
-  matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildListExportHref } from "@/lib/navigation/exportHref";
+import { matchesBondListFilters } from "@/lib/policy/policyListView";
 import { RenewalBadge } from "@/components/policy/renewal-badge";
 import type { BondListRow, BondType, PolicyBusinessStatus } from "@/components/policy/types";
 
@@ -95,48 +97,34 @@ export function BondListTable({ records, canEdit }: { records: BondListRow[]; ca
     [records]
   );
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return records.filter((r) => {
-      const matchesTerm =
-        !term ||
-        r.recordNumber.toLowerCase().includes(term) ||
-        r.customerName.toLowerCase().includes(term) ||
-        (r.insurerName?.toLowerCase().includes(term) ?? false) ||
-        (r.policyNumber?.toLowerCase().includes(term) ?? false) ||
-        (r.customBondType?.toLowerCase().includes(term) ?? false);
-      const matchesCustomer = customerFilter === "ALL" || r.customerName === customerFilter;
-      const matchesType = typeFilter === "ALL" || r.bondType === typeFilter;
-      const matchesInsurer = insurerFilter === "ALL" || r.insurerName === insurerFilter;
-      const matchesStatus = statusFilter === "ALL" || r.businessStatus === statusFilter;
-      const matchesExpiryDate = !expiryDate || r.expiryDate.slice(0, 10) === expiryDate;
-      const matchesOutstanding = matchesOutstandingBalanceFilters({
-        clientBalance: Number(r.clientBalance),
-        insurerBalance: Number(r.insurerBalance),
-        outstandingClientOnly,
-        outstandingInsurerOnly,
-      });
-      return (
-        matchesTerm &&
-        matchesCustomer &&
-        matchesType &&
-        matchesInsurer &&
-        matchesStatus &&
-        matchesExpiryDate &&
-        matchesOutstanding
-      );
-    });
-  }, [
-    records,
+  const filtered = useMemo(
+    () =>
+      records.filter((r) =>
+        matchesBondListFilters(r, {
+          search,
+          customer: customerFilter,
+          type: typeFilter,
+          insurer: insurerFilter,
+          status: statusFilter,
+          expiryDate,
+          outstandingClientOnly,
+          outstandingInsurerOnly,
+        })
+      ),
+    [records, search, customerFilter, typeFilter, insurerFilter, statusFilter, expiryDate, outstandingClientOnly, outstandingInsurerOnly]
+  );
+
+  const exportHref = buildListExportHref("/api/policy/export/bond", {
     search,
-    customerFilter,
-    typeFilter,
-    insurerFilter,
-    statusFilter,
+    customer: customerFilter,
+    type: typeFilter,
+    insurer: insurerFilter,
+    status: statusFilter,
     expiryDate,
     outstandingClientOnly,
     outstandingInsurerOnly,
-  ]);
+    customerId,
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -148,14 +136,17 @@ export function BondListTable({ records, canEdit }: { records: BondListRow[]; ca
       <PageHeader
         title={t.policy.tabBond}
         actions={
-          canEdit ? (
-            <Link href="/policy/bond/new">
-              <Button>
-                <Plus size={16} />
-                {t.policy.addBondRecord}
-              </Button>
-            </Link>
-          ) : undefined
+          <>
+            <ExportExcelButton href={exportHref} />
+            {canEdit && (
+              <Link href="/policy/bond/new">
+                <Button>
+                  <Plus size={16} />
+                  {t.policy.addBondRecord}
+                </Button>
+              </Link>
+            )}
+          </>
         }
       />
 

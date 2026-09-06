@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEdit, hasPermission } from "@/lib/permissions";
-import { computeBusinessStatus } from "@/lib/policy/status";
 import { buildMotorListFilterWhere } from "@/lib/policy/motorListFilters";
+import { toMotorListRow } from "@/lib/policy/policyListView";
 import { MotorListTable } from "@/components/policy/motor/motor-list-table";
 import type { MotorListRow } from "@/components/policy/types";
 
@@ -50,31 +50,12 @@ export default async function MotorPolicyListPage({
   const receivedByRecord = new Map(receiptSums.map((r) => [r.policyRecordId, r._sum.amount?.toNumber() ?? 0]));
   const paidByRecord = new Map(paymentSums.map((p) => [p.policyRecordId, p._sum.amount?.toNumber() ?? 0]));
 
-  const rows: MotorListRow[] = records.map((r) => {
-    const totalReceived = receivedByRecord.get(r.id) ?? 0;
-    const totalPaid = paidByRecord.get(r.id) ?? 0;
-    const clientPremium = r.customerPremium.toNumber();
-    const insurerCost = r.insurerCost.toNumber();
-    return {
-      id: r.id,
-      recordNumber: r.recordNumber,
-      processingDate: r.processingDate.toISOString(),
-      customerId: r.customerId,
-      customerName: r.customer.companyName,
-      insuranceType: r.motorDetail?.insuranceType ?? "—",
-      registrationNumber: r.motorDetail?.registrationNumber ?? "—",
-      insurerName: r.insurerName,
-      expiryDate: r.expiryDate.toISOString(),
-      clientPremium: clientPremium.toFixed(2),
-      clientBalance: (clientPremium - totalReceived).toFixed(2),
-      insurerBalance: (insurerCost - totalPaid).toFixed(2),
-      businessStatus: computeBusinessStatus(r.effectiveDate, r.expiryDate, r.businessStatus),
-      renewalIndex: r.renewalIndex,
-      renewalDecision: r.renewalDecision,
-      contactPerson: r.customerContactPerson,
-      valuationStatus: r.motorDetail?.valuationStatus ?? null,
-    };
-  });
+  const rows: MotorListRow[] = records.map((r) =>
+    toMotorListRow(r, {
+      totalReceived: receivedByRecord.get(r.id) ?? 0,
+      totalPaid: paidByRecord.get(r.id) ?? 0,
+    })
+  );
 
   return <MotorListTable records={rows} canEdit={canEdit(session.user, "policy.motor")} />;
 }

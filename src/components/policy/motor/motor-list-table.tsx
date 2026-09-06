@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Eye, Plus, Upload, Download } from "lucide-react";
+import { Eye, Plus, Upload } from "lucide-react";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,11 @@ import { formatMoney } from "@/components/ui/money-input";
 import {
   PolicyExpiryDateFilter,
   PolicyOutstandingBalanceCheckboxes,
-  matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
+import { ExportExcelButton } from "@/components/ui/export-excel-button";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildListExportHref } from "@/lib/navigation/exportHref";
+import { matchesMotorListFilters } from "@/lib/policy/policyListView";
 import { MOTOR_VALUATION_STATUSES, isComprehensiveMotorCover } from "@/lib/policy/motorValuation";
 import { MotorValuationBadge } from "@/components/policy/motor/motor-valuation-badge";
 import { RenewalBadge } from "@/components/policy/renewal-badge";
@@ -112,47 +114,40 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
     [records]
   );
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return records.filter((r) => {
-      const matchesTerm =
-        !term ||
-        r.recordNumber.toLowerCase().includes(term) ||
-        r.customerName.toLowerCase().includes(term) ||
-        r.registrationNumber.toLowerCase().includes(term) ||
-        (r.insurerName?.toLowerCase().includes(term) ?? false);
-      const matchesCustomer = customerFilter === "ALL" || r.customerName === customerFilter;
-      const matchesType = typeFilter === "ALL" || r.insuranceType === typeFilter;
-      const matchesInsurer = insurerFilter === "ALL" || r.insurerName === insurerFilter;
-      const matchesStatus = statusFilter === "ALL" || r.businessStatus === statusFilter;
-      // Handler + Expiry range are filtered server-side (see
-      // policy/motor/page.tsx) — `records` is already narrowed by the time
-      // it reaches here, so there is nothing to re-check client-side.
-      const matchesOutstanding = matchesOutstandingBalanceFilters({
-        clientBalance: Number(r.clientBalance),
-        insurerBalance: Number(r.insurerBalance),
-        outstandingClientOnly,
-        outstandingInsurerOnly,
-      });
-      return (
-        matchesTerm &&
-        matchesCustomer &&
-        matchesType &&
-        matchesInsurer &&
-        matchesStatus &&
-        matchesOutstanding
-      );
-    });
-  }, [
-    records,
+  // Contact Person + Expiry range + Valuation Status are filtered server-side
+  // (see policy/motor/page.tsx + buildMotorListFilterWhere); `records` is
+  // already narrowed. Every remaining filter is the shared predicate reused
+  // by the Excel export route so both stay in lockstep.
+  const filtered = useMemo(
+    () =>
+      records.filter((r) =>
+        matchesMotorListFilters(r, {
+          search,
+          customer: customerFilter,
+          type: typeFilter,
+          insurer: insurerFilter,
+          status: statusFilter,
+          outstandingClientOnly,
+          outstandingInsurerOnly,
+        })
+      ),
+    [records, search, customerFilter, typeFilter, insurerFilter, statusFilter, outstandingClientOnly, outstandingInsurerOnly]
+  );
+
+  const exportHref = buildListExportHref("/api/policy/export/motor", {
     search,
-    customerFilter,
-    typeFilter,
-    insurerFilter,
-    statusFilter,
+    customer: customerFilter,
+    type: typeFilter,
+    insurer: insurerFilter,
+    status: statusFilter,
+    contact: contactFilter,
+    expiryFrom,
+    expiryTo,
+    valuationStatus: valuationFilter,
     outstandingClientOnly,
     outstandingInsurerOnly,
-  ]);
+    customerId,
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -173,9 +168,7 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
                 </Button>
               </Link>
             )}
-            <IconButton title={t.comingSoon.title} disabled>
-              <Download size={16} />
-            </IconButton>
+            <ExportExcelButton href={exportHref} />
             {canEdit && (
               <Link href="/policy/motor/new">
                 <Button>

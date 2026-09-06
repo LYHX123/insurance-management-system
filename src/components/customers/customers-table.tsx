@@ -16,9 +16,12 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditCustomerModal } from "@/components/customers/edit-customer-modal";
 import { ProjectFormModal } from "@/components/customers/project-form-modal";
 import { UploadDocumentModal } from "@/components/customers/upload-document-modal";
+import { ExportExcelButton } from "@/components/ui/export-excel-button";
 import { deleteCustomerAction, toggleCustomerStatusAction } from "@/app/(app)/customer/actions";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildListExportHref } from "@/lib/navigation/exportHref";
 import { buildReturnTo } from "@/lib/navigation/returnTo";
+import { matchesCustomerListFilters } from "@/lib/customer/customerListFilter";
 import type { CustomerListRow } from "@/components/customers/types";
 
 const CUSTOMER_LIST_DEFAULTS = { search: "", status: "ALL" };
@@ -45,18 +48,12 @@ export function CustomersTable({ customers, canEdit }: { customers: CustomerList
   // offer a safe way back that restores them (Phase 8 Part 3).
   const returnTo = buildReturnTo(pathname, searchParams.toString());
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return customers.filter((c) => {
-      const matchesTerm =
-        !term ||
-        c.companyName.toLowerCase().includes(term) ||
-        c.pinNumber.toLowerCase().includes(term) ||
-        c.customerNumber.toLowerCase().includes(term);
-      const matchesStatus = statusFilter === "ALL" || c.status === statusFilter;
-      return matchesTerm && matchesStatus;
-    });
-  }, [customers, search, statusFilter]);
+  const filtered = useMemo(
+    () => customers.filter((c) => matchesCustomerListFilters(c, { search, status: statusFilter })),
+    [customers, search, statusFilter]
+  );
+
+  const exportHref = buildListExportHref("/api/customer/export", { search, status: statusFilter });
 
   const handleSuccess = (successMessage: string) => {
     setModal(null);
@@ -92,14 +89,17 @@ export function CustomersTable({ customers, canEdit }: { customers: CustomerList
       <PageHeader
         title={t.customers.title}
         actions={
-          canEdit ? (
-            <Link href={`/customer/new?returnTo=${encodeURIComponent(returnTo)}`}>
-              <Button>
-                <Plus size={16} />
-                {t.customers.addCustomer}
-              </Button>
-            </Link>
-          ) : undefined
+          <>
+            <ExportExcelButton href={exportHref} />
+            {canEdit && (
+              <Link href={`/customer/new?returnTo=${encodeURIComponent(returnTo)}`}>
+                <Button>
+                  <Plus size={16} />
+                  {t.customers.addCustomer}
+                </Button>
+              </Link>
+            )}
+          </>
         }
       />
 

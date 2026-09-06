@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { Eye, Plus } from "lucide-react";
+import { ExportExcelButton } from "@/components/ui/export-excel-button";
 import { useLocale } from "@/i18n/locale-provider";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,10 @@ import { formatMoney } from "@/components/ui/money-input";
 import {
   PolicyExpiryDateFilter,
   PolicyOutstandingBalanceCheckboxes,
-  matchesOutstandingBalanceFilters,
 } from "@/components/policy/policy-list-outstanding-filters";
 import { useUrlListState } from "@/lib/navigation/useUrlListState";
+import { buildListExportHref } from "@/lib/navigation/exportHref";
+import { matchesWorkPermitListFilters } from "@/lib/policy/policyListView";
 import { RenewalBadge } from "@/components/policy/renewal-badge";
 import type { WorkPermitListRow, WorkPermitType, PolicyBusinessStatus } from "@/components/policy/types";
 
@@ -96,26 +98,32 @@ export function WorkPermitListTable({ records, canEdit }: { records: WorkPermitL
     [records]
   );
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return records.filter((r) => {
-      const matchesTerm =
-        !term ||
-        r.recordNumber.toLowerCase().includes(term) ||
-        r.customerName.toLowerCase().includes(term);
-      const matchesCustomer = customerFilter === "ALL" || r.customerName === customerFilter;
-      const matchesType = typeFilter === "ALL" || r.permitType === typeFilter;
-      const matchesStatus = statusFilter === "ALL" || r.businessStatus === statusFilter;
-      const matchesExpiryDate = !expiryDate || r.expiryDate.slice(0, 10) === expiryDate;
-      const matchesOutstanding = matchesOutstandingBalanceFilters({
-        clientBalance: Number(r.clientBalance),
-        insurerBalance: Number(r.insurerBalance),
-        outstandingClientOnly,
-        outstandingInsurerOnly,
-      });
-      return matchesTerm && matchesCustomer && matchesType && matchesStatus && matchesExpiryDate && matchesOutstanding;
-    });
-  }, [records, search, customerFilter, typeFilter, statusFilter, expiryDate, outstandingClientOnly, outstandingInsurerOnly]);
+  const filtered = useMemo(
+    () =>
+      records.filter((r) =>
+        matchesWorkPermitListFilters(r, {
+          search,
+          customer: customerFilter,
+          type: typeFilter,
+          status: statusFilter,
+          expiryDate,
+          outstandingClientOnly,
+          outstandingInsurerOnly,
+        })
+      ),
+    [records, search, customerFilter, typeFilter, statusFilter, expiryDate, outstandingClientOnly, outstandingInsurerOnly]
+  );
+
+  const exportHref = buildListExportHref("/api/policy/export/work-permit", {
+    search,
+    customer: customerFilter,
+    type: typeFilter,
+    status: statusFilter,
+    expiryDate,
+    outstandingClientOnly,
+    outstandingInsurerOnly,
+    customerId,
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -127,14 +135,17 @@ export function WorkPermitListTable({ records, canEdit }: { records: WorkPermitL
       <PageHeader
         title={t.policy.tabWorkPermit}
         actions={
-          canEdit ? (
-            <Link href="/policy/work-permit/new">
-              <Button>
-                <Plus size={16} />
-                {t.policy.addWorkPermitRecord}
-              </Button>
-            </Link>
-          ) : undefined
+          <>
+            <ExportExcelButton href={exportHref} />
+            {canEdit && (
+              <Link href="/policy/work-permit/new">
+                <Button>
+                  <Plus size={16} />
+                  {t.policy.addWorkPermitRecord}
+                </Button>
+              </Link>
+            )}
+          </>
         }
       />
 

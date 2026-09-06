@@ -106,23 +106,8 @@ export function PolicyOutstandingBalanceCheckboxes({
   );
 }
 
-// Client Balance = customerPremium - total customer receipts.
-// Insurer Balance = insurerCost - total insurer payments.
-// PolicyRecord.insurerCost is a non-nullable Decimal (defaults to 0 on
-// create), so there is no null-insurerCost case to special-case here — a
-// record with no insurer cost simply yields balance <= 0 (never "owed") once
-// payments are netted against it, same as the existing detail-tab balance
-// math (see MotorDetail/NonMotorDetail insurerBalance).
-export function matchesOutstandingBalanceFilters({
-  clientBalance,
-  insurerBalance,
-  outstandingClientOnly,
-  outstandingInsurerOnly,
-}: {
-  clientBalance: number;
-  insurerBalance: number;
-  outstandingClientOnly: boolean;
-  outstandingInsurerOnly: boolean;
-}): boolean {
-  return (!outstandingClientOnly || clientBalance > 0) && (!outstandingInsurerOnly || insurerBalance > 0);
-}
+// The pure predicate moved to a framework-free module so the Phase 13A
+// server export routes can call it too (a "use client" file becomes a client
+// reference that throws when invoked on the server). Re-exported here so the
+// established import path keeps working.
+export { matchesOutstandingBalanceFilters } from "@/lib/policy/outstandingBalanceFilter";

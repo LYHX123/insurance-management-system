@@ -230,12 +230,14 @@ describe("Policy Renewal Chain — real DB", () => {
     if (!dbReachable) return;
     auth.mockResolvedValue({ user: EDIT });
     const src = await seedMotor("B1");
-    const before = await prisma.policyRecord.count();
+    // Scoped to this test's own customer so it stays correct when other
+    // real-DB integration tests create/delete rows in parallel.
+    const before = await prisma.policyRecord.count({ where: { customerId } });
 
     const dnr = await setPolicyRenewalDecisionAction(src.id, "NOT_RENEWED", "customer declined");
     expect(dnr.success).toBe(true);
     // D5 — no new PolicyRecord.
-    expect(await prisma.policyRecord.count()).toBe(before);
+    expect(await prisma.policyRecord.count({ where: { customerId } })).toBe(before);
     const after = await prisma.policyRecord.findUniqueOrThrow({ where: { id: src.id } });
     expect(after.renewalDecision).toBe("NOT_RENEWED");
     expect(after.businessStatus).toBe("ACTIVE"); // §12 — status untouched
