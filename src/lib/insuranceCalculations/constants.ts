@@ -59,9 +59,19 @@ export function resolveElOption(value: unknown): ElOption {
 }
 
 // Marine Cover is the only section kind that does not use the fixed
-// KES 40 STAMP_DUTY above — its stamp duty is a percentage of the total
-// sum insured instead (0.05 meaning 0.05%, same convention as PHCF_RATE).
+// KES 40 STAMP_DUTY above — its stamp duty is 0.05% of the total Basic Sum
+// Insured (Sum Insured x 1.10), 0.05 meaning 0.05% (same convention as
+// PHCF_RATE). Never the fixed KES 40, the rated premium, PHCF/ITL, or any
+// downstream total — see calculateMarine() in ./marine.ts (the single
+// authoritative version).
 export const MARINE_STAMP_DUTY_RATE = 0.05;
+
+// Phase 13B — Marine Insurance has a minimum chargeable Base Premium. When
+// the rated premium (Sum Insured x Rate, summed over the shipment rows)
+// falls below this, the quote is charged this floor instead, and PHCF / ITL
+// / Total are all derived from the floored value. Marine only — every other
+// product keeps its own base-premium rule unchanged.
+export const MARINE_MINIMUM_BASE_PREMIUM = 5000;
 
 // Marine's Incidental Loading is a fixed 10% of each shipment's Original Sum
 // Insured (10 meaning 10%, same convention as every rate above), added on

@@ -12,7 +12,12 @@
 
 import type { Prisma } from "@/generated/prisma/client";
 import type { TemplateSectionKind } from "./types";
-import { deriveMarineBasicSumInsured, deriveMarineIncidentalLoading } from "@/lib/insuranceCalculations/marine";
+import {
+  deriveMarineBasicSumInsured,
+  deriveMarineIncidentalLoading,
+  isMarineMinimumPremiumApplied,
+} from "@/lib/insuranceCalculations/marine";
+import { MARINE_MINIMUM_BASE_PREMIUM } from "@/lib/insuranceCalculations/constants";
 import { roundMoney, toDecimal } from "@/lib/money";
 
 export type QuotationForExport = Prisma.QuotationGetPayload<{
@@ -350,17 +355,29 @@ function mapMarine(section: Section): MappedSection | null {
       marine_stamp_duty: num(d.marineStampDutyAmount),
       marine_total_premium: num(d.totalPremium),
     },
-    dynamicRows: d.shipmentRows.map((row) => ({
-      marine_reference_no: row.referenceNo ?? "",
-      marine_sum_insured: num(row.sumInsured),
-      marine_incidental_loading: num(deriveMarineIncidentalLoading(row.sumInsured)),
-      marine_basic_sum_insured: num(deriveMarineBasicSumInsured(row.sumInsured)),
-      // Percentage points (0.25 means 0.25%), same convention as every
-      // other rate in this module. fillDynamicRows.ts formats "rate"
-      // columns via formatRatePercent (Phase 10 issue 3) — no /100 here.
-      marine_rate: num(row.rate),
-      marine_line_premium: num(row.linePremium),
-    })),
+    dynamicRows: d.shipmentRows.map((row) => {
+      // Phase 13B — per-shipment minimum-premium note, derived (never stored)
+      // from the persisted rated line premium. Below KES 5,000 -> the note
+      // shows; at or above -> BOTH cells blank ("" -> written as an empty
+      // cell by fillDynamicRows, so no literal placeholder is left and no
+      // note shows for an unaffected shipment). Historical rows work
+      // identically — it is a pure function of the stored linePremium.
+      const minApplied = isMarineMinimumPremiumApplied(row.linePremium);
+      return {
+        marine_reference_no: row.referenceNo ?? "",
+        marine_sum_insured: num(row.sumInsured),
+        marine_incidental_loading: num(deriveMarineIncidentalLoading(row.sumInsured)),
+        marine_basic_sum_insured: num(deriveMarineBasicSumInsured(row.sumInsured)),
+        // Percentage points (0.25 means 0.25%), same convention as every
+        // other rate in this module. fillDynamicRows.ts formats "rate"
+        // columns via formatRatePercent (Phase 10 issue 3) — no /100 here.
+        marine_rate: num(row.rate),
+        // The RAW rated premium — always shown, never replaced by 5,000.
+        marine_line_premium: num(row.linePremium),
+        marine_minimum_premium_label: minApplied ? "Minimum Premium Applied:" : "",
+        marine_minimum_premium_amount: minApplied ? MARINE_MINIMUM_BASE_PREMIUM : "",
+      };
+    }),
   };
 }
 

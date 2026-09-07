@@ -885,6 +885,8 @@ export function QuotationForm({
       totalStampDuty += gitAnnualPreview.stampDutyAmount;
     }
     if (marineEnabled) {
+      // Phase 13B — Gross Premium = sum of per-shipment floored premiums, so
+      // the grand total matches what the backend persists.
       subtotalPremium += marinePreview.grossPremium;
       totalPHCF += marinePreview.phcfAmount;
       totalITL += marinePreview.itlAmount;

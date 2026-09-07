@@ -13,6 +13,7 @@ import {
   ITL_RATE,
   MARINE_INCIDENTAL_LOADING_RATE,
   MARINE_STAMP_DUTY_RATE,
+  MARINE_MINIMUM_BASE_PREMIUM,
   PHCF_RATE,
   STAMP_DUTY,
 } from "./constants";
@@ -449,9 +450,12 @@ export function previewCustomsBond(input: { rows: { bondValue: string; rate: str
 }
 
 // Incidental Loading is a fixed 10% of each shipment's raw Sum Insured;
-// Rate is then applied to Basic Sum Insured (Sum Insured x 1.1), not to the
-// raw Sum Insured — mirrors calculateMarine() in insuranceCalculations/marine.ts
-// (the backend authoritative version), see that file for the full rationale.
+// Rate is applied to Basic Sum Insured (Sum Insured x 1.10). Phase 13B:
+//   - the KES 5,000 minimum premium is applied PER SHIPMENT, then Gross
+//     Premium = sum of the per-shipment floored premiums;
+//   - Stamp Duty = 0.05% of the total Basic Sum Insured.
+// Mirrors calculateMarine() in insuranceCalculations/marine.ts (the backend
+// authoritative version); keep the two in lockstep.
 export function previewMarine(input: { shipmentRows: { sumInsured: string; rate: string }[] }) {
   const rows = input.shipmentRows.map((row) => {
     const sumInsured = num(row.sumInsured);
@@ -459,15 +463,23 @@ export function previewMarine(input: { shipmentRows: { sumInsured: string; rate:
     const incidentalLoading = round2((sumInsured * MARINE_INCIDENTAL_LOADING_RATE) / 100);
     const basicSumInsured = round2(sumInsured + incidentalLoading);
     const linePremium = round2((basicSumInsured * rate) / 100);
-    return { sumInsured, rate, incidentalLoading, basicSumInsured, linePremium };
+    const minimumPremiumApplied = linePremium < MARINE_MINIMUM_BASE_PREMIUM;
+    const chargeableLinePremium = minimumPremiumApplied ? MARINE_MINIMUM_BASE_PREMIUM : linePremium;
+    return { sumInsured, rate, incidentalLoading, basicSumInsured, linePremium, chargeableLinePremium, minimumPremiumApplied };
   });
   const totalSumInsured = round2(rows.reduce((acc, row) => acc + row.sumInsured, 0));
   const totalBasicSumInsured = round2(rows.reduce((acc, row) => acc + row.basicSumInsured, 0));
-  const grossPremium = round2(rows.reduce((acc, row) => acc + row.linePremium, 0));
+  const totalRatedPremium = round2(rows.reduce((acc, row) => acc + row.linePremium, 0));
+
+  // Rule 1 — Gross Premium is the sum of per-shipment chargeable premiums,
+  // never max(sum(raw premiums), 5,000).
+  const grossPremium = round2(rows.reduce((acc, row) => acc + row.chargeableLinePremium, 0));
+  const anyMinimumPremiumApplied = rows.some((row) => row.minimumPremiumApplied);
+
+  // PHCF / ITL derive from Gross Premium.
   const phcfAmount = round2((grossPremium * PHCF_RATE) / 100);
   const itlAmount = round2((grossPremium * ITL_RATE) / 100);
-  // Stamp Duty's base is Total Basic Sum Insured (post-Incidental-Loading),
-  // not the raw totalSumInsured — mirrors calculateMarine()'s corrected rule.
+  // Rule 2 — Stamp Duty is 0.05% of the total Basic Sum Insured.
   const marineStampDutyAmount = round2((totalBasicSumInsured * MARINE_STAMP_DUTY_RATE) / 100);
   const totalPremium = round2(grossPremium + phcfAmount + itlAmount + marineStampDutyAmount);
 
@@ -475,7 +487,9 @@ export function previewMarine(input: { shipmentRows: { sumInsured: string; rate:
     rows,
     totalSumInsured,
     totalBasicSumInsured,
+    totalRatedPremium,
     grossPremium,
+    anyMinimumPremiumApplied,
     phcfAmount,
     itlAmount,
     marineStampDutyRate: MARINE_STAMP_DUTY_RATE,

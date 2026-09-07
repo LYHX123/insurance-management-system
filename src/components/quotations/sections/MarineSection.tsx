@@ -92,6 +92,11 @@ export function MarineSection({
                     <Input type="text" value={formatMoney(rowTotals?.linePremium ?? 0)} disabled />
                   </FormField>
                 </div>
+                {rowTotals?.minimumPremiumApplied && (
+                  <p className="mt-1 text-xs text-secondary italic">
+                    {t.quotations.marineMinimumPremiumApplied}
+                  </p>
+                )}
                 <div className="mt-2 flex justify-end">
                   <button
                     type="button"
@@ -115,6 +120,9 @@ export function MarineSection({
         </div>
         <div>
           <div className="text-secondary">{t.quotations.premium}</div>
+          {/* Phase 13B — Gross Premium = sum of each shipment's chargeable
+              premium (rated premium floored at KES 5,000 per shipment).
+              PHCF / ITL / Total below all derive from it. */}
           <div className="font-medium text-zinc-800">{formatMoney(totals.grossPremium)}</div>
         </div>
         <div>

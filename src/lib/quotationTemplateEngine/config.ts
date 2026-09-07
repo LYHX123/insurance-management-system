@@ -403,20 +403,24 @@ const MARINE_COVER: SectionConfig = {
     sv("marine_stamp_duty", "D244", "money", true),
     sv("marine_total_premium", "D245", "money", true),
   ],
-  // Each shipment is now a 3-physical-row block starting at templateRow:
+  // Phase 13B — each shipment is now a 4-physical-row block starting at
+  // templateRow:
   //   offset 0 (A/B): reference no. / sum insured
   //   offset 1 (A fixed label / B): "Incidental Loading (10%)" / amount
-  //   offset 2 (A fixed label / B/C/D): "Basic Sum Insured" / amount / rate / line premium
-  // Capacity is 6 shipments (rows 220-237, 18 rows / 3 = 6); row 238 is a
-  // fixed 1-row spacer before the "Total" row (239) — same single-blank-row
-  // spacing convention used elsewhere in this section (215/217/219) — and
-  // shifts together with the block via resolveFinalRow since 238 > lastBlankRow.
+  //   offset 2 (A fixed label / B/C/D): "Basic Sum Insured" / amount / rate / line premium (the RAW rated premium — never replaced by 5,000)
+  //   offset 3 (B/D): {{marine_minimum_premium_label}} / {{marine_minimum_premium_amount}} — the per-shipment "Minimum Premium Applied: KES 5,000" note (BOTH blank when the shipment's rated premium is >= 5,000)
+  // The managed region is rows 220-237 (18 rows); with rowsPerEntry 4 that is
+  // a fractional capacity of 4.5, which removeUnusedSections handles fine —
+  // it only ever uses capacity as (actual - capacity) * rowsPerEntry and
+  // capacity * rowsPerEntry, both integers (= actual*4 - 18 and 18). Row 238
+  // is the fixed 1-row spacer before the "Total" row (239) and shifts with
+  // the block via resolveFinalRow since 238 > lastBlankRow.
   dynamicRow: {
     templateRow: 220,
-    firstBlankRow: 223,
+    firstBlankRow: 224,
     lastBlankRow: 237,
     totalRow: 239,
-    rowsPerEntry: 3,
+    rowsPerEntry: 4,
     columns: [
       { column: "A", name: "marine_reference_no", kind: "text", rowOffset: 0 },
       { column: "B", name: "marine_sum_insured", kind: "money", rowOffset: 0 },
@@ -428,6 +432,12 @@ const MARINE_COVER: SectionConfig = {
       // ("0.25%"), so the template cell's own number format is irrelevant.
       { column: "C", name: "marine_rate", kind: "rate", rowOffset: 2 },
       { column: "D", name: "marine_line_premium", kind: "money", rowOffset: 2 },
+      // Phase 13B — per-shipment minimum-premium note (offset 3). Both are
+      // written blank (mapMarine emits "") when this shipment's rated
+      // premium is >= KES 5,000, so no literal placeholder is ever left and
+      // no note shows for an unaffected shipment.
+      { column: "B", name: "marine_minimum_premium_label", kind: "text", rowOffset: 3 },
+      { column: "D", name: "marine_minimum_premium_amount", kind: "money", rowOffset: 3 },
     ],
     blockLabels: [
       { column: "A", rowOffset: 1, text: "Incidental Loading (10%)" },

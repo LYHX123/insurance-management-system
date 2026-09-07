@@ -1594,6 +1594,9 @@ function buildMarineSection(
 
   const calc = calculateMarine({ shipmentRows: rows });
   const totals: SectionTotals = {
+    // Phase 13B — Gross Premium = sum of each shipment's chargeable premium
+    // (its rated premium floored at KES 5,000 per shipment). PHCF / ITL /
+    // Total all derive from this.
     basePremium: calc.grossPremium,
     phcfAmount: calc.phcfAmount,
     itlAmount: calc.itlAmount,
@@ -1621,6 +1624,9 @@ function buildMarineSection(
           destination: marine.destination?.trim() || null,
           marineStampDutyRate: calc.marineStampDutyRate,
           totalSumInsured: calc.totalSumInsured,
+          // Phase 13B — persist Gross Premium (sum of per-shipment floored
+          // premiums), which the detail page / Excel show as the Marine
+          // "Gross premium" and which PHCF/ITL/Total derive from.
           grossPremium: calc.grossPremium,
           phcfAmount: calc.phcfAmount,
           itlAmount: calc.itlAmount,

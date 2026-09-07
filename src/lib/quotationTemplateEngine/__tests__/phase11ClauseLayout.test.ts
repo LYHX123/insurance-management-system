@@ -186,10 +186,12 @@ describe("Phase 11 — Marine: financial rows keep template height for a very lo
       expect(fin.find((f) => f.label === "itl")!.height).toBe(TEMPLATE_ROW_HEIGHT);
       expect(fin.find((f) => f.label === "stamp duty")!.height).toBe(STAMP_ROW_HEIGHT);
 
-      // the 23-item Marine clause is all present in the merged master cell
+      // The CURRENT (Phase 13B — user-reduced) Marine clause is all present
+      // in the merged master cell, first line through the EXCESS footer.
       const [m] = clauseMerges(ws);
       expect(m.text).toContain("Institute classification cluase");
-      expect(m.text).toContain("Sanction Clause");
+      expect(m.text).toContain("Excluding Hull War, Piracy, Terrorism and Related Perils");
+      expect(m.text).toContain("Minimum premium: ksh. 5,000");
       expect(m.text).toContain("EXCESS");
       expect(m.text).toContain("10% of consignment value minimum Kshs 50,000/-");
 

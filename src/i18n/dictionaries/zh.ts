@@ -889,6 +889,7 @@ const zh: Dictionary = {
     basicSumInsured: "基本保险金额",
     totalBasicSumInsured: "基本保险金额合计",
     marineStampDutyRate: "印花税率",
+    marineMinimumPremiumApplied: "已适用最低保费：KES 5,000",
     gitCargoDescriptionRequired: "请填写货物描述。",
     marineAtLeastOneRow: "请至少添加一行有效的货运数据。",
     // Phase 2B 模块化报价引擎

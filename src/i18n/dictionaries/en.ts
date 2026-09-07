@@ -917,6 +917,7 @@ const en = {
     basicSumInsured: "Basic Sum Insured",
     totalBasicSumInsured: "Total Basic Sum Insured",
     marineStampDutyRate: "Stamp Duty Rate",
+    marineMinimumPremiumApplied: "Minimum Premium Applied: KES 5,000",
     gitCargoDescriptionRequired: "Please enter a cargo description.",
     marineAtLeastOneRow: "Please add at least one shipment row with data.",
     // Phase 2B modular quotation engine
