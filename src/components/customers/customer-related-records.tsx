@@ -161,7 +161,7 @@ export function CustomerRelatedRecords({
       <td className="text-zinc-500">{nonMotorTypeLabel[p.typeOfCover] ?? p.typeOfCover}</td>
       <td className="text-zinc-500">{p.insurerOrAgent || "—"}</td>
       <td className="text-zinc-500">
-        {dateFormatter.format(new Date(p.effectiveDate))} – {dateFormatter.format(new Date(p.expiryDate))}
+        {dateFormatter.format(new Date(p.effectiveDate))} – {p.expiryDate ? dateFormatter.format(new Date(p.expiryDate)) : "—"}
       </td>
       <td className="text-zinc-500">{formatMoney(p.clientPremium)}</td>
       <td>

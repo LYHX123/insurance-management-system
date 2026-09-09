@@ -1757,7 +1757,15 @@ model PolicyRecord {
   // data quality, not something the schema should force-fix.
   insurerName    String?
   effectiveDate  DateTime
-  expiryDate     DateTime
+  // Nullable ONLY for Phase 13C Security Bonds (BondType.SECURITY_BOND),
+  // which may be open-ended. For every other Bond type and every other
+  // Policy category this is still mandatory — enforced app-side in each
+  // create/update/renew action, never relaxed at the DB level. A null here
+  // genuinely means "no expiry / open-ended"; it is never a placeholder
+  // date. Null rows are excluded from expiry reminders (see
+  // src/lib/reminders/policy.ts) and can never be computed EXPIRED (see
+  // computeBusinessStatus in src/lib/policy/status.ts).
+  expiryDate     DateTime?
   businessStatus PolicyBusinessStatus @default(DRAFT)
   currency       String               @default("KES")
 
@@ -2084,11 +2092,21 @@ model NonMotorPolicyDetail {
 // in naming; see createNonMotorRecordAction's own section-kind-to-cover-type
 // mapping precedent for why a translation layer, not a shared enum, is used
 // at the quotation-linkage boundary).
+//
+// Phase 13C — SECURITY_BOND added. It is the ONLY Bond type (and the only
+// Policy category of any kind) allowed to have no expiry date: a security
+// bond can be open-ended. PolicyRecord.expiryDate is nullable purely for
+// this case; every other Bond type and every other Policy category still
+// requires it, enforced app-side (see bondTypeAllowsNoExpiry in
+// src/lib/policy/bondTypes.ts and each create/update/renew action). There
+// is no quotation-side SECURITY_BOND section — it is only ever chosen
+// manually on the Policy Create/Edit form, never generated from a quotation.
 enum BondType {
   TENDER_BOND
   PERFORMANCE_BOND
   ADVANCE_PAYMENT_GUARANTEE
   CUSTOM_BOND
+  SECURITY_BOND
 }
 
 // Phase 3B: Bond's *PolicyDetail model, following the same

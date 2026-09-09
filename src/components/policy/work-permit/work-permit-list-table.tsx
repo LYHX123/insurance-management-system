@@ -250,7 +250,7 @@ export function WorkPermitListTable({ records, canEdit }: { records: WorkPermitL
                 <td className="text-zinc-500">
                   {r.permitType === "OTHER" && r.otherPermitType ? r.otherPermitType : permitTypeLabel[r.permitType]}
                 </td>
-                <td className="text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
+                <td className="text-zinc-500">{r.expiryDate ? dateFormatter.format(new Date(r.expiryDate)) : "—"}</td>
                 <td className="text-zinc-500">{formatMoney(r.clientPremium)}</td>
                 <td className={Number(r.clientBalance) > 0 ? "font-medium text-amber-700" : "text-zinc-500"}>
                   {formatMoney(r.clientBalance)}

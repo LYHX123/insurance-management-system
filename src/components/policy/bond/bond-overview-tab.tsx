@@ -17,7 +17,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
 import { updateBondOverviewAction, deleteBondPolicyAction } from "@/app/(app)/policy/bond/actions";
-import { BOND_TYPES } from "@/lib/policy/bondTypes";
+import { BOND_TYPES, bondTypeAllowsNoExpiry } from "@/lib/policy/bondTypes";
 import type { BondDetail, CustomerOption, BondType } from "@/components/policy/types";
 
 const ERROR_KEY: Record<string, string> = {
@@ -28,6 +28,8 @@ const ERROR_KEY: Record<string, string> = {
   INVALID_BOND_TYPE: "bondTypeRequired",
   CUSTOM_BOND_TYPE_REQUIRED: "typeOfCustomBondRequired",
   BOND_AMOUNT_INVALID: "bondAmountInvalid",
+  DATES_REQUIRED: "datesRequired",
+  EXPIRY_DATE_REQUIRED: "expiryDateRequired",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
   RECORD_NOT_FOUND: "recordNotFound",
   FORBIDDEN: "genericError",
@@ -66,7 +68,8 @@ export function BondOverviewTab({
   const [insurerName, setInsurerName] = useState(detail.insurerName ?? "");
   const [policyNumber, setPolicyNumber] = useState(detail.policyNumber ?? "");
   const [effectiveDate, setEffectiveDate] = useState(detail.effectiveDate.slice(0, 10));
-  const [expiryDate, setExpiryDate] = useState(detail.expiryDate.slice(0, 10));
+  // Phase 13C — "" when the Security Bond has no expiry date on record.
+  const [expiryDate, setExpiryDate] = useState(detail.expiryDate ? detail.expiryDate.slice(0, 10) : "");
   const [customerPremium, setCustomerPremium] = useState(detail.customerPremium);
   const [insurerCost, setInsurerCost] = useState(detail.insurerCost);
   const [remarks, setRemarks] = useState(detail.remarks ?? "");
@@ -81,7 +84,12 @@ export function BondOverviewTab({
     PERFORMANCE_BOND: t.policy.bondPerformanceBond,
     ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
     CUSTOM_BOND: t.policy.bondCustomBond,
+    SECURITY_BOND: t.policy.bondSecurityBond,
   };
+
+  // Phase 13C — expiry optional only while Security Bond is the selected type;
+  // switching to another Bond type re-arms the required rule (spec §6).
+  const isSecurityBond = bondTypeAllowsNoExpiry(bondType);
 
   const field = (label: string, value: React.ReactNode) => (
     <div>
@@ -101,6 +109,20 @@ export function BondOverviewTab({
       setError(t.policy.typeOfCustomBondRequired);
       return;
     }
+    if (!cancelled) {
+      if (!effectiveDate) {
+        setError(t.policy.datesRequired);
+        return;
+      }
+      if (!isSecurityBond && !expiryDate) {
+        setError(t.policy.expiryDateRequired);
+        return;
+      }
+      if (expiryDate && new Date(expiryDate) < new Date(effectiveDate)) {
+        setError(t.policy.expiryBeforeEffective);
+        return;
+      }
+    }
     setIsSubmitting(true);
     const result = await updateBondOverviewAction(detail.id, {
       processingDate,
@@ -112,7 +134,7 @@ export function BondOverviewTab({
       insurerName: insurerName || null,
       policyNumber: policyNumber || null,
       effectiveDate,
-      expiryDate,
+      expiryDate: expiryDate || null,
       customerPremium,
       insurerCost,
       remarks: remarks || null,
@@ -172,7 +194,7 @@ export function BondOverviewTab({
             {field(t.policy.insurer, detail.insurerName || "—")}
             {field(t.policy.policyNumber, detail.policyNumber || "—")}
             {field(t.policy.effectiveDate, dateFormatter.format(new Date(detail.effectiveDate)))}
-            {field(t.policy.expiryDate, dateFormatter.format(new Date(detail.expiryDate)))}
+            {field(t.policy.expiryDate, detail.expiryDate ? dateFormatter.format(new Date(detail.expiryDate)) : "—")}
             {field(t.policy.clientPremium, formatMoney(detail.customerPremium))}
             {field(t.policy.insurerCost, formatMoney(detail.insurerCost))}
             {field(t.policy.source, detail.source === "MANUAL" ? t.policy.sourceManual : t.policy.sourceHistoricalImport)}
@@ -339,8 +361,13 @@ export function BondOverviewTab({
         <FormField label={t.policy.effectiveDate}>
           <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
         </FormField>
-        <FormField label={t.policy.expiryDate}>
-          <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
+        <FormField label={isSecurityBond ? t.policy.expiryDateOptional : t.policy.expiryDate}>
+          <Input
+            type="date"
+            value={expiryDate}
+            onChange={(e) => setExpiryDate(e.target.value)}
+            required={!isSecurityBond}
+          />
         </FormField>
 
         {/* Client Premium / Insurer Cost */}

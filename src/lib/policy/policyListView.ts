@@ -34,7 +34,10 @@ type PolicyRecordCommon = {
   customerId: string;
   customer: { companyName: string };
   effectiveDate: Date;
-  expiryDate: Date;
+  // Phase 13C — null only for an open-ended Security Bond (Bond list only in
+  // practice; the other three categories always have a value). Mappers emit
+  // `null` unchanged and the tables render "—".
+  expiryDate: Date | null;
   businessStatus: MotorListRow["businessStatus"];
   customerPremium: DecimalLike;
   insurerCost: DecimalLike;
@@ -77,7 +80,7 @@ export function toMotorListRow(
     insuranceType: record.motorDetail?.insuranceType ?? "—",
     registrationNumber: record.motorDetail?.registrationNumber ?? "—",
     insurerName: record.insurerName,
-    expiryDate: record.expiryDate.toISOString(),
+    expiryDate: record.expiryDate ? record.expiryDate.toISOString() : null,
     clientPremium: b.clientPremium.toFixed(2),
     clientBalance: b.clientBalance,
     insurerBalance: b.insurerBalance,
@@ -103,7 +106,7 @@ export function toNonMotorListRow(
     customerName: record.customer.companyName,
     insuranceType: record.nonMotorDetail!.insuranceType,
     insurerName: record.insurerName,
-    expiryDate: record.expiryDate.toISOString(),
+    expiryDate: record.expiryDate ? record.expiryDate.toISOString() : null,
     clientPremium: b.clientPremium.toFixed(2),
     clientBalance: b.clientBalance,
     insurerBalance: b.insurerBalance,
@@ -131,7 +134,7 @@ export function toBondListRow(
     customBondType: record.bondDetail!.customBondType,
     policyNumber: record.bondDetail!.policyNumber,
     insurerName: record.insurerName,
-    expiryDate: record.expiryDate.toISOString(),
+    expiryDate: record.expiryDate ? record.expiryDate.toISOString() : null,
     clientPremium: b.clientPremium.toFixed(2),
     clientBalance: b.clientBalance,
     insurerBalance: b.insurerBalance,
@@ -157,7 +160,7 @@ export function toWorkPermitListRow(
     customerName: record.customer.companyName,
     permitType: record.workPermitDetail!.permitType,
     otherPermitType: record.workPermitDetail!.otherPermitType,
-    expiryDate: record.expiryDate.toISOString(),
+    expiryDate: record.expiryDate ? record.expiryDate.toISOString() : null,
     clientPremium: b.clientPremium.toFixed(2),
     clientBalance: b.clientBalance,
     insurerBalance: b.insurerBalance,
@@ -229,7 +232,7 @@ export function matchesNonMotorListFilters(row: NonMotorListRow, f: PolicyListCl
     row.customerName.toLowerCase().includes(term) ||
     (row.insurerName?.toLowerCase().includes(term) ?? false);
   const matchesType = !f.type || f.type === "ALL" || row.insuranceType === f.type;
-  const matchesExpiryDate = !f.expiryDate || row.expiryDate.slice(0, 10) === f.expiryDate;
+  const matchesExpiryDate = !f.expiryDate || row.expiryDate?.slice(0, 10) === f.expiryDate;
   return matchesTerm && matchesType && matchesExpiryDate && commonMatch(row, f);
 }
 
@@ -243,7 +246,7 @@ export function matchesBondListFilters(row: BondListRow, f: PolicyListClientFilt
     (row.policyNumber?.toLowerCase().includes(term) ?? false) ||
     (row.customBondType?.toLowerCase().includes(term) ?? false);
   const matchesType = !f.type || f.type === "ALL" || row.bondType === f.type;
-  const matchesExpiryDate = !f.expiryDate || row.expiryDate.slice(0, 10) === f.expiryDate;
+  const matchesExpiryDate = !f.expiryDate || row.expiryDate?.slice(0, 10) === f.expiryDate;
   return matchesTerm && matchesType && matchesExpiryDate && commonMatch(row, f);
 }
 
@@ -254,7 +257,7 @@ export function matchesWorkPermitListFilters(row: WorkPermitListRow, f: PolicyLi
     row.recordNumber.toLowerCase().includes(term) ||
     row.customerName.toLowerCase().includes(term);
   const matchesType = !f.type || f.type === "ALL" || row.permitType === f.type;
-  const matchesExpiryDate = !f.expiryDate || row.expiryDate.slice(0, 10) === f.expiryDate;
+  const matchesExpiryDate = !f.expiryDate || row.expiryDate?.slice(0, 10) === f.expiryDate;
   // Work Permit has no insurer filter dropdown — never apply one even if a
   // stray `insurer` value is passed.
   return matchesTerm && matchesType && matchesExpiryDate && commonMatch(row, { ...f, insurer: "ALL" });

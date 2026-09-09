@@ -161,7 +161,8 @@ export type EligiblePolicyRow = {
   policyClass: string;
   policyNumber: string;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — null for an open-ended Security Bond policy.
+  expiryDate: string | null;
   clientPremium: string;
   // Phase 5 "Combined Invoice grouping" — null for every manually-created/
   // historical-import Policy (never an error, see this field's source
@@ -214,7 +215,7 @@ export async function getEligiblePoliciesForCustomer(customerId: string): Promis
       policyClass: getPolicyClassLabel(classSource),
       policyNumber,
       effectiveDate: record.effectiveDate.toISOString(),
-      expiryDate: record.expiryDate.toISOString(),
+      expiryDate: record.expiryDate ? record.expiryDate.toISOString() : null,
       clientPremium: record.customerPremium.toString(),
       quotationCaseId: record.sourceQuotation?.quotationCaseId ?? null,
       quotationNumber: record.sourceQuotation?.quotationNumber ?? null,

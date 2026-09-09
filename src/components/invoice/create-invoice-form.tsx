@@ -325,7 +325,7 @@ export function CreateInvoiceForm({
                           <td className="text-zinc-500">{p.policyNumber}</td>
                           <td className="text-zinc-500">{p.quotationNumber ?? "—"}</td>
                           <td className="text-zinc-500">{dateFormatter.format(new Date(p.effectiveDate))}</td>
-                          <td className="text-zinc-500">{dateFormatter.format(new Date(p.expiryDate))}</td>
+                          <td className="text-zinc-500">{p.expiryDate ? dateFormatter.format(new Date(p.expiryDate)) : "—"}</td>
                           <td className="text-zinc-500">
                             {!p.isEligible && p.activeInvoiceRef ? (
                               <div className="text-right">

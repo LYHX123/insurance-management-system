@@ -654,7 +654,7 @@ export function QuotationDetailView({
                         <Badge tone={POLICY_BUSINESS_STATUS_TONE[p.businessStatus]}>{p.businessStatus}</Badge>
                       </td>
                       <td className="text-zinc-500">{dateFormatter.format(new Date(p.effectiveDate))}</td>
-                      <td className="text-zinc-500">{dateFormatter.format(new Date(p.expiryDate))}</td>
+                      <td className="text-zinc-500">{p.expiryDate ? dateFormatter.format(new Date(p.expiryDate)) : "—"}</td>
                       <td className="text-zinc-500">{p.customerName}</td>
                       <td>
                         {route ? (

@@ -279,7 +279,7 @@ export function NonMotorListTable({ records, canEdit }: { records: NonMotorListR
                 <td>{r.customerName}</td>
                 <td className="text-zinc-500">{coverTypeLabel[r.insuranceType]}</td>
                 <td className="text-zinc-500">{r.insurerName || "—"}</td>
-                <td className="text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
+                <td className="text-zinc-500">{r.expiryDate ? dateFormatter.format(new Date(r.expiryDate)) : "—"}</td>
                 <td className="text-zinc-500">{formatMoney(r.clientPremium)}</td>
                 <td className={Number(r.clientBalance) > 0 ? "font-medium text-amber-700" : "text-zinc-500"}>
                   {formatMoney(r.clientBalance)}

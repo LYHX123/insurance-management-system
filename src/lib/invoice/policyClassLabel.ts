@@ -36,6 +36,7 @@ const BOND_TYPE_LABELS: Record<BondType, string> = {
   PERFORMANCE_BOND: "Performance Bond",
   ADVANCE_PAYMENT_GUARANTEE: "Advance Payment Guarantee",
   CUSTOM_BOND: "Custom Bond",
+  SECURITY_BOND: "Security Bond",
 };
 
 const WORK_PERMIT_TYPE_LABELS: Record<WorkPermitType, string> = {

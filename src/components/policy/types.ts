@@ -9,7 +9,7 @@ export type MotorTaxClass = "PRIVATE" | "COMMERCIAL" | "PSV" | "SPECIAL_USE";
 // this client-safe types file stays import-free (same convention as
 // MotorTaxClass above).
 export type MotorValuationStatus = "NOT_ARRANGED" | "IN_PROGRESS" | "COMPLETED";
-export type BondType = "TENDER_BOND" | "PERFORMANCE_BOND" | "ADVANCE_PAYMENT_GUARANTEE" | "CUSTOM_BOND";
+export type BondType = "TENDER_BOND" | "PERFORMANCE_BOND" | "ADVANCE_PAYMENT_GUARANTEE" | "CUSTOM_BOND" | "SECURITY_BOND";
 export type WorkPermitType = "CLASS_D" | "CLASS_G" | "SPECIAL_PASS" | "DEPENDANT_PASS" | "OTHER";
 
 export type NonMotorCoverType =
@@ -76,7 +76,10 @@ export type MotorListRow = {
   insuranceType: string;
   registrationNumber: string;
   insurerName: string | null;
-  expiryDate: string;
+  // Phase 13C — the shared PolicyRecord.expiryDate is now nullable (only an
+  // open-ended Security Bond ever uses that); Motor rows always carry a real
+  // date, but the shared row mapper's type surfaces the null here too.
+  expiryDate: string | null;
   clientPremium: string;
   clientBalance: string;
   businessStatus: PolicyBusinessStatus;
@@ -199,7 +202,9 @@ export type NonMotorListRow = {
   customerName: string;
   insuranceType: NonMotorCoverType;
   insurerName: string | null;
-  expiryDate: string;
+  // Phase 13C — see MotorListRow.expiryDate. Non-Motor rows always carry a
+  // real date; the shared mapper's type surfaces the null.
+  expiryDate: string | null;
   clientPremium: string;
   clientBalance: string;
   insurerBalance: string;
@@ -269,7 +274,8 @@ export type BondListRow = {
   customBondType: string | null;
   policyNumber: string | null;
   insurerName: string | null;
-  expiryDate: string;
+  // Phase 13C — null for an open-ended Security Bond; rendered as "—".
+  expiryDate: string | null;
   clientPremium: string;
   clientBalance: string;
   insurerBalance: string;
@@ -295,7 +301,8 @@ export type BondDetail = {
   policyNumber: string | null;
   insurerName: string | null;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — null for an open-ended Security Bond; rendered as "—".
+  expiryDate: string | null;
   businessStatus: PolicyBusinessStatus;
   source: PolicyRecordSource;
   remarks: string | null;
@@ -336,7 +343,9 @@ export type WorkPermitListRow = {
   customerName: string;
   permitType: WorkPermitType;
   otherPermitType: string | null;
-  expiryDate: string;
+  // Phase 13C — see MotorListRow.expiryDate. Work Permit rows always carry a
+  // real date; the shared mapper's type surfaces the null.
+  expiryDate: string | null;
   clientPremium: string;
   clientBalance: string;
   insurerBalance: string;

@@ -16,7 +16,7 @@ import { RENEWAL_CATEGORY_ROUTE } from "@/lib/policy/renewal";
 import { MOTOR_COVER_TYPES } from "@/lib/policy/motorCoverTypes";
 import { MOTOR_TAX_CLASSES } from "@/lib/policy/motorTaxClasses";
 import { NON_MOTOR_COVER_TYPES } from "@/lib/policy/nonMotorCoverTypes";
-import { BOND_TYPES } from "@/lib/policy/bondTypes";
+import { BOND_TYPES, bondTypeAllowsNoExpiry } from "@/lib/policy/bondTypes";
 import { WORK_PERMIT_TYPES } from "@/lib/policy/workPermitTypes";
 import type { PolicyCategory } from "@/generated/prisma/enums";
 
@@ -55,6 +55,7 @@ const ERROR_KEY: Record<string, string> = {
   POLICY_ALREADY_RENEWED: "renewalAlreadyRenewedError",
   POLICY_NOT_RENEWABLE: "renewalNotRenewableError",
   DATES_REQUIRED: "datesRequired",
+  EXPIRY_DATE_REQUIRED: "expiryDateRequired",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
   CLIENT_PREMIUM_INVALID: "clientPremiumInvalid",
   INSURER_COST_INVALID: "insurerCostInvalid",
@@ -133,6 +134,7 @@ export function RenewPolicyForm({ source }: { source: RenewSource }) {
     PERFORMANCE_BOND: t.policy.bondPerformanceBond,
     ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
     CUSTOM_BOND: t.policy.bondCustomBond,
+    SECURITY_BOND: t.policy.bondSecurityBond,
   };
   const permitTypeLabel: Record<string, string> = {
     CLASS_D: t.policy.permitClassD,
@@ -143,18 +145,31 @@ export function RenewPolicyForm({ source }: { source: RenewSource }) {
   };
   const backHref = `${RENEWAL_CATEGORY_ROUTE[source.category]}/${source.id}`;
 
+  // Phase 13C — renewing a BOND whose (possibly just-changed) type is Security
+  // Bond may leave the expiry date blank, exactly like Create/Edit. Every
+  // other category and Bond type still requires it.
+  const isSecurityBondRenewal = source.category === "BOND" && bondTypeAllowsNoExpiry(bondType);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!effectiveDate || !expiryDate) {
+    if (!effectiveDate) {
       setError(t.policy.datesRequired);
+      return;
+    }
+    if (!isSecurityBondRenewal && !expiryDate) {
+      setError(t.policy.expiryDateRequired);
+      return;
+    }
+    if (expiryDate && new Date(expiryDate) < new Date(effectiveDate)) {
+      setError(t.policy.expiryBeforeEffective);
       return;
     }
     setSubmitting(true);
     const input: RenewPolicyInput = {
       processingDate: today(),
       effectiveDate,
-      expiryDate,
+      expiryDate: expiryDate || null,
       insurerName: insurerName || null,
       currency,
       customerPremium,
@@ -200,8 +215,13 @@ export function RenewPolicyForm({ source }: { source: RenewSource }) {
           <FormField label={t.policy.effectiveDate}>
             <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
           </FormField>
-          <FormField label={t.policy.expiryDate}>
-            <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
+          <FormField label={isSecurityBondRenewal ? t.policy.expiryDateOptional : t.policy.expiryDate}>
+            <Input
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              required={!isSecurityBondRenewal}
+            />
           </FormField>
           <FormField label={t.policy.insurerOptional}>
             <Input value={insurerName} onChange={(e) => setInsurerName(e.target.value)} />

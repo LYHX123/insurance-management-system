@@ -7,12 +7,26 @@ export const BOND_TYPES = [
   "PERFORMANCE_BOND",
   "ADVANCE_PAYMENT_GUARANTEE",
   "CUSTOM_BOND",
+  // Phase 13C — the only Bond type permitted to have no expiry date.
+  "SECURITY_BOND",
 ] as const;
 
 export type BondType = (typeof BOND_TYPES)[number];
 
 export function isBondType(value: string): value is BondType {
   return (BOND_TYPES as readonly string[]).includes(value);
+}
+
+// Phase 13C — Security Bond is the single Bond type (and the only Policy
+// classification of any kind) allowed to be saved with no expiry date. Every
+// create/update/renew path calls this instead of hard-coding the string, and
+// the reminder/status/display layers rely on the resulting null being a
+// genuine "open-ended" marker, never a placeholder date. Keep this as the one
+// definition of the rule.
+export const SECURITY_BOND_TYPE = "SECURITY_BOND" satisfies BondType;
+
+export function bondTypeAllowsNoExpiry(bondType: string | null | undefined): boolean {
+  return bondType === SECURITY_BOND_TYPE;
 }
 
 // Maps the four structured Bond QuotationSectionKind values onto BondType,

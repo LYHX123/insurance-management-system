@@ -7,12 +7,16 @@ import type { PolicyBusinessStatus, PolicyPaymentStatus } from "@/generated/pris
 // businessStatus field directly.
 export function computeBusinessStatus(
   effectiveDate: Date,
-  expiryDate: Date,
+  // Phase 13C — null only for an open-ended Security Bond (see
+  // PolicyRecord.expiryDate's schema comment). A record with no expiry date
+  // can never be EXPIRED; it is ACTIVE once its effective date is reached and
+  // otherwise DRAFT. Explicit CANCELLED/RENEWED still win as before.
+  expiryDate: Date | null,
   currentStatus: PolicyBusinessStatus,
   now: Date = new Date()
 ): PolicyBusinessStatus {
   if (currentStatus === "CANCELLED" || currentStatus === "RENEWED") return currentStatus;
-  if (now > expiryDate) return "EXPIRED";
+  if (expiryDate && now > expiryDate) return "EXPIRED";
   if (now >= effectiveDate) return "ACTIVE";
   return "DRAFT";
 }

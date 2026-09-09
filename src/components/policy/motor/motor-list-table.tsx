@@ -346,7 +346,7 @@ export function MotorListTable({ records, canEdit }: { records: MotorListRow[]; 
                 </td>
                 <td className="whitespace-nowrap text-zinc-500">{r.registrationNumber}</td>
                 <td className="text-zinc-500">{r.insurerName || "—"}</td>
-                <td className="whitespace-nowrap text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
+                <td className="whitespace-nowrap text-zinc-500">{r.expiryDate ? dateFormatter.format(new Date(r.expiryDate)) : "—"}</td>
                 <td className="whitespace-nowrap text-zinc-500">{formatMoney(r.clientPremium)}</td>
                 <td className={`whitespace-nowrap ${Number(r.clientBalance) > 0 ? "font-medium text-amber-700" : "text-zinc-500"}`}>
                   {formatMoney(r.clientBalance)}

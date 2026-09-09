@@ -24,7 +24,8 @@ export type RenewalChainMember = {
   renewalIndex: number;
   renewalDecision: PolicyRenewalDecision | null;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — null for an open-ended Security Bond period.
+  expiryDate: string | null;
   businessStatus: string;
   isCurrent: boolean; // the record whose detail page is being viewed
 };

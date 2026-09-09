@@ -12,7 +12,7 @@ import { recordPolicyActivity } from "@/lib/policy/activity";
 import { RENEWAL_CATEGORY_ROUTE } from "@/lib/policy/renewal";
 import { isMotorTaxClass, type MotorTaxClass } from "@/lib/policy/motorTaxClasses";
 import { isNonMotorCoverType } from "@/lib/policy/nonMotorCoverTypes";
-import { isBondType } from "@/lib/policy/bondTypes";
+import { isBondType, bondTypeAllowsNoExpiry } from "@/lib/policy/bondTypes";
 import { isWorkPermitType } from "@/lib/policy/workPermitTypes";
 import type { PolicyCategory, NonMotorCoverType, BondType, WorkPermitType } from "@/generated/prisma/enums";
 
@@ -90,7 +90,9 @@ export async function setPolicyRenewalDecisionAction(
 export type RenewPolicyInput = {
   processingDate: string;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — "" / null accepted only when renewing a Security Bond
+  // (category BOND + bond.bondType === SECURITY_BOND); required otherwise.
+  expiryDate: string | null;
   insurerName?: string | null;
   currency: string;
   customerPremium: number | string;
@@ -136,16 +138,28 @@ export async function renewPolicyAction(
   if (source.renewedBy) return { success: false, error: "POLICY_ALREADY_RENEWED" };
   if (source.renewalDecision === "NOT_RENEWED") return { success: false, error: "POLICY_NOT_RENEWABLE" };
 
-  if (!data.processingDate || !data.effectiveDate || !data.expiryDate) {
+  if (!data.processingDate || !data.effectiveDate) {
     return { success: false, error: "DATES_REQUIRED" };
   }
   const effectiveDate = new Date(data.effectiveDate);
-  const expiryDate = new Date(data.expiryDate);
   const processingDate = new Date(data.processingDate);
-  if (Number.isNaN(effectiveDate.getTime()) || Number.isNaN(expiryDate.getTime()) || Number.isNaN(processingDate.getTime())) {
+  if (Number.isNaN(effectiveDate.getTime()) || Number.isNaN(processingDate.getTime())) {
     return { success: false, error: "DATES_REQUIRED" };
   }
-  if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
+
+  // Phase 13C — expiry date is optional only when this renewal's new period
+  // is a Security Bond; mandatory for every other category / Bond type. An
+  // empty value is persisted as a genuine null, never a placeholder date.
+  const renewalAllowsNoExpiry = source.category === "BOND" && bondTypeAllowsNoExpiry(data.bond?.bondType);
+  const rawExpiry = typeof data.expiryDate === "string" ? data.expiryDate.trim() : "";
+  let expiryDate: Date | null = null;
+  if (rawExpiry) {
+    expiryDate = new Date(rawExpiry);
+    if (Number.isNaN(expiryDate.getTime())) return { success: false, error: "DATES_REQUIRED" };
+    if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
+  } else if (!renewalAllowsNoExpiry) {
+    return { success: false, error: "EXPIRY_DATE_REQUIRED" };
+  }
   if (isBlank(data.customerPremium) || Number(data.customerPremium) < 0) return { success: false, error: "CLIENT_PREMIUM_INVALID" };
   if (isBlank(data.insurerCost) || Number(data.insurerCost) < 0) return { success: false, error: "INSURER_COST_INVALID" };
 

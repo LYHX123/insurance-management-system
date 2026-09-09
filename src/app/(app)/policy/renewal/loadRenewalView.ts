@@ -35,7 +35,8 @@ export async function loadRenewalView(record: {
     renewalIndex: m.renewalIndex,
     renewalDecision: m.renewalDecision,
     effectiveDate: m.effectiveDate.toISOString(),
-    expiryDate: m.expiryDate.toISOString(),
+    // Phase 13C — null for an open-ended Security Bond period.
+    expiryDate: m.expiryDate ? m.expiryDate.toISOString() : null,
     businessStatus: computeBusinessStatus(m.effectiveDate, m.expiryDate, m.businessStatus),
     isCurrent: m.id === record.id,
   }));

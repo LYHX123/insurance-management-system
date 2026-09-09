@@ -111,7 +111,7 @@ export function PolicyRenewalCard({
             <span className="font-medium text-zinc-800">{periodLabel(t, m.renewalIndex)}</span>
             <span className="text-zinc-500">{m.recordNumber}</span>
             <span className="text-zinc-400">
-              {dateFormatter.format(new Date(m.effectiveDate))} – {dateFormatter.format(new Date(m.expiryDate))}
+              {dateFormatter.format(new Date(m.effectiveDate))} – {m.expiryDate ? dateFormatter.format(new Date(m.expiryDate)) : "—"}
             </span>
             <span className="text-zinc-500">{m.businessStatus}</span>
             {m.renewalDecision && <span className="text-zinc-400">· {decisionLabel[m.renewalDecision]}</span>}

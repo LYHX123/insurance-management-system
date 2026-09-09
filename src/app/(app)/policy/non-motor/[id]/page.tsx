@@ -126,7 +126,9 @@ export default async function NonMotorRecordDetailPage({ params }: { params: Pro
     policyNumber: record.nonMotorDetail.policyNumber,
     insurerName: record.insurerName,
     effectiveDate: record.effectiveDate.toISOString(),
-    expiryDate: record.expiryDate.toISOString(),
+    // Phase 13C — the shared column is nullable now, but only ever null for
+    // an open-ended Security Bond; a Non-Motor policy always has a real expiry.
+    expiryDate: record.expiryDate!.toISOString(),
     businessStatus: computeBusinessStatus(record.effectiveDate, record.expiryDate, record.businessStatus),
     source: record.source,
     remarks: record.remarks,

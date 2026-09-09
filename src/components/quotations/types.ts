@@ -420,7 +420,8 @@ export type RelatedPolicyRow = {
   category: RelatedPolicyCategory;
   businessStatus: RelatedPolicyBusinessStatus;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — null for an open-ended Security Bond policy.
+  expiryDate: string | null;
   customerName: string;
 };
 

@@ -106,8 +106,10 @@ const commonInclude = {
   customer: { select: { companyName: true } },
 };
 
-function dateOnly(iso: string): string {
-  return iso.slice(0, 10);
+// Phase 13C — an open-ended Security Bond has no expiry date; its export cell
+// is left blank (never "Invalid Date" / a 1970 date / "null").
+function dateOnly(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : "";
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ category: string }> }) {

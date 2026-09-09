@@ -8,7 +8,7 @@ import { toDecimal } from "@/lib/money";
 import { generatePolicyRecordNumber } from "@/lib/policy/recordNumber";
 import { computeBusinessStatus } from "@/lib/policy/status";
 import { recordPolicyActivity } from "@/lib/policy/activity";
-import { isBondType } from "@/lib/policy/bondTypes";
+import { isBondType, bondTypeAllowsNoExpiry } from "@/lib/policy/bondTypes";
 import type { BondType } from "@/generated/prisma/enums";
 import { deletePolicyRecord, type DeletePolicyResult } from "@/lib/policy/deletePolicyRecord";
 
@@ -60,6 +60,29 @@ function resolveCustomBondType(bondType: BondType, customBondType?: string | nul
   return { value: null };
 }
 
+// Phase 13C — the one server-side gate for the conditional expiry-date rule,
+// shared by create and update so they can never disagree:
+//   bondType !== SECURITY_BOND -> expiry date is REQUIRED
+//   bondType === SECURITY_BOND -> expiry date is OPTIONAL (may be null)
+// An empty string is normalised to null; a genuinely malformed date is
+// rejected; a null is only accepted for a Security Bond. Never invents a
+// placeholder date. Returns the resolved Date | null for persistence.
+function resolveBondExpiry(
+  bondType: string,
+  effectiveDate: Date,
+  rawExpiryDate: string | null | undefined
+): { error: string } | { value: Date | null } {
+  const trimmed = typeof rawExpiryDate === "string" ? rawExpiryDate.trim() : rawExpiryDate ?? "";
+  if (!trimmed) {
+    if (bondTypeAllowsNoExpiry(bondType)) return { value: null };
+    return { error: "EXPIRY_DATE_REQUIRED" };
+  }
+  const expiryDate = new Date(trimmed);
+  if (Number.isNaN(expiryDate.getTime())) return { error: "DATES_REQUIRED" };
+  if (expiryDate < effectiveDate) return { error: "EXPIRY_BEFORE_EFFECTIVE" };
+  return { value: expiryDate };
+}
+
 export type CreateBondRecordInput = {
   processingDate: string;
   customerId: string;
@@ -70,7 +93,9 @@ export type CreateBondRecordInput = {
   insurerName?: string | null;
   policyNumber?: string | null;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — "" / null is accepted only when bondType is SECURITY_BOND;
+  // required for every other Bond type (revalidated server-side).
+  expiryDate: string | null;
   customerPremium: number | string;
   insurerCost: number | string;
   remarks?: string | null;
@@ -104,7 +129,7 @@ export async function createBondRecordAction(
     return { success: false, error: "BOND_AMOUNT_INVALID" };
   }
   if (!data.processingDate) return { success: false, error: "PROCESSING_DATE_REQUIRED" };
-  if (!data.effectiveDate || !data.expiryDate) return { success: false, error: "DATES_REQUIRED" };
+  if (!data.effectiveDate) return { success: false, error: "DATES_REQUIRED" };
   if (isBlank(data.customerPremium) || Number(data.customerPremium) < 0) {
     return { success: false, error: "CLIENT_PREMIUM_INVALID" };
   }
@@ -113,8 +138,10 @@ export async function createBondRecordAction(
   }
 
   const effectiveDate = new Date(data.effectiveDate);
-  const expiryDate = new Date(data.expiryDate);
-  if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
+  if (Number.isNaN(effectiveDate.getTime())) return { success: false, error: "DATES_REQUIRED" };
+  const expiryResult = resolveBondExpiry(data.bondType, effectiveDate, data.expiryDate);
+  if ("error" in expiryResult) return { success: false, error: expiryResult.error };
+  const expiryDate = expiryResult.value;
 
   // Resolve + validate the source quotation exactly like Motor/Non-Motor's
   // create actions (see those functions' doc comments).
@@ -226,7 +253,11 @@ export type UpdateBondOverviewInput = {
   insurerName?: string | null;
   policyNumber?: string | null;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — see CreateBondRecordInput.expiryDate. On edit this also
+  // covers the spec edge case: changing a no-expiry Security Bond to any
+  // other Bond type makes an expiry date mandatory again (the new bondType
+  // is what resolveBondExpiry checks).
+  expiryDate: string | null;
   customerPremium: number | string;
   insurerCost: number | string;
   remarks?: string | null;
@@ -262,8 +293,10 @@ export async function updateBondOverviewAction(
   }
 
   const effectiveDate = new Date(data.effectiveDate);
-  const expiryDate = new Date(data.expiryDate);
-  if (expiryDate < effectiveDate) return { success: false, error: "EXPIRY_BEFORE_EFFECTIVE" };
+  if (Number.isNaN(effectiveDate.getTime())) return { success: false, error: "DATES_REQUIRED" };
+  const expiryResult = resolveBondExpiry(data.bondType, effectiveDate, data.expiryDate);
+  if ("error" in expiryResult) return { success: false, error: expiryResult.error };
+  const expiryDate = expiryResult.value;
 
   const businessStatus = data.cancelled
     ? "CANCELLED"

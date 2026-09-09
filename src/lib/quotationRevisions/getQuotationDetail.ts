@@ -83,7 +83,8 @@ export async function getQuotationDetailData(id: string): Promise<QuotationDetai
     category: p.category,
     businessStatus: computeBusinessStatus(p.effectiveDate, p.expiryDate, p.businessStatus, now),
     effectiveDate: p.effectiveDate.toISOString(),
-    expiryDate: p.expiryDate.toISOString(),
+    // Phase 13C — null for an open-ended Security Bond policy.
+    expiryDate: p.expiryDate ? p.expiryDate.toISOString() : null,
     customerName: p.customer.companyName,
   }));
 

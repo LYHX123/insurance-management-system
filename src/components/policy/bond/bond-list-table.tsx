@@ -33,7 +33,7 @@ const STATUS_TONE: Record<PolicyBusinessStatus, "neutral" | "brand" | "success" 
   RENEWED: "success",
 };
 
-const BOND_TYPES: BondType[] = ["TENDER_BOND", "PERFORMANCE_BOND", "ADVANCE_PAYMENT_GUARANTEE", "CUSTOM_BOND"];
+const BOND_TYPES: BondType[] = ["TENDER_BOND", "PERFORMANCE_BOND", "ADVANCE_PAYMENT_GUARANTEE", "CUSTOM_BOND", "SECURITY_BOND"];
 
 const PAGE_SIZE = 25;
 
@@ -84,6 +84,7 @@ export function BondListTable({ records, canEdit }: { records: BondListRow[]; ca
     PERFORMANCE_BOND: t.policy.bondPerformanceBond,
     ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
     CUSTOM_BOND: t.policy.bondCustomBond,
+    SECURITY_BOND: t.policy.bondSecurityBond,
   };
 
   const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium" });
@@ -263,7 +264,7 @@ export function BondListTable({ records, canEdit }: { records: BondListRow[]; ca
                   {r.bondType === "CUSTOM_BOND" && r.customBondType ? r.customBondType : bondTypeLabel[r.bondType]}
                 </td>
                 <td className="text-zinc-500">{r.insurerName || "—"}</td>
-                <td className="text-zinc-500">{dateFormatter.format(new Date(r.expiryDate))}</td>
+                <td className="text-zinc-500">{r.expiryDate ? dateFormatter.format(new Date(r.expiryDate)) : "—"}</td>
                 <td className="text-zinc-500">{formatMoney(r.clientPremium)}</td>
                 <td className={Number(r.clientBalance) > 0 ? "font-medium text-amber-700" : "text-zinc-500"}>
                   {formatMoney(r.clientBalance)}

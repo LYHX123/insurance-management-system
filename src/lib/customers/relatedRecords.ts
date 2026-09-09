@@ -42,7 +42,8 @@ export type CustomerRelatedPolicyRow = {
   typeOfCover: string;
   insurerOrAgent: string | null;
   effectiveDate: string;
-  expiryDate: string;
+  // Phase 13C — null for an open-ended Security Bond policy.
+  expiryDate: string | null;
   clientPremium: string;
   businessStatus: string;
 };
@@ -220,7 +221,7 @@ async function loadPolicies(customerId: string, user: AuthzUser): Promise<Custom
       typeOfCover,
       insurerOrAgent: insurerOrAgent ?? r.insurerName,
       effectiveDate: r.effectiveDate.toISOString(),
-      expiryDate: r.expiryDate.toISOString(),
+      expiryDate: r.expiryDate ? r.expiryDate.toISOString() : null,
       clientPremium: r.customerPremium.toString(),
       businessStatus: r.businessStatus,
     };

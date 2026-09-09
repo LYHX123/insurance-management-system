@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { createBondRecordAction } from "@/app/(app)/policy/bond/actions";
-import { BOND_TYPES } from "@/lib/policy/bondTypes";
+import { BOND_TYPES, bondTypeAllowsNoExpiry } from "@/lib/policy/bondTypes";
 import { buildCustomerSearchOptions } from "@/lib/customers/searchOptions";
 import type { CustomerOption, BondType } from "@/components/policy/types";
 
@@ -46,6 +46,7 @@ const ERROR_KEY: Record<string, string> = {
   BOND_AMOUNT_INVALID: "bondAmountInvalid",
   PROCESSING_DATE_REQUIRED: "processingDateRequired",
   DATES_REQUIRED: "datesRequired",
+  EXPIRY_DATE_REQUIRED: "expiryDateRequired",
   EXPIRY_BEFORE_EFFECTIVE: "expiryBeforeEffective",
   CLIENT_PREMIUM_INVALID: "clientPremiumInvalid",
   INSURER_COST_INVALID: "insurerCostInvalid",
@@ -75,6 +76,7 @@ export function CreateBondRecordForm({
     PERFORMANCE_BOND: t.policy.bondPerformanceBond,
     ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
     CUSTOM_BOND: t.policy.bondCustomBond,
+    SECURITY_BOND: t.policy.bondSecurityBond,
   };
 
   const [processingDate, setProcessingDate] = useState(today());
@@ -100,6 +102,12 @@ export function CreateBondRecordForm({
   );
 
   const customerSearchOptions = useMemo(() => buildCustomerSearchOptions(customers), [customers]);
+
+  // Phase 13C — Expiry Date is optional only while Security Bond is selected.
+  // Switching away from it re-arms the required rule immediately; switching to
+  // it relaxes the rule. A date the user already typed is never auto-cleared
+  // either way (spec §5/§6).
+  const isSecurityBond = bondTypeAllowsNoExpiry(bondType);
 
   const handleBondTypeChange = (value: string) => {
     setBondType(value);
@@ -128,8 +136,16 @@ export function CreateBondRecordForm({
       setError(t.policy.bondAmountInvalid);
       return;
     }
-    if (!effectiveDate || !expiryDate) {
+    if (!effectiveDate) {
       setError(t.policy.datesRequired);
+      return;
+    }
+    if (!isSecurityBond && !expiryDate) {
+      setError(t.policy.expiryDateRequired);
+      return;
+    }
+    if (expiryDate && new Date(expiryDate) < new Date(effectiveDate)) {
+      setError(t.policy.expiryBeforeEffective);
       return;
     }
 
@@ -144,7 +160,7 @@ export function CreateBondRecordForm({
       insurerName: insurerName || null,
       policyNumber: policyNumber || null,
       effectiveDate,
-      expiryDate,
+      expiryDate: expiryDate || null,
       customerPremium,
       insurerCost,
       remarks: remarks || null,
@@ -252,8 +268,13 @@ export function CreateBondRecordForm({
           <FormField label={t.policy.effectiveDate}>
             <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required />
           </FormField>
-          <FormField label={t.policy.expiryDate}>
-            <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
+          <FormField label={isSecurityBond ? t.policy.expiryDateOptional : t.policy.expiryDate}>
+            <Input
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              required={!isSecurityBond}
+            />
           </FormField>
 
           {/* Client Premium / Insurer Cost */}

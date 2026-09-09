@@ -58,6 +58,7 @@ export function bondTypeLabel(t: Dictionary, type: BondType, customBondType?: st
     PERFORMANCE_BOND: t.policy.bondPerformanceBond,
     ADVANCE_PAYMENT_GUARANTEE: t.policy.bondAdvancePaymentGuarantee,
     CUSTOM_BOND: t.policy.bondCustomBond,
+    SECURITY_BOND: t.policy.bondSecurityBond,
   };
   return map[type];
 }

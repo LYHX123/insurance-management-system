@@ -29,7 +29,11 @@ export async function getMotorPolicyLinkOptions(customerId: string): Promise<Cla
     insuranceTypeLabel: null,
     insurerName: p.insurerName,
     effectiveDate: p.effectiveDate.toISOString(),
-    expiryDate: p.expiryDate.toISOString(),
+    // Phase 13C — PolicyRecord.expiryDate is nullable now, but only ever null
+    // for an open-ended Security Bond; Motor/Non-Motor policies (the only two
+    // categories a Claim can link to) always carry a real date, so this is a
+    // safe assertion rather than an invented fallback.
+    expiryDate: p.expiryDate!.toISOString(),
     businessStatus: p.businessStatus,
   }));
 }
@@ -55,7 +59,11 @@ export async function getNonMotorPolicyLinkOptions(customerId: string): Promise<
     insuranceTypeLabel: p.nonMotorDetail?.insuranceType ?? null,
     insurerName: p.insurerName,
     effectiveDate: p.effectiveDate.toISOString(),
-    expiryDate: p.expiryDate.toISOString(),
+    // Phase 13C — PolicyRecord.expiryDate is nullable now, but only ever null
+    // for an open-ended Security Bond; Motor/Non-Motor policies (the only two
+    // categories a Claim can link to) always carry a real date, so this is a
+    // safe assertion rather than an invented fallback.
+    expiryDate: p.expiryDate!.toISOString(),
     businessStatus: p.businessStatus,
   }));
 }

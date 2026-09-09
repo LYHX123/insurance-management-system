@@ -128,7 +128,8 @@ export default async function BondRecordDetailPage({ params }: { params: Promise
     policyNumber: record.bondDetail.policyNumber,
     insurerName: record.insurerName,
     effectiveDate: record.effectiveDate.toISOString(),
-    expiryDate: record.expiryDate.toISOString(),
+    // Phase 13C — null for an open-ended Security Bond.
+    expiryDate: record.expiryDate ? record.expiryDate.toISOString() : null,
     businessStatus: computeBusinessStatus(record.effectiveDate, record.expiryDate, record.businessStatus),
     source: record.source,
     remarks: record.remarks,

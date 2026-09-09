@@ -49,6 +49,10 @@ async function getRemindersForCategory(
       // that policy. NULL / PENDING (the un-decided latest period) still
       // reminds. Prisma's `not` includes NULL rows.
       businessStatus: { notIn: ["CANCELLED", "RENEWED"] },
+      // Phase 13C — an open-ended Security Bond (no expiry date) has no expiry
+      // to remind about. Excluded here at the query level, before any date
+      // arithmetic, rather than relying on the null-guard below alone.
+      expiryDate: { not: null },
       // Keep NULL (never decided — existing rows) and PENDING; only drop an
       // explicit NOT_RENEWED. A bare `not` does not match NULL rows in
       // Prisma, hence the explicit OR.

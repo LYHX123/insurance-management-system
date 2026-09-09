@@ -169,7 +169,9 @@ export default async function MotorRecordDetailPage({ params }: { params: Promis
     insurerName: record.insurerName,
     policyNumber: record.motorDetail.policyNumber,
     effectiveDate: record.effectiveDate.toISOString(),
-    expiryDate: record.expiryDate.toISOString(),
+    // Phase 13C — the shared column is nullable now, but only ever null for
+    // an open-ended Security Bond; a Motor policy always has a real expiry.
+    expiryDate: record.expiryDate!.toISOString(),
     businessStatus: computeBusinessStatus(record.effectiveDate, record.expiryDate, record.businessStatus),
     source: record.source,
     sourceSheet: record.sourceSheet,
