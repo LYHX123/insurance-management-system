@@ -14,8 +14,8 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
+import { PolicyDeleteButton } from "@/components/policy/policy-delete-button";
 import { updateWorkPermitOverviewAction, deleteWorkPermitPolicyAction } from "@/app/(app)/policy/work-permit/actions";
 import { WORK_PERMIT_TYPES } from "@/lib/policy/workPermitTypes";
 import type { WorkPermitDetail, CustomerOption, WorkPermitType } from "@/components/policy/types";
@@ -42,13 +42,13 @@ const ERROR_KEY: Record<string, string> = {
 export function WorkPermitOverviewTab({
   detail,
   customers,
-  isAdmin,
   canEdit,
+  canDelete,
 }: {
   detail: WorkPermitDetail;
   customers: CustomerOption[];
-  isAdmin: boolean;
   canEdit: boolean;
+  canDelete: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -58,9 +58,6 @@ export function WorkPermitOverviewTab({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [processingDate, setProcessingDate] = useState(detail.processingDate.slice(0, 10));
   const [customerId, setCustomerId] = useState(detail.customerId);
@@ -133,25 +130,6 @@ export function WorkPermitOverviewTab({
     router.refresh();
   };
 
-  const handleDelete = async (typedRecordNumber: string) => {
-    setDeleteError(null);
-    setIsDeleting(true);
-    const result = await deleteWorkPermitPolicyAction(detail.id, typedRecordNumber);
-    setIsDeleting(false);
-    if (!result.success) {
-      if (result.error === "INVOICE_LINKED") {
-        setDeleteError(t.policy.deletePolicyInvoiceLinked.replace("{invoiceNumbers}", (result.invoiceNumbers ?? []).join(", ")));
-      } else if (result.error === "FORBIDDEN") {
-        setDeleteError(t.policy.genericError);
-      } else if (result.error === "CONFIRMATION_MISMATCH") {
-        setDeleteError(t.policy.deletePolicyConfirmationMismatch);
-      } else {
-        setDeleteError(t.policy.deletePolicyDeleteFailedError);
-      }
-      return;
-    }
-    router.replace(`/policy/work-permit?deleted=${encodeURIComponent(result.recordNumber)}`);
-  };
 
   if (!editing) {
     return (
@@ -235,17 +213,22 @@ export function WorkPermitOverviewTab({
           relatedInvoice={detail.relatedInvoice}
         />
 
-        {((detail.businessStatus !== "CANCELLED" && canEdit) || isAdmin) && (
+        {((detail.businessStatus !== "CANCELLED" && canEdit) || canDelete) && (
           <div className="flex justify-end gap-2">
             {detail.businessStatus !== "CANCELLED" && canEdit && (
               <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
                 {t.policy.cancelPolicy}
               </Button>
             )}
-            {isAdmin && (
-              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-                {t.policy.deletePolicy}
-              </Button>
+            {canDelete && (
+              <PolicyDeleteButton
+                policyId={detail.id}
+                recordNumber={detail.recordNumber}
+                customerName={detail.customerName}
+                categoryLabel={t.policy.tabWorkPermit}
+                listPath="/policy/work-permit"
+                deleteAction={deleteWorkPermitPolicyAction}
+              />
             )}
           </div>
         )}
@@ -259,21 +242,6 @@ export function WorkPermitOverviewTab({
             onClose={() => {
               setShowCancelConfirm(false);
               setError(null);
-            }}
-          />
-        )}
-
-        {showDeleteConfirm && (
-          <TypedConfirmDialog
-            title={t.policy.deletePolicyConfirmTitle}
-            message={`${deleteError ?? t.policy.deletePolicyConfirmMessage} ${t.policy.dropboxRetentionNote} ${t.policy.deletePolicyConfirmInstruction.replace("{recordNumber}", detail.recordNumber)}`}
-            confirmLabel={t.policy.deletePolicyConfirmButton}
-            confirmValue={detail.recordNumber}
-            isSubmitting={isDeleting}
-            onConfirm={handleDelete}
-            onClose={() => {
-              setShowDeleteConfirm(false);
-              setDeleteError(null);
             }}
           />
         )}

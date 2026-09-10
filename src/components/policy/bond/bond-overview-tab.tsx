@@ -14,8 +14,8 @@ import { FormField } from "@/components/ui/form-field";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formatMoney } from "@/components/ui/money-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TypedConfirmDialog } from "@/components/ui/typed-confirm-dialog";
 import { RelatedInvoiceCard } from "@/components/policy/related-invoice-card";
+import { PolicyDeleteButton } from "@/components/policy/policy-delete-button";
 import { updateBondOverviewAction, deleteBondPolicyAction } from "@/app/(app)/policy/bond/actions";
 import { BOND_TYPES, bondTypeAllowsNoExpiry } from "@/lib/policy/bondTypes";
 import type { BondDetail, CustomerOption, BondType } from "@/components/policy/types";
@@ -39,13 +39,13 @@ const ERROR_KEY: Record<string, string> = {
 export function BondOverviewTab({
   detail,
   customers,
-  isAdmin,
   canEdit,
+  canDelete,
 }: {
   detail: BondDetail;
   customers: CustomerOption[];
-  isAdmin: boolean;
   canEdit: boolean;
+  canDelete: boolean;
 }) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -55,9 +55,6 @@ export function BondOverviewTab({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [processingDate, setProcessingDate] = useState(detail.processingDate.slice(0, 10));
   const [customerId, setCustomerId] = useState(detail.customerId);
@@ -151,26 +148,6 @@ export function BondOverviewTab({
     router.refresh();
   };
 
-  const handleDelete = async (typedRecordNumber: string) => {
-    setDeleteError(null);
-    setIsDeleting(true);
-    const result = await deleteBondPolicyAction(detail.id, typedRecordNumber);
-    setIsDeleting(false);
-    if (!result.success) {
-      if (result.error === "INVOICE_LINKED") {
-        setDeleteError(t.policy.deletePolicyInvoiceLinked.replace("{invoiceNumbers}", (result.invoiceNumbers ?? []).join(", ")));
-      } else if (result.error === "FORBIDDEN") {
-        setDeleteError(t.policy.genericError);
-      } else if (result.error === "CONFIRMATION_MISMATCH") {
-        setDeleteError(t.policy.deletePolicyConfirmationMismatch);
-      } else {
-        setDeleteError(t.policy.deletePolicyDeleteFailedError);
-      }
-      return;
-    }
-    router.replace(`/policy/bond?deleted=${encodeURIComponent(result.recordNumber)}`);
-  };
-
   if (!editing) {
     return (
       <div className="flex flex-col gap-4">
@@ -254,17 +231,22 @@ export function BondOverviewTab({
           relatedInvoice={detail.relatedInvoice}
         />
 
-        {((detail.businessStatus !== "CANCELLED" && canEdit) || isAdmin) && (
+        {((detail.businessStatus !== "CANCELLED" && canEdit) || canDelete) && (
           <div className="flex justify-end gap-2">
             {detail.businessStatus !== "CANCELLED" && canEdit && (
               <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
                 {t.policy.cancelPolicy}
               </Button>
             )}
-            {isAdmin && (
-              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-                {t.policy.deletePolicy}
-              </Button>
+            {canDelete && (
+              <PolicyDeleteButton
+                policyId={detail.id}
+                recordNumber={detail.recordNumber}
+                customerName={detail.customerName}
+                categoryLabel={t.policy.tabBond}
+                listPath="/policy/bond"
+                deleteAction={deleteBondPolicyAction}
+              />
             )}
           </div>
         )}
@@ -278,21 +260,6 @@ export function BondOverviewTab({
             onClose={() => {
               setShowCancelConfirm(false);
               setError(null);
-            }}
-          />
-        )}
-
-        {showDeleteConfirm && (
-          <TypedConfirmDialog
-            title={t.policy.deletePolicyConfirmTitle}
-            message={`${deleteError ?? t.policy.deletePolicyConfirmMessage} ${t.policy.dropboxRetentionNote} ${t.policy.deletePolicyConfirmInstruction.replace("{recordNumber}", detail.recordNumber)}`}
-            confirmLabel={t.policy.deletePolicyConfirmButton}
-            confirmValue={detail.recordNumber}
-            isSubmitting={isDeleting}
-            onConfirm={handleDelete}
-            onClose={() => {
-              setShowDeleteConfirm(false);
-              setDeleteError(null);
             }}
           />
         )}

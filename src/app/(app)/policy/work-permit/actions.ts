@@ -301,8 +301,9 @@ export async function updateWorkPermitOverviewAction(
   }
 }
 
-// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
-// for the full relation/transaction breakdown.
+// Phase 13D — permanent, permission-controlled delete (requires
+// policy.work_permit.delete, NOT admin-only, NOT the same as Cancel Policy).
+// See deletePolicyRecord's own doc comment.
 export async function deleteWorkPermitPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
   const result = await deletePolicyRecord(id, "WORK_PERMIT", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/work-permit");

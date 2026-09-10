@@ -5,9 +5,11 @@ import { PERMISSION_GROUPS } from "@/lib/permissions";
 // key can still be looked up in PERMISSION_GROUPS — legacy bare keys (no
 // suffix) pass through unchanged and are labeled with no level annotation,
 // exactly as before this upgrade.
-function splitLevelSuffix(key: string): { base: string; suffix: "view" | "edit" | null } {
+function splitLevelSuffix(key: string): { base: string; suffix: "view" | "edit" | "delete" | null } {
   if (key.endsWith(".view")) return { base: key.slice(0, -".view".length), suffix: "view" };
   if (key.endsWith(".edit")) return { base: key.slice(0, -".edit".length), suffix: "edit" };
+  // Phase 13D — the independent Policy-category ".delete" capability.
+  if (key.endsWith(".delete")) return { base: key.slice(0, -".delete".length), suffix: "delete" };
   return { base: key, suffix: null };
 }
 
@@ -17,7 +19,14 @@ function splitLevelSuffix(key: string): { base: string; suffix: "view" | "edit" 
 // permission-label map.
 export function permissionLabel(t: Dictionary, key: string): string {
   const { base, suffix } = splitLevelSuffix(key);
-  const levelSuffix = suffix === "edit" ? ` (${t.users.permissionLevelEdit})` : suffix === "view" ? ` (${t.users.permissionLevelView})` : "";
+  const levelSuffix =
+    suffix === "edit"
+      ? ` (${t.users.permissionLevelEdit})`
+      : suffix === "view"
+      ? ` (${t.users.permissionLevelView})`
+      : suffix === "delete"
+      ? ` (${t.users.permissionLevelDelete})`
+      : "";
 
   const booleanGroup = PERMISSION_GROUPS.find((g) => g.kind === "boolean" && g.booleanKey === base);
   if (booleanGroup) return t.sidebar[booleanGroup.menuKey];

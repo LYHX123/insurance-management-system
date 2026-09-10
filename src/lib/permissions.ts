@@ -56,6 +56,10 @@ export function isStoredPermissionValue(value: string): boolean {
   for (const resource of VIEW_EDIT_RESOURCE_KEYS) {
     if (value === `${resource}.view`) return true;
     if (value === `${resource}.edit` && isEditCapableResource(resource)) return true;
+    // Phase 13D — dedicated ".delete" capability (Policy categories only).
+    // Independently assignable: it is NOT implied by ".edit" or a legacy
+    // bare key, and only the DELETE_CAPABLE_RESOURCE_KEYS below ever carry it.
+    if (value === `${resource}.delete` && isDeleteCapableResource(resource)) return true;
   }
   return false;
 }
@@ -236,6 +240,74 @@ export function levelToStoredKeys(resource: ViewEditResourceKey, level: Permissi
   if (level === "EDIT" && isEditCapableResource(resource)) return [editStoredKey(resource)];
   if (level === "NONE") return [];
   return [viewStoredKey(resource)];
+}
+
+// ---------------------------------------------------------------------------
+// DELETE level (Phase 13D — Permanent Policy Delete)
+// ---------------------------------------------------------------------------
+//
+// A third, fully independent capability layered on top of VIEW/EDIT, stored
+// the same way (a plain "<resource>.delete" string in User.permissions —
+// no new table, no Prisma migration). It exists ONLY for the four Policy
+// categories: permanently removing a mistakenly-created/duplicated policy
+// record is the only hard-delete a non-admin may perform anywhere in the app.
+//
+// Deliberately NOT part of the NONE/VIEW/EDIT ladder:
+//   - ".delete" is never implied by ".edit" or by a legacy bare key. A user
+//     with EDIT but without an explicit ".delete" string can never permanently
+//     delete (Phase 13D spec §B).
+//   - It is assigned by its own checkbox in the Add/Edit User form, next to
+//     (not inside) the None/View/Edit selector.
+//   - Admins bypass it via isAdmin(), exactly like every other check here.
+//
+// This does NOT replace Cancel Policy (a plain businessStatus change gated by
+// canEdit) — that is unchanged.
+export const DELETE_CAPABLE_RESOURCE_KEYS = [
+  "policy.motor",
+  "policy.non_motor",
+  "policy.bond",
+  "policy.work_permit",
+] as const;
+
+export type DeleteCapableResourceKey = (typeof DELETE_CAPABLE_RESOURCE_KEYS)[number];
+
+export function isDeleteCapableResource(key: string): key is DeleteCapableResourceKey {
+  return (DELETE_CAPABLE_RESOURCE_KEYS as readonly string[]).includes(key);
+}
+
+function deleteStoredKey(resource: DeleteCapableResourceKey): string {
+  return `${resource}.delete`;
+}
+
+// The only thing that may authorize a permanent Policy delete. Fails closed
+// for every key that is not one of the four Policy categories, and for a
+// legacy bare key / a ".edit" grant (neither implies DELETE — spec §B). An
+// inactive user is never authorized regardless of role or stored strings.
+export function canDelete(
+  user: AuthzUser | null | undefined,
+  key: PermissionKey
+): boolean {
+  if (!isActiveUser(user)) return false;
+  if (isAdmin(user)) return true;
+  if (!isDeleteCapableResource(key)) return false;
+  return user!.permissions.includes(deleteStoredKey(key));
+}
+
+// Pure, role-independent read — used by the Add/Edit User form, which edits a
+// raw permissions: string[] draft and has no AuthzUser/session (mirrors
+// levelForStoredPermissions). Only meaningful for a delete-capable resource.
+export function hasDeleteInStoredPermissions(
+  permissions: readonly string[],
+  key: string
+): boolean {
+  return isDeleteCapableResource(key) && permissions.includes(deleteStoredKey(key));
+}
+
+// Inverse — turns the form's on/off toggle into the (0 or 1) stored strings
+// for one resource. Always emits the ".delete" form; never a bare key.
+export function deleteToStoredKeys(resource: string, enabled: boolean): string[] {
+  if (!enabled || !isDeleteCapableResource(resource)) return [];
+  return [deleteStoredKey(resource)];
 }
 
 export function hasAnyPermission(

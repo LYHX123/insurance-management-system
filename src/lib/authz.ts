@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import {
+  canDelete,
   hasAnyPermission,
   hasPermission,
   isAdmin,
@@ -27,5 +28,15 @@ export async function requirePermission(key: PermissionKey) {
 export async function requireAnyPermission(keys: readonly PermissionKey[]) {
   const session = await auth();
   if (!session?.user || !hasAnyPermission(session.user, keys)) return null;
+  return session;
+}
+
+// Phase 13D — the DELETE-level gate for permanent Policy deletion. `key` must
+// be the target policy's REAL category permission key, resolved server-side
+// from the loaded record (never trusted from the client) — see
+// deletePolicyRecord.
+export async function requireDeletePermission(key: PermissionKey) {
+  const session = await auth();
+  if (!session?.user || !canDelete(session.user, key)) return null;
   return session;
 }

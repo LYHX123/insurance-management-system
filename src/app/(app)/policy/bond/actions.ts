@@ -348,8 +348,9 @@ export async function updateBondOverviewAction(
   }
 }
 
-// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
-// for the full relation/transaction breakdown.
+// Phase 13D — permanent, permission-controlled delete (requires
+// policy.bond.delete, NOT admin-only, NOT the same as Cancel Policy). See
+// deletePolicyRecord's own doc comment.
 export async function deleteBondPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
   const result = await deletePolicyRecord(id, "BOND", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/bond");

@@ -10,7 +10,10 @@ import { useLocale } from "@/i18n/locale-provider";
 import { createUserAction, updateUserAction } from "@/app/(app)/users/actions";
 import {
   PERMISSION_GROUPS,
+  deleteToStoredKeys,
+  hasDeleteInStoredPermissions,
   isAdminRole,
+  isDeleteCapableResource,
   isEditCapableResource,
   levelForStoredPermissions,
   levelToStoredKeys,
@@ -120,6 +123,16 @@ export function UserFormModal({
     setPermissions((prev) => {
       const withoutResource = prev.filter((p) => p !== resource && p !== `${resource}.view` && p !== `${resource}.edit`);
       return [...withoutResource, ...levelToStoredKeys(resource, level)];
+    });
+  };
+
+  // Phase 13D — the ".delete" capability is independent of the None/View/Edit
+  // level: toggling it never touches the level keys and vice versa. Only the
+  // four Policy categories are delete-capable.
+  const setResourceDelete = (resource: string, enabled: boolean) => {
+    setPermissions((prev) => {
+      const without = prev.filter((p) => p !== `${resource}.delete`);
+      return [...without, ...deleteToStoredKeys(resource, enabled)];
     });
   };
 
@@ -319,17 +332,33 @@ export function UserFormModal({
                           <p className="text-sm text-zinc-700">
                             {t.users.permissionChildLabels[child as keyof typeof t.users.permissionChildLabels]}
                           </p>
-                          <LevelSelector
-                            level={levelForStoredPermissions(permissions, child)}
-                            onChange={(level) => setResourceLevel(child, level)}
-                            editCapable={isEditCapableResource(child)}
-                            levelLabel={{
-                              NONE: t.users.permissionLevelNone,
-                              VIEW: t.users.permissionLevelView,
-                              EDIT: t.users.permissionLevelEdit,
-                            }}
-                            notEditableHint={t.users.permissionLevelViewNotEditable}
-                          />
+                          <div className="flex items-center gap-3">
+                            <LevelSelector
+                              level={levelForStoredPermissions(permissions, child)}
+                              onChange={(level) => setResourceLevel(child, level)}
+                              editCapable={isEditCapableResource(child)}
+                              levelLabel={{
+                                NONE: t.users.permissionLevelNone,
+                                VIEW: t.users.permissionLevelView,
+                                EDIT: t.users.permissionLevelEdit,
+                              }}
+                              notEditableHint={t.users.permissionLevelViewNotEditable}
+                            />
+                            {isDeleteCapableResource(child) && (
+                              <label
+                                className="flex items-center gap-1.5 text-xs font-medium text-zinc-600"
+                                title={t.users.permissionDeleteHint}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-zinc-300 text-rose-600 focus:ring-rose-500"
+                                  checked={hasDeleteInStoredPermissions(permissions, child)}
+                                  onChange={(e) => setResourceDelete(child, e.target.checked)}
+                                />
+                                {t.users.permissionLevelDelete}
+                              </label>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

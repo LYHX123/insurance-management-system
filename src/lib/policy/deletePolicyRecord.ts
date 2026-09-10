@@ -1,89 +1,123 @@
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/authz";
+import { auth } from "@/lib/auth";
+import { canDelete, POLICY_CATEGORY_PERMISSION } from "@/lib/permissions";
 import { policyDocumentStorage } from "@/lib/policyDocuments/storage";
+import {
+  getPolicyDeleteBlockers,
+  type PolicyDeleteBlocker,
+} from "@/lib/policy/getPolicyDeleteBlockers";
 import type { PolicyCategory } from "@/generated/prisma/enums";
 
 export type DeletePolicyResult =
   | { success: true; recordNumber: string }
   | {
       success: false;
-      error: "FORBIDDEN" | "NOT_FOUND" | "CONFIRMATION_MISMATCH" | "INVOICE_LINKED" | "DELETE_FAILED";
-      invoiceNumbers?: string[];
+      error:
+        | "FORBIDDEN"
+        | "NOT_FOUND"
+        | "CONFIRMATION_MISMATCH"
+        | "HAS_DEPENDENCIES"
+        | "DELETE_FAILED";
+      blockers?: PolicyDeleteBlocker[];
     };
 
-// Permanent, admin-only Policy delete (all 4 categories share this one
-// implementation — see src/app/(app)/policy/{motor,non-motor,bond,
-// work-permit}/actions.ts's thin delete*Action wrappers). This is a true
-// hard delete, unlike every other "removal" in the Policy domain (Cancel
-// Policy is just businessStatus="CANCELLED"; PolicyCustomerReceipt/
-// PolicyProviderPayment use a bare deletedAt) — once this returns success
-// the row and its cascaded children are gone.
+// Phase 13D — Permanent, PERMISSION-CONTROLLED Policy delete (all 4
+// categories share this one implementation — see src/app/(app)/policy/
+// {motor,non-motor,bond,work-permit}/actions.ts's thin delete*Action
+// wrappers). A true hard delete, unlike every other "removal" in the Policy
+// domain (Cancel Policy is just businessStatus="CANCELLED" and is UNCHANGED
+// by this phase; PolicyCustomerReceipt/PolicyProviderPayment use a bare
+// deletedAt) — once this returns success the row and its cascaded children
+// are gone.
 //
-// Relations (see prisma/schema.prisma):
-// - MotorPolicyDetail/NonMotorPolicyDetail/BondPolicyDetail/
+// Authorization (Phase 13D §B): NO LONGER admin-only. Requires the DELETE
+// capability for the policy's REAL category — policy.<category>.delete — an
+// independently-assignable permission that is never implied by .edit or a
+// legacy bare key. Admins still pass via canDelete()'s isAdmin() bypass. The
+// category is re-resolved from the loaded DB record; the `category` argument
+// from the caller is only used to reject a mismatched route (NOT_FOUND).
+//
+// Eligibility (Phase 13D §C/§L/§M/§N): getPolicyDeleteBlockers is the single
+// source of truth. Deletion is BLOCKED — never made possible by
+// cascade-deleting the dependency — when the policy has any invoice item,
+// customer receipt, provider payment, commission ledger posting, linked
+// Motor/Non-Motor claim, or renewal-chain relation.
+//
+// What is deleted (Phase 13D §D): only policy-OWNED children, all via
+// onDelete: Cascade on policyRecord.delete() inside the transaction below:
+//   MotorPolicyDetail / NonMotorPolicyDetail / BondPolicyDetail /
 //   WorkPermitPolicyDetail, PolicyCustomerReceipt, PolicyProviderPayment,
-//   PolicyDocument, PolicyActivity: all onDelete: Cascade — removed
-//   automatically by policyRecord.delete() inside the transaction below.
-//   PolicyDocument's DB row cascades but its file on disk does not, so
-//   storagePaths are captured before the transaction and deleted after it
-//   commits (mirrors deletePolicyDocumentAction's DB-first/file-second/
-//   log-don't-fail pattern in policy/motor/documentActions.ts).
-// - InvoiceItem.policyRecordId: onDelete: Restrict — the one real DB-level
-//   blocker. Rather than let a raw FK-violation surface, checked explicitly
-//   up front and reported with the blocking invoice number(s) (mirrors
-//   deleteQuotationAction's QUOTATION_HAS_LINKED_POLICIES guard in
-//   src/app/(app)/quotation/actions.ts). Never auto-deletes InvoiceItem
-//   rows — an Invoice is a standalone financial record.
-// - Quotation (via PolicyRecord.sourceQuotationId): PolicyRecord is the
-//   child side here, so deleting it has no effect on the source Quotation —
-//   nothing to do.
-// - MotorClaim/NonMotorClaim: no relation field to PolicyRecord exists in
-//   the current schema at all (see those models' own schema comments) — so
-//   there is nothing to check. Reported as a known gap rather than
-//   approximated with a heuristic (e.g. matching by registration number).
-// - Manual Ledger entries / Ledger "System Records": no relation to Policy
-//   (System Records are a live projection over PolicyCustomerReceipt/
-//   PolicyProviderPayment/commission fields, not a stored table) — they
-//   simply stop appearing once the source rows are gone; manual entries are
-//   never touched.
-// confirmedRecordNumber is whatever the user actually typed into the
-// TypedConfirmDialog (trimmed client-side, see typed-confirm-dialog.tsx) —
-// re-verified here independently rather than trusted, so a caller that
-// changes/omits the client-side gate (a modified request, a bypassed UI)
-// still cannot delete a record without supplying its real recordNumber.
-export async function deletePolicyRecord(id: string, category: PolicyCategory, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
-  const session = await requireAdmin();
-  if (!session) return { success: false, error: "FORBIDDEN" };
+//   PolicyDocument (+ its PolicyDocumentDropboxSync), PolicyActivity,
+//   PolicyDropboxBusinessFile. Customer, other policies, Quotation/
+//   QuotationCase (PolicyRecord is the child of sourceQuotation), Invoices,
+//   claims and ledger entries are NEVER touched.
+//
+// Dropbox (Phase 13D §E): NO Dropbox file/folder is ever deleted, moved or
+// renamed. This module does not import the Dropbox SDK/service at all. The
+// PolicyDocument DB rows (policy-owned metadata) cascade away; the LOCAL
+// on-disk document files are removed after the transaction commits
+// (best-effort, log-don't-fail) — that local storage is not Dropbox.
+//
+// confirmedRecordNumber is whatever the user typed into the
+// PolicyDeleteButton confirmation dialog (trimmed client-side) — re-verified
+// here independently against the DB record, so a bypassed/modified client
+// cannot delete a record without supplying its real recordNumber.
+export async function deletePolicyRecord(
+  id: string,
+  category: PolicyCategory,
+  confirmedRecordNumber: string
+): Promise<DeletePolicyResult> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "FORBIDDEN" };
 
   const record = await prisma.policyRecord.findUnique({
-    where: { id, category },
-    include: { documents: { select: { storagePath: true } } },
+    where: { id },
+    select: {
+      id: true,
+      recordNumber: true,
+      category: true,
+      documents: { select: { storagePath: true } },
+    },
   });
-  if (!record) return { success: false, error: "NOT_FOUND" };
+  // A wrong id, OR a real id reached through the wrong category route, is
+  // reported the same way — never a category-mismatched delete.
+  if (!record || record.category !== category) {
+    return { success: false, error: "NOT_FOUND" };
+  }
+
+  // Permission is resolved from the record's ACTUAL category, never the
+  // caller-supplied argument alone. Fails closed if the category has no
+  // mapped permission key.
+  const permissionKey = POLICY_CATEGORY_PERMISSION[record.category];
+  if (!permissionKey || !canDelete(session.user, permissionKey)) {
+    return { success: false, error: "FORBIDDEN" };
+  }
 
   if (confirmedRecordNumber.trim() !== record.recordNumber) {
     return { success: false, error: "CONFIRMATION_MISMATCH" };
   }
 
-  const linkedInvoiceItems = await prisma.invoiceItem.findMany({
-    where: { policyRecordId: id },
-    include: { invoice: { select: { invoiceNumber: true } } },
-  });
-  if (linkedInvoiceItems.length > 0) {
-    const invoiceNumbers = [...new Set(linkedInvoiceItems.map((item) => item.invoice.invoiceNumber))];
-    return { success: false, error: "INVOICE_LINKED", invoiceNumbers };
+  const blockerResult = await getPolicyDeleteBlockers(prisma, id);
+  if (!blockerResult) return { success: false, error: "NOT_FOUND" };
+  if (!blockerResult.canDelete) {
+    return { success: false, error: "HAS_DEPENDENCIES", blockers: blockerResult.blockers };
   }
 
   // Technical server-log record of the deletion (no application-wide
-  // AuditLog/AdminLog model exists outside PolicyRecord to write into — see
-  // this phase's investigation — and PolicyActivity itself cascades away
-  // with the row, so it can't hold a durable "POLICY_DELETED" entry either).
+  // AuditLog model exists — see this phase's investigation — and
+  // PolicyActivity itself cascades away with the row, so it can't hold a
+  // durable "POLICY_DELETED" entry either). Written BEFORE the delete.
   console.info(
-    `[policy-delete] admin=${session.user.id} deleting policyRecord id=${id} recordNumber=${record.recordNumber} category=${category} at=${new Date().toISOString()}`
+    `[policy-permanent-delete] actor=${session.user.id} recordNumber=${record.recordNumber} ` +
+      `category=${record.category} policyId=${id} action=POLICY_PERMANENT_DELETE at=${new Date().toISOString()}`
   );
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Single statement — every policy-owned child is onDelete: Cascade
+      // (see this function's doc comment and prisma/schema.prisma). The
+      // blocker check above already guaranteed no onDelete: Restrict
+      // relation (InvoiceItem, renewal self-relations) still points here.
       await tx.policyRecord.delete({ where: { id } });
     });
   } catch (err) {
@@ -91,11 +125,16 @@ export async function deletePolicyRecord(id: string, category: PolicyCategory, c
     return { success: false, error: "DELETE_FAILED" };
   }
 
+  // Local on-disk document cleanup only — never Dropbox. DB-first, then
+  // file, log-don't-fail (mirrors deletePolicyDocumentAction).
   for (const doc of record.documents) {
     try {
       await policyDocumentStorage.deleteFile(doc.storagePath);
     } catch (err) {
-      console.error(`Policy ${id} was deleted but its document file could not be removed (${doc.storagePath}):`, err);
+      console.error(
+        `Policy ${id} was deleted but its local document file could not be removed (${doc.storagePath}):`,
+        err
+      );
     }
   }
 

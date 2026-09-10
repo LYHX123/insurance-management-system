@@ -160,6 +160,11 @@ const en = {
     permissionLevelView: "View",
     permissionLevelEdit: "Edit",
     permissionLevelViewNotEditable: "This module cannot be manually edited.",
+    // Phase 13D — an independent capability (its own checkbox), NOT a fourth
+    // step on the None/View/Edit ladder. Policy categories only: allows
+    // permanently deleting an eligible policy record.
+    permissionLevelDelete: "Delete",
+    permissionDeleteHint: "Allow permanently deleting an eligible policy record",
     permissionChildLabels: {
       "policy.motor": "Motor",
       "policy.non_motor": "Non Motor",
@@ -1059,6 +1064,7 @@ const en = {
     tabWorkPermit: "Work Permit",
 
     recordNumber: "Record Number",
+    category: "Category",
     processingDate: "Processing Date",
     customer: "Customer",
     project: "Project",
@@ -1219,13 +1225,21 @@ const en = {
     cancelPolicyConfirmTitle: "Cancel Policy",
     cancelPolicyConfirmMessage: "Are you sure you want to mark this policy as cancelled? This cannot be undone from this screen.",
     deletePolicy: "Delete Policy",
-    deletePolicyConfirmTitle: "Permanently Delete Policy",
+    deletePolicyConfirmTitle: "Permanently Delete Policy?",
     deletePolicyConfirmMessage:
-      "Permanently delete this Policy? This action cannot be undone. Related payments, ledger records, invoice links, documents, and activity history may also be affected.",
-    deletePolicyConfirmInstruction: "Enter policy record number {recordNumber} to confirm.",
+      "This action will permanently remove this policy record from the system and cannot be undone. If the policy has related invoices, payments, ledger records, claims, renewals, or other protected business records, deletion will be blocked.",
+    deletePolicyConfirmInstruction: "Type {recordNumber} to confirm.",
     deletePolicyConfirmButton: "Delete Permanently",
     deletePolicySuccess: "Policy {recordNumber} was permanently deleted.",
-    deletePolicyInvoiceLinked: "This policy cannot be deleted because it is linked to invoice(s): {invoiceNumbers}. Remove the invoice link first.",
+    // Phase 13D — shown when the permanent delete is refused because of
+    // protected downstream records. The reason phrases below are appended.
+    deletePolicyBlocked: "This policy cannot be permanently deleted because of related business records:",
+    deletePolicyBlockerInvoice: "it has an invoice",
+    deletePolicyBlockerReceipt: "customer receipt records exist",
+    deletePolicyBlockerPayment: "insurance company payment records exist",
+    deletePolicyBlockerLedger: "a commission ledger record exists",
+    deletePolicyBlockerClaim: "it has a claim",
+    deletePolicyBlockerRenewal: "it is part of a renewal chain",
     deletePolicyConfirmationMismatch: "The typed record number did not match. No changes were made.",
     deletePolicyDeleteFailedError: "The policy could not be deleted. No changes were made.",
 

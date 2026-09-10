@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canEdit, hasPermission, isAdmin } from "@/lib/permissions";
+import { canDelete, canEdit, hasPermission, isAdmin } from "@/lib/permissions";
 import { loadRenewalView } from "@/app/(app)/policy/renewal/loadRenewalView";
 import { computeBusinessStatus, computePaymentStatus } from "@/lib/policy/status";
 import { toDecimal } from "@/lib/money";
@@ -193,6 +193,7 @@ export default async function WorkPermitRecordDetailPage({ params }: { params: P
       customers={customers}
       isAdmin={isAdmin(session.user)}
       canEdit={canEdit(session.user, "policy.work_permit")}
+      canDelete={canDelete(session.user, "policy.work_permit")}
       dropbox={dropboxViewModel}
       renewal={renewalView}
     />

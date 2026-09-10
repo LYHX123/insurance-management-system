@@ -154,6 +154,10 @@ const zh: Dictionary = {
     permissionLevelView: "只读",
     permissionLevelEdit: "可编辑",
     permissionLevelViewNotEditable: "该模块不支持手工编辑。",
+    // Phase 13D — 独立权限（单独的复选框），不是 无/只读/可编辑 之后的第四级。
+    // 仅适用于保单各类别：允许永久删除符合条件的保单记录。
+    permissionLevelDelete: "删除",
+    permissionDeleteHint: "允许永久删除符合条件的保单记录",
     permissionChildLabels: {
       "policy.motor": "车险",
       "policy.non_motor": "非车险",
@@ -1029,6 +1033,7 @@ const zh: Dictionary = {
     tabWorkPermit: "工作准证",
 
     recordNumber: "记录编号",
+    category: "类别",
     processingDate: "处理日期",
     customer: "客户",
     project: "项目",
@@ -1185,13 +1190,21 @@ const zh: Dictionary = {
     cancelPolicy: "取消保单",
     cancelPolicyConfirmTitle: "取消保单",
     cancelPolicyConfirmMessage: "确定要将此保单标记为已取消吗？此操作在此页面无法撤销。",
-    deletePolicy: "删除保单",
-    deletePolicyConfirmTitle: "永久删除保单",
-    deletePolicyConfirmMessage: "永久删除该保单？此操作无法撤销，相关收付款、台账、发票关联、文件及操作记录也可能被删除。",
-    deletePolicyConfirmInstruction: "请输入保单记录编号 {recordNumber} 以确认。",
-    deletePolicyConfirmButton: "永久删除",
+    deletePolicy: "永久删除保单",
+    deletePolicyConfirmTitle: "永久删除保单？",
+    deletePolicyConfirmMessage:
+      "此操作将从系统中永久删除该保单记录，并且无法恢复。如果该保单已关联发票、收付款记录、台账记录、索赔、续保或其他受保护业务记录，系统将禁止删除。",
+    deletePolicyConfirmInstruction: "请输入 {recordNumber} 以确认。",
+    deletePolicyConfirmButton: "确认永久删除",
     deletePolicySuccess: "保单 {recordNumber} 已被永久删除。",
-    deletePolicyInvoiceLinked: "该保单已关联发票（{invoiceNumbers}），无法删除。请先解除发票关联。",
+    // Phase 13D — 因关联业务记录而拒绝永久删除时显示，后面追加下列原因短语。
+    deletePolicyBlocked: "无法删除该保单，存在以下关联业务记录：",
+    deletePolicyBlockerInvoice: "已开具发票",
+    deletePolicyBlockerReceipt: "存在客户收款记录",
+    deletePolicyBlockerPayment: "存在保险公司付款记录",
+    deletePolicyBlockerLedger: "存在佣金台账记录",
+    deletePolicyBlockerClaim: "存在关联索赔",
+    deletePolicyBlockerRenewal: "属于续保链的一部分",
     deletePolicyConfirmationMismatch: "输入的记录编号不匹配，未做任何更改。",
     deletePolicyDeleteFailedError: "保单删除失败，未做任何更改。",
 

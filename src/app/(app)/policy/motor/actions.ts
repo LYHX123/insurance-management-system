@@ -709,11 +709,12 @@ export async function updateCommissionAction(
   }
 }
 
-// Permanent, admin-only delete — see deletePolicyRecord's own doc comment
-// for the full relation/transaction breakdown. Deliberately its own action
-// (not folded into updateMotorOverviewAction like Cancel is), since it has
-// fundamentally different side effects (file cleanup, InvoiceItem guard,
-// admin-only gate) than a routine edit.
+// Phase 13D — permanent, permission-controlled delete (requires
+// policy.motor.delete, NOT admin-only, NOT the same as Cancel Policy). See
+// deletePolicyRecord's own doc comment for the auth/eligibility/transaction
+// breakdown. Deliberately its own action (not folded into
+// updateMotorOverviewAction like Cancel is), since it has fundamentally
+// different side effects (hard delete, dependency guard, DELETE-level gate).
 export async function deleteMotorPolicyAction(id: string, confirmedRecordNumber: string): Promise<DeletePolicyResult> {
   const result = await deletePolicyRecord(id, "MOTOR", confirmedRecordNumber);
   if (result.success) revalidatePath("/policy/motor");

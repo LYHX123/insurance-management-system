@@ -3,9 +3,13 @@ import {
   hasPermission,
   canView,
   canEdit,
+  canDelete,
   resourceLevel,
   levelForStoredPermissions,
   levelToStoredKeys,
+  hasDeleteInStoredPermissions,
+  deleteToStoredKeys,
+  isDeleteCapableResource,
   hasMenuAccess,
   hasAnyPermission,
   firstAccessibleCategorySlug,
@@ -182,5 +186,89 @@ describe("VIEW/EDIT permission model (Insurance permission upgrade)", () => {
     expect(isAdmin(user([], { role: "Admin" }))).toBe(true);
     expect(isAdmin(user([], { role: "Admin", status: "DISABLED" }))).toBe(false);
     expect(isAdmin(user(["policy.motor.edit"], { role: "Staff" }))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 13D — DELETE capability (Permanent Policy Delete)
+// ---------------------------------------------------------------------------
+describe("DELETE permission (Phase 13D — Permanent Policy Delete)", () => {
+  it("only the four Policy categories are delete-capable", () => {
+    expect(isDeleteCapableResource("policy.motor")).toBe(true);
+    expect(isDeleteCapableResource("policy.non_motor")).toBe(true);
+    expect(isDeleteCapableResource("policy.bond")).toBe(true);
+    expect(isDeleteCapableResource("policy.work_permit")).toBe(true);
+    expect(isDeleteCapableResource("customer")).toBe(false);
+    expect(isDeleteCapableResource("invoice")).toBe(false);
+    expect(isDeleteCapableResource("ledger.manual_record")).toBe(false);
+  });
+
+  it("canDelete requires the explicit '<category>.delete' string", () => {
+    expect(canDelete(user(["policy.motor.delete"]), "policy.motor")).toBe(true);
+    expect(canDelete(user([]), "policy.motor")).toBe(false);
+  });
+
+  it("EDIT (or VIEW, or a legacy bare key) never implies DELETE — it is independently assignable", () => {
+    expect(canDelete(user(["policy.motor.edit"]), "policy.motor")).toBe(false);
+    expect(canDelete(user(["policy.motor.view"]), "policy.motor")).toBe(false);
+    expect(canDelete(user(["policy.motor"]), "policy.motor")).toBe(false); // legacy full-access bare key
+  });
+
+  it("a DELETE grant does not by itself grant VIEW/EDIT, and vice versa (fully independent)", () => {
+    const del = user(["policy.motor.delete"]);
+    expect(canDelete(del, "policy.motor")).toBe(true);
+    expect(canEdit(del, "policy.motor")).toBe(false);
+    expect(hasPermission(del, "policy.motor")).toBe(false);
+
+    const edit = user(["policy.motor.edit"]);
+    expect(canEdit(edit, "policy.motor")).toBe(true);
+    expect(canDelete(edit, "policy.motor")).toBe(false);
+  });
+
+  it("DELETE is per-category isolated — motor.delete grants nothing on other categories", () => {
+    const u = user(["policy.motor.delete"]);
+    expect(canDelete(u, "policy.non_motor")).toBe(false);
+    expect(canDelete(u, "policy.bond")).toBe(false);
+    expect(canDelete(u, "policy.work_permit")).toBe(false);
+  });
+
+  it("Admin can delete every category regardless of stored permissions", () => {
+    expect(canDelete(ADMIN, "policy.motor")).toBe(true);
+    expect(canDelete(ADMIN, "policy.bond")).toBe(true);
+  });
+
+  it("a DISABLED user with policy.motor.delete stored still cannot delete", () => {
+    expect(canDelete(user(["policy.motor.delete"], { status: "DISABLED" }), "policy.motor")).toBe(false);
+  });
+
+  it("canDelete fails closed for a non-delete-capable key even if a stray '.delete' is somehow stored", () => {
+    expect(canDelete(user(["customer.delete"]), "customer")).toBe(false);
+    expect(isStoredPermissionValue("customer.delete")).toBe(false);
+  });
+
+  it("sanitizePermissions keeps a valid '<category>.delete' and drops an invalid one", () => {
+    const stored = sanitizePermissions(["policy.bond.delete", "customer.delete", "policy.motor.delete"]);
+    expect(stored).toContain("policy.bond.delete");
+    expect(stored).toContain("policy.motor.delete");
+    expect(stored).not.toContain("customer.delete");
+  });
+
+  it("form round-trip: deleteToStoredKeys <-> hasDeleteInStoredPermissions", () => {
+    expect(deleteToStoredKeys("policy.motor", true)).toEqual(["policy.motor.delete"]);
+    expect(deleteToStoredKeys("policy.motor", false)).toEqual([]);
+    expect(deleteToStoredKeys("customer", true)).toEqual([]); // not delete-capable
+
+    expect(hasDeleteInStoredPermissions(["policy.motor.delete"], "policy.motor")).toBe(true);
+    expect(hasDeleteInStoredPermissions(["policy.motor.edit"], "policy.motor")).toBe(false);
+  });
+
+  it("DELETE and the None/View/Edit level coexist in one permissions array without interfering", () => {
+    // Mirrors the Add/Edit User form: a Motor VIEW + Motor DELETE user.
+    const permissions = [...levelToStoredKeys("policy.motor", "VIEW"), ...deleteToStoredKeys("policy.motor", true)];
+    expect(permissions.sort()).toEqual(["policy.motor.delete", "policy.motor.view"]);
+    const u = user(permissions);
+    expect(hasPermission(u, "policy.motor")).toBe(true); // VIEW
+    expect(canEdit(u, "policy.motor")).toBe(false);
+    expect(canDelete(u, "policy.motor")).toBe(true);
   });
 });

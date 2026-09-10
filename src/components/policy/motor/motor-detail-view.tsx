@@ -30,6 +30,7 @@ export function MotorDetailView({
   customers,
   isAdmin,
   canEdit,
+  canDelete,
   dropbox,
   renewal,
 }: {
@@ -37,6 +38,7 @@ export function MotorDetailView({
   customers: CustomerOption[];
   isAdmin: boolean;
   canEdit: boolean;
+  canDelete: boolean;
   dropbox: PolicyDropboxSectionView;
   renewal: PolicyRenewalView;
 }) {
@@ -105,7 +107,7 @@ export function MotorDetailView({
 
       {tab === "overview" && (
         <>
-          <MotorOverviewTab detail={detail} customers={customers} isAdmin={isAdmin} canEdit={canEdit} />
+          <MotorOverviewTab detail={detail} customers={customers} canEdit={canEdit} canDelete={canDelete} />
           <PolicyRenewalCard policyRecordId={detail.id} category="MOTOR" canEdit={canEdit} renewal={renewal} />
         </>
       )}
