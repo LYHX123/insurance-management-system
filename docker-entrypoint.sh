@@ -16,7 +16,7 @@ set -e
 APP_UID=1001
 APP_GID=1001
 
-for dir in /app/uploads /app-data/quotation-documents /app-data/policy-documents /app-data/invoices; do
+for dir in /app/uploads /app-data/quotation-documents /app-data/policy-documents /app-data/invoices /app-data/motor-claim-documents /app-data/non-motor-claim-documents; do
   if [ -d "$dir" ]; then
     owner=$(stat -c '%u:%g' "$dir")
     if [ "$owner" != "$APP_UID:$APP_GID" ]; then

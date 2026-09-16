@@ -40,6 +40,8 @@ services:
       QUOTATION_DOCUMENT_STORAGE_ROOT: /app-data/quotation-documents
       POLICY_DOCUMENT_STORAGE_ROOT: /app-data/policy-documents
       INVOICE_DOCUMENT_STORAGE_ROOT: /app-data/invoices
+      MOTOR_CLAIM_DOCUMENT_STORAGE_ROOT: /app-data/motor-claim-documents
+      NON_MOTOR_CLAIM_DOCUMENT_STORAGE_ROOT: /app-data/non-motor-claim-documents
     ports:
       - "127.0.0.1:3001:3000"
     volumes:
@@ -57,6 +59,10 @@ services:
       # quotation_documents_data/policy_documents_data above. See Dockerfile
       # and src/lib/invoiceDocuments/storage.ts.
       - invoice_documents_data:/app-data/invoices
+      # Phase 7 Motor/Non-Motor Claim documents — same reasoning/pattern as
+      # the volumes above. See Dockerfile and src/lib/claimDocuments/storage.ts.
+      - motor_claim_documents_data:/app-data/motor-claim-documents
+      - non_motor_claim_documents_data:/app-data/non-motor-claim-documents
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -89,3 +95,5 @@ volumes:
   quotation_documents_data:
   policy_documents_data:
   invoice_documents_data:
+  motor_claim_documents_data:
+  non_motor_claim_documents_data:

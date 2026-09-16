@@ -65,6 +65,17 @@ RUN mkdir -p /app-data/policy-documents && chown -R nextjs:nodejs /app-data/poli
 # over this directory at container start.
 RUN mkdir -p /app-data/invoices && chown -R nextjs:nodejs /app-data/invoices
 
+# Phase 7 Motor/Non-Motor Claim documents — same reasoning as the
+# directories above (see src/lib/claimDocuments/storage.ts). Without these,
+# MOTOR_CLAIM_DOCUMENT_STORAGE_ROOT/NON_MOTOR_CLAIM_DOCUMENT_STORAGE_ROOT are
+# unset and the storage layer falls back to process.cwd()-relative paths
+# under /app, which is root-owned and not writable by nextjs — every Claim
+# document upload fails in production. The named volumes mounted here in
+# docker-compose.yml (motor_claim_documents_data / non_motor_claim_documents_data)
+# take over these directories at container start.
+RUN mkdir -p /app-data/motor-claim-documents && chown -R nextjs:nodejs /app-data/motor-claim-documents
+RUN mkdir -p /app-data/non-motor-claim-documents && chown -R nextjs:nodejs /app-data/non-motor-claim-documents
+
 COPY --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Deliberately no `USER nextjs` here — the container starts as root so the
